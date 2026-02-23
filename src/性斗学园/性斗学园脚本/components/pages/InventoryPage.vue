@@ -58,10 +58,16 @@
     <!-- 背包物品 -->
     <div class="section-card">
       <div class="section-header">
-        <h3 class="section-title">
-          <i class="fas fa-box"></i> 背包
-          <span class="item-count">{{ Object.keys(filteredItems).length }} 件物品</span>
-        </h3>
+        <div class="section-header-top">
+          <h3 class="section-title">
+            <i class="fas fa-box"></i> 背包
+            <span class="item-count">{{ Object.keys(filteredItems).length }} 件物品</span>
+          </h3>
+          <button class="bulk-sell-btn" :disabled="bulkSellItemCount <= 0" @click="bulkSellFilteredItems">
+            <i class="fas fa-coins"></i>
+            批量售出（{{ bulkSellItemCount }}件 / +{{ formatNumber(bulkSellGoldGain) }}）
+          </button>
+        </div>
 
         <!-- 分类筛选 -->
         <div class="filter-tabs">
@@ -278,6 +284,15 @@ const filteredItems = computed(() => {
 
   return filtered;
 });
+
+const SELL_PRICE_PER_ITEM = 50;
+const bulkSellItemCount = computed(() => {
+  return Object.values(filteredItems.value).reduce((sum, item: any) => {
+    const quantity = Number(item?.数量 ?? 1) || 1;
+    return sum + Math.max(1, quantity);
+  }, 0);
+});
+const bulkSellGoldGain = computed(() => bulkSellItemCount.value * SELL_PRICE_PER_ITEM);
 
 // 格式化数字
 function formatNumber(num: number): string {
@@ -601,6 +616,71 @@ async function discardItem(itemKey: string) {
   }
 }
 
+async function bulkSellFilteredItems() {
+  if (bulkSellItemCount.value <= 0) return;
+
+  const filteredKeys = Object.keys(filteredItems.value);
+  if (filteredKeys.length <= 0) return;
+
+  const ok = confirm(
+    `确认批量售卖当前筛选结果吗？\n共 ${filteredKeys.length} 种、${bulkSellItemCount.value} 件，预计获得 ${bulkSellGoldGain.value} 金币。`,
+  );
+  if (!ok) return;
+
+  const globalAny = window as any;
+  if (!globalAny.Mvu) {
+    console.error('[背包界面] MVU 未初始化');
+    return;
+  }
+
+  try {
+    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    if (!mvuData || !mvuData.stat_data) {
+      console.error('[背包界面] 无法获取 MVU 数据');
+      return;
+    }
+
+    const statData = mvuData.stat_data;
+    if (!statData.物品系统) statData.物品系统 = {};
+    if (!statData.物品系统.背包) statData.物品系统.背包 = {};
+
+    let soldTypes = 0;
+    let soldCount = 0;
+    for (const itemKey of filteredKeys) {
+      const item = statData.物品系统.背包[itemKey];
+      if (!item) continue;
+      const quantity = Math.max(1, Number(item?.数量 ?? 1) || 1);
+      soldTypes += 1;
+      soldCount += quantity;
+      delete statData.物品系统.背包[itemKey];
+    }
+
+    if (soldCount <= 0) {
+      if (typeof toastr !== 'undefined') {
+        toastr.info('当前筛选结果没有可售卖物品');
+      }
+      return;
+    }
+
+    const currentCoins = Number(statData.物品系统.学园金币 ?? 0) || 0;
+    const gainedCoins = soldCount * SELL_PRICE_PER_ITEM;
+    statData.物品系统.学园金币 = currentCoins + gainedCoins;
+
+    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+
+    if (typeof toastr !== 'undefined') {
+      toastr.success(`已批量售卖 ${soldTypes} 种共 ${soldCount} 件，获得 ${gainedCoins} 金币`);
+    }
+
+    window.dispatchEvent(new CustomEvent('mvu-data-updated'));
+  } catch (error) {
+    console.error('[背包界面] 批量售卖失败:', error);
+    if (typeof toastr !== 'undefined') {
+      toastr.error('批量售卖失败，请重试');
+    }
+  }
+}
+
 // 卸下装备
 async function unequipItem(slotKey: string) {
   const globalAny = window as any;
@@ -796,6 +876,13 @@ function calculateEquipmentBonuses(statData: any) {
   margin-bottom: 16px;
 }
 
+.section-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .section-title {
   font-size: 13px;
   font-weight: 600;
@@ -815,6 +902,41 @@ function calculateEquipmentBonuses(statData: any) {
     font-size: 11px;
     color: rgba(255, 255, 255, 0.4);
     font-weight: 400;
+  }
+}
+
+.section-header-top .section-title {
+  margin-bottom: 0;
+}
+
+.bulk-sell-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.15);
+  color: #fcd34d;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.24);
+    border-color: rgba(251, 191, 36, 0.5);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  i {
+    font-size: 10px;
   }
 }
 
@@ -1236,6 +1358,17 @@ function calculateEquipmentBonuses(statData: any) {
   span {
     font-size: 12px;
     color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+@media (max-width: 768px) {
+  .section-header-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bulk-sell-btn {
+    justify-content: center;
   }
 }
 

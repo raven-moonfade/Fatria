@@ -168,6 +168,122 @@
           </div>
         </div>
       </div>
+
+      <!-- 转盘 -->
+      <div v-if="activeCategory === 'wheel'" class="wheel-section">
+        <div class="wheel-type-tabs">
+          <button
+            v-for="wheel in wheelTypes"
+            :key="wheel.id"
+            class="wheel-type-btn"
+            :class="{ active: activeWheelType === wheel.id }"
+            @click="activeWheelType = wheel.id"
+          >
+            <i :class="wheel.icon"></i>
+            <span>{{ wheel.name }}</span>
+          </button>
+        </div>
+
+        <div class="wheel-cost-bar">
+          <div class="wheel-cost-main">
+            <span class="wheel-name">{{ currentWheelConfig.name }}</span>
+            <span class="wheel-cost">单抽 {{ singleDrawCostLabel }} / 十连 {{ tenDrawCostLabel }}</span>
+          </div>
+          <div class="wheel-cost-extra">
+            <span>幸运稀有倍率 x{{ luckyRareMultiplier.toFixed(2) }}</span>
+            <span v-if="currentWheelConfig.currency === 'ticket'">抽奖卷 {{ totalLotteryTickets }}</span>
+          </div>
+        </div>
+
+        <div class="wheel-stage">
+          <div class="wheel-pointer">
+            <i class="fas fa-caret-down"></i>
+          </div>
+          <div class="wheel-disc" :style="wheelDiscStyle">
+            <div
+              v-for="(segment, index) in currentWheelConfig.segments"
+              :key="segment.id"
+              class="wheel-segment-label"
+              :class="{ rare: segment.rare }"
+              :style="getWheelSegmentLabelStyle(index, currentWheelConfig.segments.length)"
+            >
+              {{ segment.label }}
+            </div>
+          </div>
+          <div class="wheel-center">
+            <i :class="currentWheelConfig.icon"></i>
+          </div>
+        </div>
+
+        <div class="wheel-action-row">
+          <button class="wheel-draw-btn" :disabled="!canDrawSingle" @click="drawWheel(1)">
+            <span>单抽</span>
+            <small>{{ singleDrawCostLabel }}</small>
+          </button>
+          <button class="wheel-draw-btn ten" :disabled="!canDrawTen" @click="drawWheel(10)">
+            <span>十连</span>
+            <small>{{ tenDrawCostLabel }}</small>
+          </button>
+        </div>
+
+        <div class="wheel-last-result" v-if="wheelLastResultText">
+          <i class="fas fa-gift"></i>
+          <span>{{ wheelLastResultText }}</span>
+        </div>
+
+        <div class="wheel-prob-panel">
+          <div class="wheel-prob-header">实时概率（已计入幸运）</div>
+          <div class="wheel-prob-grid">
+            <div
+              v-for="row in wheelProbabilityRows"
+              :key="row.segment.id"
+              class="wheel-prob-item"
+              :class="{ rare: row.segment.rare }"
+            >
+              <span class="prob-name">{{ row.segment.label }}</span>
+              <span class="prob-value">{{ row.probabilityText }}</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 性癖奖励选择弹窗 -->
+    <div v-if="fetishDecisionModalVisible && pendingFetishDecision" class="purchase-modal fetish-modal">
+      <div class="modal-content fetish-modal-content">
+        <div class="modal-header">
+          <h3>性癖奖励确认</h3>
+        </div>
+        <div class="modal-body">
+          <div class="fetish-name-row">
+            <span class="fetish-name">{{ pendingFetishDecision.name }}</span>
+            <span class="fetish-align-tag" :class="`align-${pendingFetishDecision.alignment.toLowerCase()}`">
+              {{ pendingFetishAlignmentLabel }}
+            </span>
+          </div>
+          <div class="fetish-desc">
+            {{ pendingFetishDecision.description }}
+          </div>
+          <div class="item-details">
+            <div class="detail-title">永久加成</div>
+            <div class="bonus-list">
+              <div v-for="row in pendingFetishBonusRows" :key="row.key" class="bonus-item">
+                <span class="bonus-name">{{ row.key }}</span>
+                <span class="bonus-value" :class="row.value > 0 ? 'positive' : 'negative'">
+                  {{ row.value > 0 ? '+' : '' }}{{ row.value }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="fetish-reroll-tip">重roll不消耗额外次数，可无限重roll直到决定保留或舍弃。</div>
+        </div>
+        <div class="modal-footer fetish-footer">
+          <button class="cancel-btn" @click="handleFetishDecision('discard')">舍弃</button>
+          <button class="reroll-btn" @click="handleFetishDecision('reroll')">重roll</button>
+          <button class="confirm-btn" @click="handleFetishDecision('keep')">保留</button>
+        </div>
+      </div>
     </div>
 
     <!-- 购买确认弹窗 -->
@@ -266,11 +382,74 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { grandWheelFetishPool, type FetishEntry } from '../../data/fetishPool';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
 
 const props = defineProps<{
   characterData: any;
 }>();
+
+type ShopCategory = 'equipment' | 'consumables' | 'wheel';
+type WheelType = 'basic' | 'advanced' | 'grand';
+type WheelCurrency = 'gold' | 'ticket';
+type WheelSegmentId =
+  | 'basic_exp'
+  | 'basic_gold'
+  | 'basic_recovery'
+  | 'basic_temp'
+  | 'basic_exp_rare'
+  | 'basic_gold_rare'
+  | 'advanced_a_equipment'
+  | 'advanced_s_equipment'
+  | 'advanced_bonus'
+  | 'advanced_gold'
+  | 'advanced_skill'
+  | 'advanced_ticket'
+  | 'grand_s_equipment'
+  | 'grand_ss_equipment'
+  | 'grand_attr'
+  | 'grand_potential'
+  | 'grand_fetish';
+
+interface WheelSegment {
+  id: WheelSegmentId;
+  label: string;
+  color: string;
+  weight: number;
+  rare?: boolean;
+  rewardDesc: string;
+}
+
+interface WheelConfig {
+  id: WheelType;
+  name: string;
+  icon: string;
+  currency: WheelCurrency;
+  singleCost: number;
+  tenCost: number;
+  segments: WheelSegment[];
+}
+
+interface ShopCategoryItem {
+  id: ShopCategory;
+  name: string;
+  icon: string;
+}
+
+interface WheelProbabilityRow {
+  segment: WheelSegment;
+  probability: number;
+  probabilityText: string;
+}
+
+interface WheelRewardResult {
+  text: string;
+  pendingFetish?: FetishEntry;
+}
+
+type FetishDecision = 'keep' | 'reroll' | 'discard';
+
+const RARE_WEIGHT_FACTOR = 0.5;
 
 // 获取当前天赋ID
 const currentTalentId = computed(() => {
@@ -325,7 +504,7 @@ const goldCoins = computed(() => {
 });
 
 // 当前分类
-const activeCategory = ref('equipment');
+const activeCategory = ref<ShopCategory>('equipment');
 
 // 选中的物品
 const selectedItem = ref<any>(null);
@@ -377,9 +556,10 @@ function unlockSpecialBattle() {
 }
 
 // 分类列表（移除礼物）
-const categories = [
+const categories: ShopCategoryItem[] = [
   { id: 'equipment', name: '装备', icon: 'fas fa-shield-halved' },
   { id: 'consumables', name: '消耗品', icon: 'fas fa-flask' },
+  { id: 'wheel', name: '转盘', icon: 'fas fa-compact-disc' },
 ];
 
 // 筛选状态
@@ -2600,6 +2780,633 @@ const visibleConsumableSubCategories = computed(() => {
   return consumableSubCategories.filter(sc => sc.type !== 'special_battle');
 });
 
+const wheelAEquipmentPool = allEquipments.filter(item => item.grade === 'A');
+const wheelSEquipmentPool = allEquipments.filter(item => item.grade === 'S');
+const wheelSSEquipmentPool = allEquipments.filter(item => item.grade === 'SS');
+const wheelRecoveryPool: any[] = (
+  (consumableSubCategories.find(subCat => subCat.type === 'recovery')?.items ?? []) as any[]
+).filter(item => item.id.startsWith('con_r_'));
+const wheelTempBuffPool: any[] = (consumableSubCategories.find(subCat => subCat.type === 'temp_buff')?.items ?? []) as any[];
+
+const wheelTypes = [
+  { id: 'basic' as WheelType, name: '基础转盘', icon: 'fas fa-dice-one' },
+  { id: 'advanced' as WheelType, name: '进阶转盘', icon: 'fas fa-dice-three' },
+  { id: 'grand' as WheelType, name: '大转盘', icon: 'fas fa-crown' },
+];
+
+const wheelConfigs: Record<WheelType, WheelConfig> = {
+  basic: {
+    id: 'basic',
+    name: '基础转盘',
+    icon: 'fas fa-dice-one',
+    currency: 'gold',
+    singleCost: 1000,
+    tenCost: 9000,
+    segments: [
+      { id: 'basic_exp', label: '经验', color: '#3b82f6', weight: 30, rewardDesc: '随机经验值' },
+      { id: 'basic_gold', label: '金币', color: '#f59e0b', weight: 38, rewardDesc: '随机金币' },
+      {
+        id: 'basic_recovery',
+        label: '恢复用品',
+        color: '#14b8a6',
+        weight: 12,
+        rewardDesc: '恢复类用品随机一件',
+      },
+      {
+        id: 'basic_temp',
+        label: '临时强化',
+        color: '#8b5cf6',
+        weight: 12,
+        rewardDesc: '临时状态提升用品随机一件',
+      },
+      { id: 'basic_exp_rare', label: '大量经验', color: '#ec4899', weight: 5, rare: true, rewardDesc: '高额经验值' },
+      { id: 'basic_gold_rare', label: '金币暴击', color: '#f97316', weight: 3, rare: true, rewardDesc: '高额金币' },
+    ],
+  },
+  advanced: {
+    id: 'advanced',
+    name: '进阶转盘',
+    icon: 'fas fa-dice-three',
+    currency: 'gold',
+    singleCost: 5000,
+    tenCost: 45000,
+    segments: [
+      {
+        id: 'advanced_a_equipment',
+        label: 'A级装备',
+        color: '#8b5cf6',
+        weight: 26,
+        rewardDesc: '随机A级装备',
+      },
+      {
+        id: 'advanced_s_equipment',
+        label: 'S级装备',
+        color: '#f59e0b',
+        weight: 11,
+        rewardDesc: '随机S级装备',
+      },
+      {
+        id: 'advanced_bonus',
+        label: '永久加算',
+        color: '#0ea5e9',
+        weight: 20,
+        rewardDesc: '随机魅力/幸运/基础性斗力/基础忍耐力加算',
+      },
+      {
+        id: 'advanced_gold',
+        label: '金币奖励',
+        color: '#f97316',
+        weight: 19,
+        rewardDesc: '随机金币',
+      },
+      {
+        id: 'advanced_skill',
+        label: '技能点',
+        color: '#22c55e',
+        weight: 15,
+        rewardDesc: '随机技能点',
+      },
+      {
+        id: 'advanced_ticket',
+        label: '抽奖卷',
+        color: '#ec4899',
+        weight: 9,
+        rare: true,
+        rewardDesc: '随机抽奖卷',
+      },
+    ],
+  },
+  grand: {
+    id: 'grand',
+    name: '大转盘',
+    icon: 'fas fa-crown',
+    currency: 'ticket',
+    singleCost: 1,
+    tenCost: 10,
+    segments: [
+      {
+        id: 'grand_s_equipment',
+        label: 'S级装备',
+        color: '#f59e0b',
+        weight: 27,
+        rewardDesc: '随机S级装备',
+      },
+      {
+        id: 'grand_ss_equipment',
+        label: 'SS级装备',
+        color: '#ec4899',
+        weight: 14,
+        rare: true,
+        rewardDesc: '随机SS级装备',
+      },
+      {
+        id: 'grand_attr',
+        label: '属性点',
+        color: '#3b82f6',
+        weight: 21,
+        rewardDesc: '随机属性点',
+      },
+      {
+        id: 'grand_potential',
+        label: '潜力提升',
+        color: '#14b8a6',
+        weight: 18,
+        rewardDesc: '随机潜力提升',
+      },
+      {
+        id: 'grand_fetish',
+        label: '色情性癖',
+        color: '#8b5cf6',
+        weight: 20,
+        rare: true,
+        rewardDesc: '随机色情性癖永久状态',
+      },
+    ],
+  },
+};
+
+const activeWheelType = ref<WheelType>('basic');
+const wheelRotation = ref(0);
+const wheelLastResultText = ref('');
+const isWheelDrawing = ref(false);
+const fetishDecisionModalVisible = ref(false);
+const pendingFetishDecision = ref<FetishEntry | null>(null);
+const fetishDecisionResolver = ref<((choice: FetishDecision) => void) | null>(null);
+
+const currentWheelConfig = computed(() => wheelConfigs[activeWheelType.value]);
+const luckyRareMultiplier = computed(() => {
+  const luck = Number(props.characterData.核心状态?._幸运 ?? 0);
+  return getRareMultiplierByLuck(luck);
+});
+const totalLotteryTickets = computed(() => {
+  return getTicketCountFromBackpack(props.characterData.物品系统?.背包 || {});
+});
+const singleDrawCostLabel = computed(() => {
+  const config = currentWheelConfig.value;
+  return config.currency === 'gold' ? `${config.singleCost} 金币` : `${config.singleCost} 抽奖卷`;
+});
+const tenDrawCostLabel = computed(() => {
+  const config = currentWheelConfig.value;
+  return config.currency === 'gold' ? `${config.tenCost} 金币` : `${config.tenCost} 抽奖卷`;
+});
+const canDrawSingle = computed(() => {
+  if (isWheelDrawing.value) return false;
+  const config = currentWheelConfig.value;
+  if (config.currency === 'gold') return goldCoins.value >= config.singleCost;
+  return totalLotteryTickets.value >= config.singleCost;
+});
+const canDrawTen = computed(() => {
+  if (isWheelDrawing.value) return false;
+  const config = currentWheelConfig.value;
+  if (config.currency === 'gold') return goldCoins.value >= config.tenCost;
+  return totalLotteryTickets.value >= config.tenCost;
+});
+const wheelProbabilityRows = computed(() =>
+  buildWheelSegmentProbabilities(currentWheelConfig.value.segments, luckyRareMultiplier.value),
+);
+const wheelDiscStyle = computed(() => {
+  const segmentCount = currentWheelConfig.value.segments.length;
+  const segmentAngle = 360 / segmentCount;
+  const gradient = currentWheelConfig.value.segments
+    .map((segment, index) => `${segment.color} ${index * segmentAngle}deg ${(index + 1) * segmentAngle}deg`)
+    .join(', ');
+  return {
+    background: `conic-gradient(${gradient})`,
+    transform: `rotate(${wheelRotation.value}deg)`,
+  };
+});
+const pendingFetishBonusRows = computed(() => {
+  if (!pendingFetishDecision.value) return [];
+  return Object.entries(pendingFetishDecision.value.bonuses).map(([key, value]) => ({
+    key,
+    value: Number(value) || 0,
+  }));
+});
+const pendingFetishAlignmentLabel = computed(() => {
+  const align = pendingFetishDecision.value?.alignment;
+  if (align === 'M') return '抖M';
+  if (align === 'S') return '抖S';
+  return '可切换';
+});
+
+function getWheelSegmentLabelStyle(index: number, segmentCount: number) {
+  const segmentAngle = 360 / segmentCount;
+  const centerAngle = index * segmentAngle + segmentAngle / 2;
+  return {
+    transform: `translate(-50%, -50%) rotate(${centerAngle}deg) translateY(-108px) rotate(${-centerAngle}deg)`,
+  };
+}
+
+function getBaseSegmentWeight(segment: WheelSegment): number {
+  const rawWeight = Number(segment.weight) || 0;
+  if (rawWeight <= 0) return 0;
+  return segment.rare ? rawWeight * RARE_WEIGHT_FACTOR : rawWeight;
+}
+
+function getDrawSegmentWeight(segment: WheelSegment, rareMultiplier: number): number {
+  const baseWeight = getBaseSegmentWeight(segment);
+  if (baseWeight <= 0) return 0;
+  return segment.rare ? baseWeight * rareMultiplier : baseWeight;
+}
+
+function buildWheelSegmentProbabilities(segments: WheelSegment[], rareMultiplier: number): WheelProbabilityRow[] {
+  const weightRows = segments.map(segment => ({
+    segment,
+    weight: getDrawSegmentWeight(segment, rareMultiplier),
+  }));
+  const totalWeight = weightRows.reduce((sum, row) => sum + row.weight, 0);
+
+  return weightRows.map(row => {
+    const probability = totalWeight > 0 ? (row.weight / totalWeight) * 100 : 0;
+    return {
+      segment: row.segment,
+      probability,
+      probabilityText: `${probability.toFixed(2)}%`,
+    };
+  });
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function pickRandomFetish(previousName?: string): FetishEntry {
+  if (!previousName) return pickRandom(grandWheelFetishPool);
+  const candidates = grandWheelFetishPool.filter(fetish => fetish.name !== previousName);
+  if (candidates.length <= 0) return pickRandom(grandWheelFetishPool);
+  return pickRandom(candidates);
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function openFetishDecisionModal(fetish: FetishEntry): Promise<FetishDecision> {
+  pendingFetishDecision.value = fetish;
+  fetishDecisionModalVisible.value = true;
+  return new Promise(resolve => {
+    fetishDecisionResolver.value = resolve;
+  });
+}
+
+function handleFetishDecision(choice: FetishDecision) {
+  const resolver = fetishDecisionResolver.value;
+  fetishDecisionResolver.value = null;
+  fetishDecisionModalVisible.value = false;
+  if (resolver) resolver(choice);
+}
+
+function ensureShopStatData(statData: any) {
+  if (!statData.角色基础) statData.角色基础 = {};
+  if (!statData.核心状态) statData.核心状态 = {};
+  if (!statData.永久状态) statData.永久状态 = { 状态列表: [], 加成统计: {} };
+  if (!Array.isArray(statData.永久状态.状态列表)) statData.永久状态.状态列表 = [];
+  if (!statData.永久状态.加成统计) statData.永久状态.加成统计 = {};
+  if (!statData.物品系统) statData.物品系统 = {};
+  if (!statData.物品系统.背包) statData.物品系统.背包 = {};
+  if (typeof statData.物品系统.学园金币 !== 'number') {
+    statData.物品系统.学园金币 = Number(statData.物品系统.学园金币 || 0);
+  }
+}
+
+function getTicketCountFromBackpack(backpack: Record<string, any>): number {
+  return Object.entries(backpack).reduce((total, [itemName, itemData]) => {
+    if (!itemName.includes('抽奖卷')) return total;
+    return total + Math.max(0, Number(itemData?.数量 || 0));
+  }, 0);
+}
+
+function consumeLotteryTickets(backpack: Record<string, any>, needed: number): boolean {
+  const available = getTicketCountFromBackpack(backpack);
+  if (available < needed) return false;
+
+  let remain = needed;
+  const ticketKeys = Object.keys(backpack).filter(itemName => itemName.includes('抽奖卷')).sort((a, b) => a.localeCompare(b));
+  for (const key of ticketKeys) {
+    if (remain <= 0) break;
+    const item = backpack[key];
+    const quantity = Math.max(0, Number(item?.数量 || 0));
+    if (quantity <= 0) continue;
+
+    const consume = Math.min(quantity, remain);
+    item.数量 = quantity - consume;
+    if (item.数量 <= 0) {
+      delete backpack[key];
+    }
+    remain -= consume;
+  }
+
+  return remain <= 0;
+}
+
+function addLotteryTickets(backpack: Record<string, any>, quantity: number) {
+  const ticketKey = '幸运抽奖卷';
+  const existing = backpack[ticketKey];
+  if (existing) {
+    existing.数量 = (existing.数量 || 0) + quantity;
+    return;
+  }
+  backpack[ticketKey] = {
+    类型: '其他',
+    等级: 'A',
+    描述: '可用于商店大转盘抽奖',
+    数量: quantity,
+  };
+}
+
+function addEquipmentToBackpack(statData: any, equipment: any) {
+  statData.物品系统.背包[equipment.name] = {
+    类型: '装备',
+    等级: equipment.grade,
+    描述: equipment.description,
+    加成属性: equipment.bonuses || {},
+    部位: getSlotType(equipment.slot),
+    数量: 1,
+  };
+}
+
+function addConsumableToBackpack(statData: any, consumable: any, quantity: number) {
+  const existing = statData.物品系统.背包[consumable.name];
+  if (existing) {
+    existing.数量 = (existing.数量 || 0) + quantity;
+    return;
+  }
+
+  const data: any = {
+    类型: '消耗品',
+    等级: 'C',
+    描述: consumable.description,
+    战斗用品: consumable.combatOnly || false,
+    数量: quantity,
+  };
+
+  if (consumable.effect?.staminaRestore) data.耐力增加 = consumable.effect.staminaRestore;
+  if (consumable.effect?.pleasureReduce) data.快感降低 = consumable.effect.pleasureReduce;
+  if (consumable.effect?.pleasureIncrease) data.快感增加 = consumable.effect.pleasureIncrease;
+  if (consumable.effect?.buff) data.加成属性 = consumable.effect.buff;
+
+  statData.物品系统.背包[consumable.name] = data;
+}
+
+function addPermanentBonus(statData: any, key: string, value: number) {
+  statData.永久状态.加成统计[key] = (statData.永久状态.加成统计[key] || 0) + value;
+}
+
+function addPermanentState(statData: any, stateName: string) {
+  if (!statData.永久状态.状态列表.includes(stateName)) {
+    statData.永久状态.状态列表.push(stateName);
+  }
+}
+
+async function resolveFetishReward(initialFetish: FetishEntry, statData: any): Promise<string> {
+  let current = initialFetish;
+  while (true) {
+    const choice = await openFetishDecisionModal(current);
+    if (choice === 'discard') {
+      pendingFetishDecision.value = null;
+      return `放弃永久状态「${current.name}」`;
+    }
+    if (choice === 'keep') {
+      addPermanentState(statData, current.name);
+      for (const [key, value] of Object.entries(current.bonuses)) {
+        addPermanentBonus(statData, key, Number(value) || 0);
+      }
+      pendingFetishDecision.value = null;
+      return `永久状态「${current.name}」`;
+    }
+    current = pickRandomFetish(current.name);
+    if (typeof toastr !== 'undefined') {
+      toastr.info(`已重roll：${current.name}`, '性癖重roll');
+    }
+  }
+}
+
+function getRareMultiplierByLuck(luck: number): number {
+  const normalizedLuck = Math.max(0, Math.min(200, Number(luck) || 0));
+  return 1 + normalizedLuck / 200;
+}
+
+function rollWheelSegment(segments: WheelSegment[], rareMultiplier: number): WheelSegment {
+  const weightedList = segments.map(segment => ({
+    ...segment,
+    adjustedWeight: getDrawSegmentWeight(segment, rareMultiplier),
+  }));
+  const totalWeight = weightedList.reduce((sum, segment) => sum + segment.adjustedWeight, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const segment of weightedList) {
+    random -= segment.adjustedWeight;
+    if (random <= 0) return segment;
+  }
+
+  return weightedList[weightedList.length - 1];
+}
+
+function spinWheelToSegment(segmentId: WheelSegmentId, segments: WheelSegment[], isTenDraw: boolean) {
+  const segmentIndex = segments.findIndex(segment => segment.id === segmentId);
+  if (segmentIndex < 0) return;
+
+  const segmentAngle = 360 / segments.length;
+  const centerAngle = segmentIndex * segmentAngle + segmentAngle / 2;
+  const normalizedCurrent = ((wheelRotation.value % 360) + 360) % 360;
+  const normalizedTarget = (360 - centerAngle) % 360;
+  const rounds = isTenDraw ? 9 : 6;
+  const delta = ((normalizedTarget - normalizedCurrent + 360) % 360) + rounds * 360;
+  wheelRotation.value += delta;
+}
+
+function applyWheelReward(segmentId: WheelSegmentId, statData: any): WheelRewardResult {
+  switch (segmentId) {
+    case 'basic_exp': {
+      const exp = randomInt(50, 100);
+      statData.角色基础.经验值 = (statData.角色基础.经验值 || 0) + exp;
+      return { text: `经验值 +${exp}` };
+    }
+    case 'basic_gold': {
+      const gold = randomInt(800, 1800);
+      statData.物品系统.学园金币 = (statData.物品系统.学园金币 || 0) + gold;
+      return { text: `金币 +${gold}` };
+    }
+    case 'basic_recovery': {
+      if (wheelRecoveryPool.length <= 0) return { text: '恢复类用品池为空' };
+      const reward = pickRandom(wheelRecoveryPool);
+      addConsumableToBackpack(statData, reward, 1);
+      return { text: `恢复用品「${reward.name}」 x1` };
+    }
+    case 'basic_temp': {
+      if (wheelTempBuffPool.length <= 0) return { text: '临时状态提升池为空' };
+      const reward = pickRandom(wheelTempBuffPool);
+      addConsumableToBackpack(statData, reward, 1);
+      return { text: `临时强化「${reward.name}」 x1` };
+    }
+    case 'basic_exp_rare': {
+      const exp = randomInt(150, 350);
+      statData.角色基础.经验值 = (statData.角色基础.经验值 || 0) + exp;
+      return { text: `大量经验 +${exp}` };
+    }
+    case 'basic_gold_rare': {
+      const gold = randomInt(2000, 5000);
+      statData.物品系统.学园金币 = (statData.物品系统.学园金币 || 0) + gold;
+      return { text: `金币暴击 +${gold}` };
+    }
+    case 'advanced_a_equipment': {
+      if (wheelAEquipmentPool.length <= 0) return { text: 'A级装备池为空' };
+      const reward = pickRandom(wheelAEquipmentPool);
+      addEquipmentToBackpack(statData, reward);
+      return { text: `A级装备「${reward.name}」` };
+    }
+    case 'advanced_s_equipment': {
+      if (wheelSEquipmentPool.length <= 0) return { text: 'S级装备池为空' };
+      const reward = pickRandom(wheelSEquipmentPool);
+      addEquipmentToBackpack(statData, reward);
+      return { text: `S级装备「${reward.name}」` };
+    }
+    case 'advanced_bonus': {
+      const bonusPool = [
+        { key: '魅力加成', label: '魅力加成' },
+        { key: '幸运加成', label: '幸运加成' },
+        { key: '基础性斗力加成', label: '基础性斗力加成' },
+        { key: '基础忍耐力加成', label: '基础忍耐力加成' },
+      ];
+      const reward = pickRandom(bonusPool);
+      const value = randomInt(1, 5);
+      addPermanentBonus(statData, reward.key, value);
+      return { text: `${reward.label} +${value}` };
+    }
+    case 'advanced_gold': {
+      const gold = randomInt(4000, 10000);
+      statData.物品系统.学园金币 = (statData.物品系统.学园金币 || 0) + gold;
+      return { text: `金币 +${gold}` };
+    }
+    case 'advanced_skill': {
+      const skillPoint = randomInt(1, 3);
+      statData.核心状态.$技能点 = (statData.核心状态.$技能点 || 0) + skillPoint;
+      return { text: `技能点 +${skillPoint}` };
+    }
+    case 'advanced_ticket': {
+      const ticketCount = randomInt(1, 2);
+      addLotteryTickets(statData.物品系统.背包, ticketCount);
+      return { text: `抽奖卷 +${ticketCount}` };
+    }
+    case 'grand_s_equipment': {
+      if (wheelSEquipmentPool.length <= 0) return { text: 'S级装备池为空' };
+      const reward = pickRandom(wheelSEquipmentPool);
+      addEquipmentToBackpack(statData, reward);
+      return { text: `S级装备「${reward.name}」` };
+    }
+    case 'grand_ss_equipment': {
+      if (wheelSSEquipmentPool.length <= 0) return { text: 'SS级装备池为空' };
+      const reward = pickRandom(wheelSSEquipmentPool);
+      addEquipmentToBackpack(statData, reward);
+      return { text: `SS级装备「${reward.name}」` };
+    }
+    case 'grand_attr': {
+      const attrPoint = randomInt(1, 3);
+      statData.核心状态.$属性点 = (statData.核心状态.$属性点 || 0) + attrPoint;
+      return { text: `属性点 +${attrPoint}` };
+    }
+    case 'grand_potential': {
+      const increaseOptions = [0.1, 0.2, 0.3];
+      const increase = pickRandom(increaseOptions);
+      const current = Number(statData.核心状态._潜力 || 5);
+      const next = Math.min(10, Number((current + increase).toFixed(2)));
+      const actualIncrease = Number((next - current).toFixed(2));
+      statData.核心状态._潜力 = next;
+      if (actualIncrease <= 0) return { text: '潜力已达上限' };
+      return { text: `潜力 +${actualIncrease.toFixed(2)}` };
+    }
+    case 'grand_fetish': {
+      const fetish = pickRandomFetish();
+      return {
+        text: `性癖候选「${fetish.name}」`,
+        pendingFetish: fetish,
+      };
+    }
+    default:
+      return { text: '未命中奖励' };
+  }
+}
+
+async function drawWheel(times: 1 | 10) {
+  if (isWheelDrawing.value) return;
+
+  const isTenDraw = times === 10;
+  const globalAny = window as any;
+  if (!globalAny.Mvu) return;
+
+  isWheelDrawing.value = true;
+  try {
+    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    if (!mvuData || !mvuData.stat_data) return;
+
+    ensureShopStatData(mvuData.stat_data);
+    const config = currentWheelConfig.value;
+    const cost = isTenDraw ? config.tenCost : config.singleCost;
+
+    if (config.currency === 'gold') {
+      if ((mvuData.stat_data.物品系统.学园金币 || 0) < cost) {
+        if (typeof toastr !== 'undefined') toastr.error('金币不足，无法抽奖', '抽奖失败');
+        return;
+      }
+      mvuData.stat_data.物品系统.学园金币 -= cost;
+    } else if (!consumeLotteryTickets(mvuData.stat_data.物品系统.背包, cost)) {
+      if (typeof toastr !== 'undefined') toastr.error('抽奖卷不足，无法抽奖', '抽奖失败');
+      return;
+    }
+
+    const luck = Number(mvuData.stat_data.核心状态?._幸运 || 0);
+    const rareMultiplier = getRareMultiplierByLuck(luck);
+    const drawResults: Array<{ segment: WheelSegment; text: string }> = [];
+    const pendingFetishRewards: Array<{ resultIndex: number; fetish: FetishEntry }> = [];
+
+    for (let i = 0; i < times; i++) {
+      const hitSegment = rollWheelSegment(config.segments, rareMultiplier);
+      const rewardResult = applyWheelReward(hitSegment.id, mvuData.stat_data);
+      drawResults.push({ segment: hitSegment, text: rewardResult.text });
+      if (rewardResult.pendingFetish) {
+        pendingFetishRewards.push({ resultIndex: i, fetish: rewardResult.pendingFetish });
+      }
+    }
+
+    spinWheelToSegment(drawResults[0].segment.id, config.segments, isTenDraw);
+    await delay(isTenDraw ? 2600 : 2200);
+
+    for (const pending of pendingFetishRewards) {
+      const resolvedText = await resolveFetishReward(pending.fetish, mvuData.stat_data);
+      drawResults[pending.resultIndex].text = resolvedText;
+    }
+
+    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+
+    const previewText = drawResults.map(result => result.text).join('、');
+    wheelLastResultText.value = isTenDraw ? `十连结果：${previewText}` : `获得：${drawResults[0].text}`;
+
+    const rareCount = drawResults.filter(result => result.segment.rare).length;
+    if (typeof toastr !== 'undefined') {
+      const summary =
+        drawResults.length <= 5
+          ? previewText
+          : `${drawResults
+              .slice(0, 5)
+              .map(result => result.text)
+              .join('、')}...`;
+      toastr.success(`${summary}${rareCount > 0 ? `（稀有命中 ${rareCount} 次）` : ''}`, '抽奖完成');
+    }
+  } catch (error) {
+    console.error('[商店] 抽奖失败:', error);
+    if (typeof toastr !== 'undefined') toastr.error('抽奖失败，请重试', '错误');
+  } finally {
+    fetishDecisionModalVisible.value = false;
+    pendingFetishDecision.value = null;
+    fetishDecisionResolver.value = null;
+    isWheelDrawing.value = false;
+  }
+}
+
 // 选择物品
 function selectItem(item: any) {
   selectedItem.value = item;
@@ -3495,6 +4302,7 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
         -webkit-appearance: none;
         margin: 0;
       }
+      appearance: textfield;
       -moz-appearance: textfield;
     }
   }
@@ -3608,6 +4416,351 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+.fetish-modal-content {
+  max-width: 420px;
+}
+
+.fetish-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.fetish-name {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.fetish-align-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+
+  &.align-m {
+    color: #f9a8d4;
+    background: rgba(236, 72, 153, 0.2);
+    border: 1px solid rgba(236, 72, 153, 0.35);
+  }
+
+  &.align-s {
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+  }
+
+  &.align-switch {
+    color: #fde68a;
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+}
+
+.fetish-desc {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fetish-reroll-tip {
+  color: rgba(191, 219, 254, 0.88);
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  margin-top: 10px;
+}
+
+.fetish-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reroll-btn {
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #fff;
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
+.reroll-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35);
+}
+
+.wheel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wheel-type-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.wheel-type-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+
+  &.active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: transparent;
+    color: #fff;
+  }
+}
+
+.wheel-cost-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(2, 132, 199, 0.15);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+
+.wheel-cost-main,
+.wheel-cost-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wheel-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wheel-cost,
+.wheel-cost-extra span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+}
+
+.wheel-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 320px;
+}
+
+.wheel-disc {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  border: 6px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  transition: transform 2.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.wheel-segment-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 76px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  line-height: 1.2;
+
+  &.rare {
+    color: #fde68a;
+  }
+}
+
+.wheel-pointer {
+  position: absolute;
+  top: 2px;
+  z-index: 3;
+  color: #facc15;
+  font-size: 34px;
+  text-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+}
+
+.wheel-center {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f8fafc;
+  font-size: 18px;
+  z-index: 2;
+}
+
+.wheel-action-row {
+  display: flex;
+  gap: 10px;
+}
+
+.wheel-draw-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+
+  small {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  &.ten {
+    background: linear-gradient(135deg, #d946ef, #8b5cf6);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.wheel-last-result {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  color: #bbf7d0;
+  font-size: 12px;
+  line-height: 1.35;
+
+  i {
+    margin-top: 1px;
+  }
+}
+
+.wheel-prob-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+}
+
+.wheel-prob-header {
+  font-size: 11px;
+  color: #dbeafe;
+  font-weight: 700;
+}
+
+.wheel-prob-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wheel-prob-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  &.rare {
+    border-color: rgba(251, 191, 36, 0.45);
+    background: rgba(251, 191, 36, 0.12);
+  }
+}
+
+.prob-name {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.prob-value {
+  font-size: 11px;
+  color: #bfdbfe;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .wheel-stage {
+    height: 290px;
+  }
+
+  .wheel-disc {
+    width: 250px;
+    height: 250px;
+  }
+
+  .wheel-segment-label {
+    width: 66px;
+    font-size: 9px;
   }
 }
 
