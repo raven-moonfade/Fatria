@@ -1040,12 +1040,14 @@ onUnmounted(() => {
 .cg-modal {
   position: fixed; // 相对于视口定位，确保始终可见
   inset: 0;
-  z-index: 99999; // 确保高于所有内容
+  z-index: 99999;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
   // 使用视口单位padding，与手机UI保持相对比例
-  padding: clamp(10px, 3vmin, 20px);
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 
 .modal-backdrop {
@@ -1065,11 +1067,11 @@ onUnmounted(() => {
   width: clamp(200px, 85vmin, 350px);
   // 高度：最小300px，最大600px，中间按视口75%缩放
   max-height: clamp(300px, 75vmin, 600px);
+  max-height: calc(100dvh - 20px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  // 添加阴影增强层次感
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -1147,7 +1149,6 @@ onUnmounted(() => {
   .modal-cg-img {
     width: 100%;
     height: 100%;
-    // 使用视口单位限制最大高度
     max-height: clamp(150px, 40vmin, 350px);
     object-fit: contain;
   }

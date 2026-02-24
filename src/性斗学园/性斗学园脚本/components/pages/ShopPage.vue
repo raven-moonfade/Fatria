@@ -4109,16 +4109,22 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 
 .modal-content {
   width: 100%;
   max-width: 340px;
+  max-height: calc(100dvh - 20px);
   background: linear-gradient(180deg, #1e1e2e, #151520);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -4156,6 +4162,8 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
 
 .modal-body {
   padding: 20px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .selected-item-preview {
