@@ -159,11 +159,32 @@
     <!-- CG放大模态框 -->
     <div v-if="showModal" class="cg-modal" @click="closeModal">
       <div class="modal-backdrop"></div>
-      <div class="modal-content" @click.stop>
+      <div
+        ref="cgModalContentRef"
+        class="modal-content"
+        :style="cgModalStyle"
+        @click.stop
+        @pointerdown="bringCGModalToFront"
+        @mousedown="bringCGModalToFront"
+        @touchstart="bringCGModalToFront"
+      >
         <button class="modal-close" @click="closeModal">
           <i class="fas fa-times"></i>
         </button>
-        <div class="modal-header">
+        <div
+          class="modal-header modal-drag-handle"
+          @pointerdown="startCGModalDrag"
+          @pointermove.prevent="handleCGModalDragMove"
+          @pointerup="stopCGModalDrag"
+          @pointercancel="stopCGModalDrag"
+          @mousedown="startCGModalDrag"
+          @mousemove.prevent="handleCGModalDragMove"
+          @mouseup="stopCGModalDrag"
+          @touchstart="startCGModalDrag"
+          @touchmove.prevent="handleCGModalDragMove"
+          @touchend="stopCGModalDrag"
+          @touchcancel="stopCGModalDrag"
+        >
           <h3>{{ modalCG?.name }}</h3>
           <span class="modal-character">{{ modalCG?.characterName }}</span>
         </div>
@@ -228,6 +249,168 @@ const currentCategory = ref('all');
 const selectedCharacter = ref<string | null>(null);
 const showModal = ref(false);
 const modalCG = ref<FlattenedCGImage | null>(null);
+const cgModalContentRef = ref<HTMLElement | null>(null);
+const cgModalOffset = ref({ x: 0, y: 0 });
+const cgModalZIndex = ref(1);
+type CGDragMode = 'none' | 'pointer' | 'mouse' | 'touch';
+const cgDragMode = ref<CGDragMode>('none');
+const cgDragPointerId = ref<number | null>(null);
+const cgDragTouchId = ref<number | null>(null);
+const cgDragStartPoint = ref({ x: 0, y: 0 });
+const cgDragCaptureElement = ref<HTMLElement | null>(null);
+
+const cgModalStyle = computed(() => ({
+  transform: `translate(${cgModalOffset.value.x}px, ${cgModalOffset.value.y}px)`,
+  zIndex: cgModalZIndex.value,
+}));
+
+function getNextModalLayer(): number {
+  const globalAny = window as any;
+  const key = '__fatria_modal_layer';
+  const next = Math.max(Number(globalAny[key] || 120000), 120000) + 1;
+  globalAny[key] = next;
+  return next;
+}
+
+function bringCGModalToFront() {
+  cgModalZIndex.value = getNextModalLayer();
+}
+
+function clampCGOffsetToViewport(x: number, y: number, modalEl: HTMLElement): { x: number; y: number } {
+  const rect = modalEl.getBoundingClientRect();
+  const minVisible = 56;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const minX = -(viewportWidth + rect.width) / 2 + minVisible;
+  const maxX = (viewportWidth + rect.width) / 2 - minVisible;
+  const minY = -(viewportHeight + rect.height) / 2 + minVisible;
+  const maxY = (viewportHeight + rect.height) / 2 - minVisible;
+
+  const clampedX = Math.min(maxX, Math.max(minX, x));
+  const clampedY = Math.min(maxY, Math.max(minY, y));
+  return { x: clampedX, y: clampedY };
+}
+
+function getTouchFromList(touchList: TouchList, id: number | null): Touch | null {
+  if (touchList.length <= 0) return null;
+  if (id === null) return touchList[0];
+  for (let i = 0; i < touchList.length; i++) {
+    if (touchList[i].identifier === id) return touchList[i];
+  }
+  return null;
+}
+
+function isPointerEvent(event: Event): event is PointerEvent {
+  return 'pointerId' in (event as PointerEvent);
+}
+
+function isTouchEvent(event: Event): event is TouchEvent {
+  return 'touches' in (event as TouchEvent) || 'changedTouches' in (event as TouchEvent);
+}
+
+function getCGDragPoint(event: MouseEvent | TouchEvent | PointerEvent): { x: number; y: number } | null {
+  if (isTouchEvent(event)) {
+    const activeTouch =
+      getTouchFromList(event.touches, cgDragTouchId.value) ?? getTouchFromList(event.changedTouches, cgDragTouchId.value);
+    if (!activeTouch) return null;
+    return { x: activeTouch.clientX, y: activeTouch.clientY };
+  }
+
+  if ('clientX' in event && 'clientY' in event) {
+    return { x: event.clientX, y: event.clientY };
+  }
+
+  return null;
+}
+
+function startCGModalDrag(event: MouseEvent | TouchEvent | PointerEvent) {
+  if (cgDragMode.value !== 'none') {
+    stopCGModalDrag();
+  }
+  if (!isTouchEvent(event) && 'button' in event && event.button !== 0) return;
+
+  const rawTarget = event.target;
+  const targetEl = rawTarget instanceof Element ? rawTarget : (rawTarget as Node | null)?.parentElement;
+  if (targetEl?.closest('button, input, textarea, select, a, label')) return;
+  if (!cgModalContentRef.value) return;
+
+  bringCGModalToFront();
+  const point = getCGDragPoint(event);
+  if (!point) return;
+
+  cgDragStartPoint.value = {
+    x: point.x - cgModalOffset.value.x,
+    y: point.y - cgModalOffset.value.y,
+  };
+
+  if (isPointerEvent(event)) {
+    cgDragMode.value = 'pointer';
+    cgDragPointerId.value = event.pointerId;
+    const captureEl = event.currentTarget as HTMLElement | null;
+    if (captureEl?.setPointerCapture) {
+      captureEl.setPointerCapture(event.pointerId);
+      cgDragCaptureElement.value = captureEl;
+    }
+  } else if (isTouchEvent(event)) {
+    cgDragMode.value = 'touch';
+    cgDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
+  } else {
+    cgDragMode.value = 'mouse';
+  }
+
+  if (event.cancelable) event.preventDefault();
+}
+
+function handleCGModalDragMove(event: MouseEvent | TouchEvent | PointerEvent) {
+  if (cgDragMode.value === 'none' || !cgModalContentRef.value) return;
+  if (cgDragMode.value === 'pointer') {
+    if (isTouchEvent(event)) {
+      cgDragMode.value = 'touch';
+      cgDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
+    } else if (!isPointerEvent(event) || event.pointerId !== cgDragPointerId.value) {
+      return;
+    }
+  } else if (cgDragMode.value === 'touch') {
+    if (!isTouchEvent(event)) return;
+  } else if (cgDragMode.value === 'mouse') {
+    if (isTouchEvent(event)) {
+      cgDragMode.value = 'touch';
+      cgDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
+    } else if (isPointerEvent(event)) {
+      cgDragMode.value = 'pointer';
+      cgDragPointerId.value = event.pointerId;
+    }
+  }
+
+  const point = getCGDragPoint(event);
+  if (!point) return;
+
+  const nextX = point.x - cgDragStartPoint.value.x;
+  const nextY = point.y - cgDragStartPoint.value.y;
+  const clamped = clampCGOffsetToViewport(nextX, nextY, cgModalContentRef.value);
+  cgModalOffset.value = clamped;
+
+  if (event.cancelable) event.preventDefault();
+}
+
+function stopCGModalDrag(event?: MouseEvent | TouchEvent | PointerEvent) {
+  if (cgDragMode.value === 'pointer' && event && isPointerEvent(event)) {
+    if (cgDragPointerId.value !== null && event.pointerId !== cgDragPointerId.value) return;
+  }
+  if (cgDragCaptureElement.value && cgDragPointerId.value !== null && cgDragCaptureElement.value.releasePointerCapture) {
+    cgDragCaptureElement.value.releasePointerCapture(cgDragPointerId.value);
+  }
+  cgDragCaptureElement.value = null;
+  cgDragMode.value = 'none';
+  cgDragPointerId.value = null;
+  cgDragTouchId.value = null;
+}
+
+function clampStoredCGModalOffset() {
+  if (!cgModalContentRef.value) return;
+  cgModalOffset.value = clampCGOffsetToViewport(cgModalOffset.value.x, cgModalOffset.value.y, cgModalContentRef.value);
+}
 
 // 从cgConfig获取所有CG数据并扁平化（每张图片作为单独项）
 interface FlattenedCGImage {
@@ -556,6 +739,15 @@ onMounted(() => {
 
   // 监听CG解锁事件
   window.addEventListener('cg-unlocked', handleCGUnlockEvent as EventListener);
+  window.addEventListener('pointermove', handleCGModalDragMove);
+  window.addEventListener('pointerup', stopCGModalDrag);
+  window.addEventListener('pointercancel', stopCGModalDrag);
+  window.addEventListener('mousemove', handleCGModalDragMove);
+  window.addEventListener('mouseup', stopCGModalDrag);
+  window.addEventListener('touchmove', handleCGModalDragMove, { passive: false });
+  window.addEventListener('touchend', stopCGModalDrag);
+  window.addEventListener('touchcancel', stopCGModalDrag);
+  window.addEventListener('resize', clampStoredCGModalOffset);
 
   // 暴露解锁函数到全局（供战斗系统调用）
   const globalAny = window as any;
@@ -565,6 +757,15 @@ onMounted(() => {
 // 组件卸载时移除事件监听
 onUnmounted(() => {
   window.removeEventListener('cg-unlocked', handleCGUnlockEvent as EventListener);
+  window.removeEventListener('pointermove', handleCGModalDragMove);
+  window.removeEventListener('pointerup', stopCGModalDrag);
+  window.removeEventListener('pointercancel', stopCGModalDrag);
+  window.removeEventListener('mousemove', handleCGModalDragMove);
+  window.removeEventListener('mouseup', stopCGModalDrag);
+  window.removeEventListener('touchmove', handleCGModalDragMove);
+  window.removeEventListener('touchend', stopCGModalDrag);
+  window.removeEventListener('touchcancel', stopCGModalDrag);
+  window.removeEventListener('resize', clampStoredCGModalOffset);
 });
 </script>
 
@@ -1040,7 +1241,7 @@ onUnmounted(() => {
 .cg-modal {
   position: fixed; // 相对于视口定位，确保始终可见
   inset: 0;
-  z-index: 99999;
+  z-index: 120000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1073,6 +1274,7 @@ onUnmounted(() => {
   flex-direction: column;
   box-sizing: border-box;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  will-change: transform;
 }
 
 .modal-close {
@@ -1121,6 +1323,16 @@ onUnmounted(() => {
     color: rgba(255, 255, 255, 0.5);
     margin-top: clamp(2px, 0.5vmin, 4px);
     display: block;
+  }
+}
+
+.modal-drag-handle {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+
+  &:active {
+    cursor: grabbing;
   }
 }
 

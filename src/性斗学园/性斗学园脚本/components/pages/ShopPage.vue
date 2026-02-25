@@ -251,8 +251,28 @@
 
     <!-- 性癖奖励选择弹窗 -->
     <div v-if="fetishDecisionModalVisible && pendingFetishDecision" class="purchase-modal fetish-modal">
-      <div class="modal-content fetish-modal-content">
-        <div class="modal-header">
+      <div
+        ref="fetishModalContentRef"
+        class="modal-content fetish-modal-content"
+        :style="fetishModalStyle"
+        @pointerdown="bringFetishModalToFront"
+        @mousedown="bringFetishModalToFront"
+        @touchstart="bringFetishModalToFront"
+      >
+        <div
+          class="modal-header modal-drag-handle"
+          @pointerdown="startFetishModalDrag"
+          @pointermove.prevent="handleModalDragMove"
+          @pointerup="stopModalDrag"
+          @pointercancel="stopModalDrag"
+          @mousedown="startFetishModalDrag"
+          @mousemove.prevent="handleModalDragMove"
+          @mouseup="stopModalDrag"
+          @touchstart="startFetishModalDrag"
+          @touchmove.prevent="handleModalDragMove"
+          @touchend="stopModalDrag"
+          @touchcancel="stopModalDrag"
+        >
           <h3>性癖奖励确认</h3>
         </div>
         <div class="modal-body">
@@ -288,8 +308,28 @@
 
     <!-- 购买确认弹窗 -->
     <div v-if="selectedItem" class="purchase-modal" @click.self="selectedItem = null">
-      <div class="modal-content">
-        <div class="modal-header">
+      <div
+        ref="purchaseModalContentRef"
+        class="modal-content"
+        :style="purchaseModalStyle"
+        @pointerdown="bringPurchaseModalToFront"
+        @mousedown="bringPurchaseModalToFront"
+        @touchstart="bringPurchaseModalToFront"
+      >
+        <div
+          class="modal-header modal-drag-handle"
+          @pointerdown="startPurchaseModalDrag"
+          @pointermove.prevent="handleModalDragMove"
+          @pointerup="stopModalDrag"
+          @pointercancel="stopModalDrag"
+          @mousedown="startPurchaseModalDrag"
+          @mousemove.prevent="handleModalDragMove"
+          @mouseup="stopModalDrag"
+          @touchstart="startPurchaseModalDrag"
+          @touchmove.prevent="handleModalDragMove"
+          @touchend="stopModalDrag"
+          @touchcancel="stopModalDrag"
+        >
           <h3>确认购买</h3>
           <button class="close-btn" @click="selectedItem = null">
             <i class="fas fa-times"></i>
@@ -381,7 +421,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { grandWheelFetishPool, type FetishEntry } from '../../data/fetishPool';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
 
@@ -510,6 +550,240 @@ const activeCategory = ref<ShopCategory>('equipment');
 const selectedItem = ref<any>(null);
 const purchaseQuantity = ref(1);
 
+type ShopModalDragTarget = 'purchase' | 'fetish';
+
+const purchaseModalContentRef = ref<HTMLElement | null>(null);
+const fetishModalContentRef = ref<HTMLElement | null>(null);
+
+const purchaseModalOffset = ref({ x: 0, y: 0 });
+const fetishModalOffset = ref({ x: 0, y: 0 });
+
+const purchaseModalZIndex = ref(1);
+const fetishModalZIndex = ref(1);
+
+type ShopDragMode = 'none' | 'pointer' | 'mouse' | 'touch';
+const activeDragTarget = ref<ShopModalDragTarget | null>(null);
+const activeDragMode = ref<ShopDragMode>('none');
+const activeDragPointerId = ref<number | null>(null);
+const activeDragTouchId = ref<number | null>(null);
+const dragStartPoint = ref({ x: 0, y: 0 });
+const dragCaptureElement = ref<HTMLElement | null>(null);
+
+const purchaseModalStyle = computed(() => ({
+  transform: `translate(${purchaseModalOffset.value.x}px, ${purchaseModalOffset.value.y}px)`,
+  zIndex: purchaseModalZIndex.value,
+}));
+
+const fetishModalStyle = computed(() => ({
+  transform: `translate(${fetishModalOffset.value.x}px, ${fetishModalOffset.value.y}px)`,
+  zIndex: fetishModalZIndex.value,
+}));
+
+function getNextModalLayer(): number {
+  const globalAny = window as any;
+  const key = '__fatria_modal_layer';
+  const next = Math.max(Number(globalAny[key] || 120000), 120000) + 1;
+  globalAny[key] = next;
+  return next;
+}
+
+function bringPurchaseModalToFront() {
+  purchaseModalZIndex.value = getNextModalLayer();
+}
+
+function bringFetishModalToFront() {
+  fetishModalZIndex.value = getNextModalLayer();
+}
+
+function getDragOffset(target: ShopModalDragTarget) {
+  return target === 'purchase' ? purchaseModalOffset.value : fetishModalOffset.value;
+}
+
+function setDragOffset(target: ShopModalDragTarget, x: number, y: number) {
+  if (target === 'purchase') {
+    purchaseModalOffset.value = { x, y };
+  } else {
+    fetishModalOffset.value = { x, y };
+  }
+}
+
+function getModalElement(target: ShopModalDragTarget): HTMLElement | null {
+  return target === 'purchase' ? purchaseModalContentRef.value : fetishModalContentRef.value;
+}
+
+function clampOffsetToViewport(x: number, y: number, modalEl: HTMLElement): { x: number; y: number } {
+  const rect = modalEl.getBoundingClientRect();
+  const minVisible = 56;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  const minX = -(viewportWidth + rect.width) / 2 + minVisible;
+  const maxX = (viewportWidth + rect.width) / 2 - minVisible;
+  const minY = -(viewportHeight + rect.height) / 2 + minVisible;
+  const maxY = (viewportHeight + rect.height) / 2 - minVisible;
+
+  const clampedX = Math.min(maxX, Math.max(minX, x));
+  const clampedY = Math.min(maxY, Math.max(minY, y));
+  return { x: clampedX, y: clampedY };
+}
+
+function getTouchFromList(touchList: TouchList, id: number | null): Touch | null {
+  if (touchList.length <= 0) return null;
+  if (id === null) return touchList[0];
+  for (let i = 0; i < touchList.length; i++) {
+    if (touchList[i].identifier === id) return touchList[i];
+  }
+  return null;
+}
+
+function isPointerEvent(event: Event): event is PointerEvent {
+  return 'pointerId' in (event as PointerEvent);
+}
+
+function isTouchEvent(event: Event): event is TouchEvent {
+  return 'touches' in (event as TouchEvent) || 'changedTouches' in (event as TouchEvent);
+}
+
+function getDragPoint(event: MouseEvent | TouchEvent | PointerEvent): { x: number; y: number } | null {
+  if (isTouchEvent(event)) {
+    const activeTouch =
+      getTouchFromList(event.touches, activeDragTouchId.value) ??
+      getTouchFromList(event.changedTouches, activeDragTouchId.value);
+    if (!activeTouch) return null;
+    return { x: activeTouch.clientX, y: activeTouch.clientY };
+  }
+
+  if ('clientX' in event && 'clientY' in event) {
+    return { x: event.clientX, y: event.clientY };
+  }
+
+  return null;
+}
+
+function startModalDrag(target: ShopModalDragTarget, event: MouseEvent | TouchEvent | PointerEvent) {
+  if (activeDragMode.value !== 'none') {
+    stopModalDrag();
+  }
+  if (!isTouchEvent(event) && 'button' in event && event.button !== 0) return;
+
+  const rawTarget = event.target;
+  const targetEl = rawTarget instanceof Element ? rawTarget : (rawTarget as Node | null)?.parentElement;
+  if (targetEl?.closest('button, input, textarea, select, a, label')) return;
+
+  const modalEl = getModalElement(target);
+  if (!modalEl) return;
+
+  if (target === 'purchase') {
+    bringPurchaseModalToFront();
+  } else {
+    bringFetishModalToFront();
+  }
+
+  const point = getDragPoint(event);
+  if (!point) return;
+
+  const offset = getDragOffset(target);
+  activeDragTarget.value = target;
+  dragStartPoint.value = {
+    x: point.x - offset.x,
+    y: point.y - offset.y,
+  };
+
+  if (isPointerEvent(event)) {
+    activeDragMode.value = 'pointer';
+    activeDragPointerId.value = event.pointerId;
+    const captureEl = event.currentTarget as HTMLElement | null;
+    if (captureEl?.setPointerCapture) {
+      captureEl.setPointerCapture(event.pointerId);
+      dragCaptureElement.value = captureEl;
+    }
+  } else if (isTouchEvent(event)) {
+    activeDragMode.value = 'touch';
+    activeDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
+  } else {
+    activeDragMode.value = 'mouse';
+  }
+
+  if (event.cancelable) event.preventDefault();
+}
+
+function startPurchaseModalDrag(event: MouseEvent | TouchEvent | PointerEvent) {
+  startModalDrag('purchase', event);
+}
+
+function startFetishModalDrag(event: MouseEvent | TouchEvent | PointerEvent) {
+  startModalDrag('fetish', event);
+}
+
+function handleModalDragMove(event: MouseEvent | TouchEvent | PointerEvent) {
+  if (!activeDragTarget.value || activeDragMode.value === 'none') return;
+  if (activeDragMode.value === 'pointer') {
+    if (isTouchEvent(event)) {
+      activeDragMode.value = 'touch';
+      activeDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
+    } else if (!isPointerEvent(event) || event.pointerId !== activeDragPointerId.value) {
+      return;
+    }
+  } else if (activeDragMode.value === 'touch') {
+    if (!isTouchEvent(event)) return;
+  } else if (activeDragMode.value === 'mouse') {
+    if (isTouchEvent(event)) {
+      activeDragMode.value = 'touch';
+      activeDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
+    } else if (isPointerEvent(event)) {
+      activeDragMode.value = 'pointer';
+      activeDragPointerId.value = event.pointerId;
+    }
+  }
+
+  const target = activeDragTarget.value;
+  const modalEl = getModalElement(target);
+  if (!modalEl) return;
+
+  const point = getDragPoint(event);
+  if (!point) return;
+
+  const nextX = point.x - dragStartPoint.value.x;
+  const nextY = point.y - dragStartPoint.value.y;
+  const clamped = clampOffsetToViewport(nextX, nextY, modalEl);
+  setDragOffset(target, clamped.x, clamped.y);
+
+  if (event.cancelable) event.preventDefault();
+}
+
+function stopModalDrag(event?: MouseEvent | TouchEvent | PointerEvent) {
+  if (activeDragMode.value === 'pointer' && event && isPointerEvent(event)) {
+    if (activeDragPointerId.value !== null && event.pointerId !== activeDragPointerId.value) return;
+  }
+  if (dragCaptureElement.value && activeDragPointerId.value !== null && dragCaptureElement.value.releasePointerCapture) {
+    dragCaptureElement.value.releasePointerCapture(activeDragPointerId.value);
+  }
+  dragCaptureElement.value = null;
+  activeDragMode.value = 'none';
+  activeDragTarget.value = null;
+  activeDragPointerId.value = null;
+  activeDragTouchId.value = null;
+}
+
+function clampStoredModalOffsets() {
+  if (purchaseModalContentRef.value) {
+    const clamped = clampOffsetToViewport(
+      purchaseModalOffset.value.x,
+      purchaseModalOffset.value.y,
+      purchaseModalContentRef.value,
+    );
+    purchaseModalOffset.value = clamped;
+  }
+  if (fetishModalContentRef.value) {
+    const clamped = clampOffsetToViewport(
+      fetishModalOffset.value.x,
+      fetishModalOffset.value.y,
+      fetishModalContentRef.value,
+    );
+    fetishModalOffset.value = clamped;
+  }
+}
+
 // 计算最大可购买数量（基于金币）
 const maxPurchaseQuantity = computed(() => {
   if (!selectedItem.value) return 99;
@@ -544,6 +818,27 @@ onMounted(() => {
   } catch {
     isSpecialBattleUnlocked.value = false;
   }
+  window.addEventListener('pointermove', handleModalDragMove);
+  window.addEventListener('pointerup', stopModalDrag);
+  window.addEventListener('pointercancel', stopModalDrag);
+  window.addEventListener('mousemove', handleModalDragMove);
+  window.addEventListener('mouseup', stopModalDrag);
+  window.addEventListener('touchmove', handleModalDragMove, { passive: false });
+  window.addEventListener('touchend', stopModalDrag);
+  window.addEventListener('touchcancel', stopModalDrag);
+  window.addEventListener('resize', clampStoredModalOffsets);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('pointermove', handleModalDragMove);
+  window.removeEventListener('pointerup', stopModalDrag);
+  window.removeEventListener('pointercancel', stopModalDrag);
+  window.removeEventListener('mousemove', handleModalDragMove);
+  window.removeEventListener('mouseup', stopModalDrag);
+  window.removeEventListener('touchmove', handleModalDragMove);
+  window.removeEventListener('touchend', stopModalDrag);
+  window.removeEventListener('touchcancel', stopModalDrag);
+  window.removeEventListener('resize', clampStoredModalOffsets);
 });
 
 function unlockSpecialBattle() {
@@ -4108,7 +4403,7 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 120000;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
@@ -4125,6 +4420,7 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  will-change: transform;
 }
 
 .modal-header {
@@ -4164,6 +4460,16 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   padding: 20px;
   min-height: 0;
   overflow-y: auto;
+}
+
+.modal-drag-handle {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
 .selected-item-preview {
