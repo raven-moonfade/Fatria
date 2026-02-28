@@ -232,7 +232,7 @@ function resolveAvatarFullName(rawName: string): string {
 // 生成头像 URL
 function getAvatarUrl(name: string): string {
   const fullName = resolveAvatarFullName(name);
-  return `https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/头像/${encodeURIComponent(fullName)}.png`;
+  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fullName)}.png`;
 }
 
 // 处理图片加载失败

@@ -626,14 +626,14 @@ function getCharacterUnlockCount(characterName: string): number {
 function getAvatarUrl(name: string): string {
   // 沐芯兰的头像文件名是"沐芯兰_1.png"而不是"沐芯兰.png"
   const fileName = name === '沐芯兰' ? '沐芯兰_1' : name;
-  return `https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/头像/${encodeURIComponent(fileName)}.png`;
+  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fileName)}.png`;
 }
 
 // 生成CG图片URL
 function getCGImageUrl(cg: FlattenedCGImage): string {
   const genderFolder = cg.genderKey === 'male' ? '男u' : '女u';
   const resultFolder = cg.resultKey === 'victory' ? '战胜事件' : '战败事件';
-  return `https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/cg/${cg.characterName}/${genderFolder}/${resultFolder}/${cg.imageName}`;
+  return `https://img.vinsimage.org/性斗学园/cg/${cg.characterName}/${genderFolder}/${resultFolder}/${cg.imageName}`;
 }
 
 // 获取模态框图片URL

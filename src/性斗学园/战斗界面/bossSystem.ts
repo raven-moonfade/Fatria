@@ -548,7 +548,7 @@ export function getMuxinlanDisplayName(phase: 1 | 2 | 3): string {
  * 获取当前阶段的立绘
  */
 export function getMuxinlanAvatarUrl(phase: 1 | 2 | 3): string {
-  return `https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/沐芯兰_${phase}.png`;
+  return `https://img.vinsimage.org/性斗学园/立绘/沐芯兰_${phase}.png`;
 }
 
 /**
@@ -800,7 +800,7 @@ export function getChristineDisplayName(phase: 1 | 2): string {
  */
 export function getChristineAvatarUrl(phase: 1 | 2): string {
   // 克莉丝汀分阶段立绘：克莉丝汀_1、克莉丝汀_2
-  return `https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/克莉丝汀_${phase}.png`;
+  return `https://img.vinsimage.org/性斗学园/立绘/克莉丝汀_${phase}.png`;
 }
 
 /**
@@ -1070,9 +1070,9 @@ export function getEdenDisplayName(): string {
  */
 export function getEdenAvatarUrl(sleeping: boolean = false): string {
   if (sleeping) {
-    return 'https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/伊甸芙宁_1.png';
+    return 'https://img.vinsimage.org/性斗学园/立绘/伊甸芙宁_1.png';
   }
-  return 'https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/伊甸芙宁_2.png';
+  return 'https://img.vinsimage.org/性斗学园/立绘/伊甸芙宁_2.png';
 }
 
 /**
@@ -1343,7 +1343,7 @@ export function getElizabethDisplayName(): string {
  * 获取伊丽莎白夜羽立绘URL
  */
 export function getElizabethAvatarUrl(): string {
-  return 'https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/伊丽莎白夜羽.png';
+  return 'https://img.vinsimage.org/性斗学园/立绘/伊丽莎白夜羽.png';
 }
 
 // ==================== 伊丽莎白夜羽 傲慢天赋机制 ====================
@@ -1657,7 +1657,7 @@ export function getVesperaDisplayName(): string {
  * 获取薇丝佩菈立绘URL
  */
 export function getVesperaAvatarUrl(): string {
-  return 'https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/薇丝佩菈.png';
+  return 'https://img.vinsimage.org/性斗学园/立绘/薇丝佩菈.png';
 }
 
 /**
@@ -2009,7 +2009,7 @@ export function getHeisakiDisplayName(): string {
  * 获取黑崎晴雯立绘URL
  */
 export function getHeisakiAvatarUrl(): string {
-  return 'https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘/黑崎晴雯.png';
+  return 'https://img.vinsimage.org/性斗学园/立绘/黑崎晴雯.png';
 }
 
 /**

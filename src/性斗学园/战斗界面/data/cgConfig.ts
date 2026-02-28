@@ -3696,7 +3696,7 @@ export function selectCGEvent(
   // 构建图片URL
   const genderFolder = playerGender === '男' ? '男u' : '女u';
   const resultFolder = isVictory ? '战胜事件' : '战败事件';
-  const imageUrl = `https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/cg/${config.characterName}/${genderFolder}/${resultFolder}/${randomImage}`;
+  const imageUrl = `https://img.vinsimage.org/性斗学园/cg/${config.characterName}/${genderFolder}/${resultFolder}/${randomImage}`;
 
   console.log('[CG选择] 生成的图片URL:', imageUrl);
   console.log('[CG选择] 事件描述:', selectedEvent.description);

@@ -1,7 +1,7 @@
 import { SkillType, type Character, type CombatLogEntry, type Item, type Skill } from './types';
 
-// Hugging Face 立绘基础路径
-const GITHUB_PORTRAIT_BASE_URL = 'https://huggingface.co/datasets/Vin05/AI-Gallery/resolve/main/性斗学园/立绘';
+// R2 立绘基础路径
+const R2_PORTRAIT_BASE_URL = 'https://img.vinsimage.org/性斗学园/立绘';
 
 // 随机图片 URL（降级使用）
 const RANDOM_IMAGE_URLS = [
@@ -16,9 +16,9 @@ const RANDOM_IMAGE_URLS = [
 const PLAYER_AVATAR_KEY = 'combat_player_custom_avatar';
 
 /**
- * 根据敌人全名生成 GitHub 立绘 URL
+ * 根据敌人全名生成立绘 URL
  * @param fullName 敌人的完整名称
- * @returns GitHub 立绘 URL
+ * @returns 立绘 URL
  */
 export function getEnemyPortraitUrl(fullName: string): string {
   if (!fullName) {
@@ -26,7 +26,7 @@ export function getEnemyPortraitUrl(fullName: string): string {
   }
   // URL 编码处理中文字符
   const encodedName = encodeURIComponent(fullName);
-  return `${GITHUB_PORTRAIT_BASE_URL}/${encodedName}.png`;
+  return `${R2_PORTRAIT_BASE_URL}/${encodedName}.png`;
 }
 
 /**
