@@ -3382,6 +3382,155 @@ const mingRiXiangConfig: CharacterCGConfig = {
   },
 };
 
+// 薇丝佩菈的CG配置
+const weiSiPeiLaConfig: CharacterCGConfig = {
+  characterName: '薇丝佩菈',
+  male: {
+    defeat: [
+      {
+        id: 'vespera_extreme_milking_male',
+        name: '薇丝佩菈-极限榨取事件',
+        description: '你被薇丝佩菈击败，薇丝佩菈将你压在身下，用带着手套的手不停进行榨取，直到你精液尽失，失去意识。',
+        images: ['薇丝佩菈-极限榨取事件.png'],
+      },
+      {
+        id: 'vespera_feminization_mod_male',
+        name: '薇丝佩菈-女体化改造事件',
+        description: '你被薇丝佩菈击败，被全脱光绑在柱子上。薇丝佩菈逼你喝下奇怪的药剂，你发现你的肉棒逐渐变小。',
+        images: ['薇丝佩菈-女体化改造事件.png'],
+      },
+      {
+        id: 'vespera_bound_whip_male',
+        name: '薇丝佩菈-束缚鞭打事件',
+        description: '你被薇丝佩菈击败，被全脱光绑在柱子上。薇丝佩菈拿出一根铁链，对你性器官进行鞭打。',
+        images: ['薇丝佩菈-束缚鞭打事件.png'],
+      },
+      {
+        id: 'vespera_chain_leash_male',
+        name: '薇丝佩菈-栓链遛狗事件',
+        description: '你被薇丝佩菈击败，薇丝佩菈在你脖子上套上铁链，强迫你爬着跟随。然后将你带到室外进行展览。',
+        images: ['薇丝佩菈-栓链遛狗事件.png'],
+      },
+      {
+        id: 'vespera_penis_trample_male',
+        name: '薇丝佩菈-阴茎践踏事件',
+        description: '你被薇丝佩菈击败，你倒在地上，薇丝佩菈直接一脚踩在你的肉棒上，嘲讽你是废物。',
+        images: ['薇丝佩菈-阴茎践踏事件.png'],
+      },
+    ],
+    victory: [
+      {
+        id: 'vespera_back_entry_victory_male',
+        name: '薇丝佩菈-后入事件',
+        description: '你战胜薇丝佩菈，绕到薇丝佩菈身后，无视其无力的抵抗，强行用肉棒从身后插入薇丝佩菈小穴，并进行内射。',
+        images: ['薇丝佩菈-后入事件1.png', '薇丝佩菈-后入事件2.png', '薇丝佩菈-后入事件3.png'],
+      },
+      {
+        id: 'vespera_corruption_victory_male',
+        name: '薇丝佩菈-堕落事件',
+        description: '你战胜薇丝佩菈，随后强上了厌男的薇丝佩菈，并利用巨大的肉棒不断抽插使其堕落，甘愿成为你的私有物。',
+        images: ['薇丝佩菈-堕落事件1.png', '薇丝佩菈-堕落事件2.png', '薇丝佩菈-堕落事件3.png'],
+      },
+    ],
+  },
+  female: {
+    defeat: [
+      {
+        id: 'vespera_wall_kiss_female',
+        name: '薇丝佩菈-壁咚深吻事件',
+        description: '你输给了薇丝佩菈，被薇丝佩菈压到墙角壁咚深吻，同时薇丝佩菈的膝盖顶入你双腿之间摩擦你的小穴。',
+        images: ['薇丝佩菈-壁咚深吻事件.png'],
+      },
+      {
+        id: 'vespera_face_trample_rope_female',
+        name: '薇丝佩菈-踩脸龟甲缚事件',
+        description: '你输给了薇丝佩菈，被薇丝佩菈全身束缚。薇丝佩菈坐在桌子上，用脚在你的脸上摩擦。',
+        images: ['薇丝佩菈-踩脸龟甲缚事件.png'],
+      },
+      {
+        id: 'vespera_s_domination_female',
+        name: '薇丝佩菈-抖s支配事件',
+        description: '你输给了薇丝佩菈，被薇丝佩菈龟甲缚后丢在地上，并以女王的姿态一脚踩在你的身上。',
+        images: ['薇丝佩菈-抖s支配事件.png'],
+      },
+      {
+        id: 'vespera_pheromone_masturbation_female',
+        name: '薇丝佩菈-费洛蒙自慰事件',
+        description: '你输给了薇丝佩菈，并在战斗中吸入过多薇丝佩菈散发出的发情信息素，于是在薇丝佩菈的诱导下开始进行自慰。',
+        images: ['薇丝佩菈-费洛蒙自慰事件.png'],
+      },
+      {
+        id: 'vespera_horn_insert_female',
+        name: '薇丝佩菈-鬼角先生事件',
+        description: '你输给了薇丝佩菈，薇丝佩菈掰下自己的一根鬼角，插入你的小穴，与你进行真正的身心交融。',
+        images: ['薇丝佩菈-鬼角先生事件.png'],
+      },
+      {
+        id: 'vespera_bound_oral_female',
+        name: '薇丝佩菈-捆绑舔穴事件',
+        description: '你输给了薇丝佩菈，薇丝佩菈用怪力将你全裸捆绑并吊在半空中，随后开始舔你的小穴直到你沉沦其中。',
+        images: ['薇丝佩菈-捆绑舔穴事件.png'],
+      },
+      {
+        id: 'vespera_breast_rub_insert_female',
+        name: '薇丝佩菈-揉胸插穴事件',
+        description: '你输给了薇丝佩菈，薇丝佩菈掏出一根假阴茎插入你的小穴，随后一边揉胸，一边用膝盖来回顶性玩具。',
+        images: ['薇丝佩菈-揉胸插穴事件.png'],
+      },
+      {
+        id: 'vespera_triangle_horse_female',
+        name: '薇丝佩菈-三角木马事件',
+        description: '你输给了薇丝佩菈，被薇丝佩菈带到隐秘的小屋并被全裸放在三角木马上。薇丝佩菈随后也坐了上来，并抓着你在三角木马上摩擦。',
+        images: ['薇丝佩菈-三角木马事件.png'],
+      },
+      {
+        id: 'vespera_double_dragon_insert_female',
+        name: '薇丝佩菈-双头龙插入事件',
+        description: '你输给了薇丝佩菈，薇丝佩菈掏出双头龙狠狠进攻你的小穴，同时与你进行舌吻。',
+        images: ['薇丝佩菈-双头龙插入事件.png'],
+      },
+      {
+        id: 'vespera_foot_lick_female',
+        name: '薇丝佩菈-舔脚事件',
+        description: '你输给了薇丝佩菈，薇丝佩菈坐在桌子上居高临下看着你，并让你舔她的脚。',
+        images: ['薇丝佩菈-舔脚事件.png'],
+      },
+      {
+        id: 'vespera_fingering_overload_female',
+        name: '薇丝佩菈-指交事件',
+        description: '你输给了薇丝佩菈，薇丝佩菈用锁链将你绑成M型开腿，并利用指技让你不断高潮，直到失去意识。',
+        images: ['薇丝佩菈-指交事件.png'],
+      },
+      {
+        id: 'vespera_defeat_wedding_female',
+        name: '薇丝佩菈-战败婚礼事件',
+        description: '在决定攻受的战斗中，你输给了薇丝佩菈，你穿上婚纱跪倒在薇丝佩菈脚下，薇丝佩菈用手抬起你的下巴，要你宣誓成为她的所有物。',
+        images: ['薇丝佩菈-战败婚礼事件.png'],
+      },
+    ],
+    victory: [
+      {
+        id: 'vespera_koukou_victory_female',
+        name: '薇丝佩菈-战胜扣扣事件',
+        description: '你战胜了薇丝佩菈，并将薇丝佩菈控制住，随后玩弄薇丝佩菈小穴的同时玩弄她的小嘴。',
+        images: ['薇丝佩菈-扣扣事件1.png', '薇丝佩菈-扣扣事件2.png'],
+      },
+      {
+        id: 'vespera_conquest_victory_female',
+        name: '薇丝佩菈-战胜征服事件',
+        description: '你战胜了薇丝佩菈，薇丝佩菈被你的性技征服，自愿将身体交给你一段时间，允许你对她做任何事。',
+        images: ['薇丝佩菈-战胜征服事件1.png', '薇丝佩菈-战胜征服事件2.png'],
+      },
+      {
+        id: 'vespera_wedding_victory_female',
+        name: '薇丝佩菈-战胜婚礼事件',
+        description: '在决定谁是攻谁是受的战斗中，你赢得了胜利，薇丝佩菈回到平时状态，并穿上特制的露胸婚纱，掀起裙子害羞的站到你面前。',
+        images: ['薇丝佩菈-战胜婚礼事件.png'],
+      },
+    ],
+  },
+};
+
 // 爱丽丝温特的CG配置
 const aiLiSiWenTeConfig: CharacterCGConfig = {
   characterName: '爱丽丝温特',
@@ -3589,6 +3738,7 @@ export const CG_CONFIGS: CharacterCGConfig[] = [
   lingYinConfig,
   fuLianConfig,
   heiQiQingWenConfig,
+  weiSiPeiLaConfig,
   mingRiXiangConfig,
   aiLiSiWenTeConfig,
 ];
