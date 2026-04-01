@@ -1,6 +1,5 @@
 <template>
   <div class="cg-page">
-    <!-- 分类标签 -->
     <div class="category-tabs">
       <button
         v-for="category in categories"
@@ -14,10 +13,7 @@
         <span class="count-badge">{{ getCategoryCount(category.key) }}</span>
       </button>
     </div>
-
-    <!-- CG内容区域 -->
-    <div class="cg-content">
-      <!-- 角色选择器（仅在非全部模式下显示） -->
+    <div v-if="!modalCG" class="cg-content">
       <div class="character-selector" v-if="currentCategory !== 'all'">
         <div class="section-header">
           <i class="fas fa-user"></i>
@@ -41,16 +37,12 @@
           </button>
         </div>
       </div>
-
-      <!-- 全部CG模式：按角色分组显示 -->
       <template v-if="currentCategory === 'all'">
         <div class="section-header main-header">
           <i class="fas fa-images"></i>
           <span>全部CG</span>
           <span class="count-badge">{{ getTotalUnlockedCount }} / {{ getTotalCGCount }}</span>
         </div>
-
-        <!-- 仅显示已解锁CG勾选框 -->
         <label class="unlock-filter-checkbox">
           <input type="checkbox" v-model="showOnlyUnlocked" />
           <span class="checkbox-custom"></span>
@@ -96,16 +88,12 @@
           </div>
         </div>
       </template>
-
-      <!-- 分类CG模式：显示过滤后的CG -->
       <template v-else>
         <div class="section-header">
           <i class="fas fa-images"></i>
           <span>{{ getCategoryLabel(currentCategory) }}</span>
           <span class="count-badge">{{ getFilteredUnlockedCount }} / {{ getCategoryTotalCount }}</span>
         </div>
-
-        <!-- 仅显示已解锁CG勾选框（始终显示，不受过滤结果影响） -->
         <label class="unlock-filter-checkbox">
           <input type="checkbox" v-model="showOnlyUnlocked" />
           <span class="checkbox-custom"></span>
@@ -142,8 +130,6 @@
             </div>
           </div>
         </div>
-
-        <!-- 空状态 -->
         <div class="empty-state" v-else-if="getCategoryTotalCount > 0">
           <div class="empty-icon">
             <i class="fas fa-images"></i>
@@ -156,53 +142,42 @@
       </template>
     </div>
 
-    <!-- CG放大模态框 -->
-    <div v-if="showModal" class="cg-modal" @click="closeModal">
-      <div class="modal-backdrop"></div>
-      <div
-        ref="cgModalContentRef"
-        class="modal-content"
-        :style="cgModalStyle"
-        @click.stop
-        @pointerdown="bringCGModalToFront"
-        @mousedown="bringCGModalToFront"
-        @touchstart="bringCGModalToFront"
-      >
-        <button class="modal-close" @click="closeModal">
-          <i class="fas fa-times"></i>
+    <div v-else class="cg-detail-view">
+      <div class="detail-page-header">
+        <button class="detail-back-btn" @click="closeModal">
+          <i class="fas fa-arrow-left"></i>
+          <span>返回图库</span>
         </button>
-        <div
-          class="modal-header modal-drag-handle"
-          @pointerdown="startCGModalDrag"
-          @pointermove.prevent="handleCGModalDragMove"
-          @pointerup="stopCGModalDrag"
-          @pointercancel="stopCGModalDrag"
-          @mousedown="startCGModalDrag"
-          @mousemove.prevent="handleCGModalDragMove"
-          @mouseup="stopCGModalDrag"
-          @touchstart="startCGModalDrag"
-          @touchmove.prevent="handleCGModalDragMove"
-          @touchend="stopCGModalDrag"
-          @touchcancel="stopCGModalDrag"
-        >
+        <span class="detail-counter">{{ detailCGIndex + 1 }} / {{ detailCGList.length }}</span>
+      </div>
+
+      <div class="modal-content cg-detail-card">
+        <div class="modal-header">
           <h3>{{ modalCG?.name }}</h3>
           <span class="modal-character">{{ modalCG?.characterName }}</span>
         </div>
         <div class="modal-body">
-          <!-- 单张图片显示（不再轮播，每张图片单独解锁） -->
           <div class="image-container">
             <img
-              v-if="modalCG"
-              :src="getModalImageUrl()"
-              :alt="modalCG.name"
-              @error="handleModalImageError"
               class="modal-cg-img"
+              :src="getModalImageUrl()"
+              :alt="modalCG?.name"
+              @error="handleModalImageError"
             />
           </div>
-          <!-- CG描述 -->
           <div class="modal-description" v-if="modalCG">
             <p>{{ modalCG.description }}</p>
           </div>
+        </div>
+        <div class="cg-detail-footer">
+          <button class="detail-nav-btn" :disabled="!canShowPreviousCG" @click="showPreviousCG">
+            <i class="fas fa-chevron-left"></i>
+            上一张
+          </button>
+          <button class="detail-nav-btn primary" :disabled="!canShowNextCG" @click="showNextCG">
+            下一张
+            <i class="fas fa-chevron-right"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -213,21 +188,16 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { CG_CONFIGS, type CGEvent } from '../../../战斗界面/data/cgConfig';
 
-// 解锁的CG存储（每张图片单独解锁，格式：cgId-imageIndex）
 const unlockedCGs = ref<Set<string>>(new Set());
 
-// 角色折叠状态存储
 const collapsedCharacters = ref<Set<string>>(new Set());
 
-// 仅显示已解锁CG
 const showOnlyUnlocked = ref(false);
 
-// 检查角色是否折叠
 function isCharacterCollapsed(characterName: string): boolean {
   return collapsedCharacters.value.has(characterName);
 }
 
-// 切换角色折叠状态
 function toggleCharacterCollapse(characterName: string) {
   if (collapsedCharacters.value.has(characterName)) {
     collapsedCharacters.value.delete(characterName);
@@ -236,7 +206,6 @@ function toggleCharacterCollapse(characterName: string) {
   }
 }
 
-// 分类定义
 const categories = [
   { key: 'all', label: '全部', icon: 'fas fa-th' },
   { key: 'male_defeat', label: '男U战败', icon: 'fas fa-mars' },
@@ -247,172 +216,8 @@ const categories = [
 
 const currentCategory = ref('all');
 const selectedCharacter = ref<string | null>(null);
-const showModal = ref(false);
 const modalCG = ref<FlattenedCGImage | null>(null);
-const cgModalContentRef = ref<HTMLElement | null>(null);
-const cgModalOffset = ref({ x: 0, y: 0 });
-const cgModalZIndex = ref(1);
-type CGDragMode = 'none' | 'pointer' | 'mouse' | 'touch';
-const cgDragMode = ref<CGDragMode>('none');
-const cgDragPointerId = ref<number | null>(null);
-const cgDragTouchId = ref<number | null>(null);
-const cgDragStartPoint = ref({ x: 0, y: 0 });
-const cgDragCaptureElement = ref<HTMLElement | null>(null);
 
-const cgModalStyle = computed(() => ({
-  transform: `translate(${cgModalOffset.value.x}px, ${cgModalOffset.value.y}px)`,
-  zIndex: cgModalZIndex.value,
-}));
-
-function getNextModalLayer(): number {
-  const globalAny = window as any;
-  const key = '__fatria_modal_layer';
-  const next = Math.max(Number(globalAny[key] || 120000), 120000) + 1;
-  globalAny[key] = next;
-  return next;
-}
-
-function bringCGModalToFront() {
-  cgModalZIndex.value = getNextModalLayer();
-}
-
-function clampCGOffsetToViewport(x: number, y: number, modalEl: HTMLElement): { x: number; y: number } {
-  const rect = modalEl.getBoundingClientRect();
-  const minVisible = 56;
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  const minX = -(viewportWidth + rect.width) / 2 + minVisible;
-  const maxX = (viewportWidth + rect.width) / 2 - minVisible;
-  const minY = -(viewportHeight + rect.height) / 2 + minVisible;
-  const maxY = (viewportHeight + rect.height) / 2 - minVisible;
-
-  const clampedX = Math.min(maxX, Math.max(minX, x));
-  const clampedY = Math.min(maxY, Math.max(minY, y));
-  return { x: clampedX, y: clampedY };
-}
-
-function getTouchFromList(touchList: TouchList, id: number | null): Touch | null {
-  if (touchList.length <= 0) return null;
-  if (id === null) return touchList[0];
-  for (let i = 0; i < touchList.length; i++) {
-    if (touchList[i].identifier === id) return touchList[i];
-  }
-  return null;
-}
-
-function isPointerEvent(event: Event): event is PointerEvent {
-  return 'pointerId' in (event as PointerEvent);
-}
-
-function isTouchEvent(event: Event): event is TouchEvent {
-  return 'touches' in (event as TouchEvent) || 'changedTouches' in (event as TouchEvent);
-}
-
-function getCGDragPoint(event: MouseEvent | TouchEvent | PointerEvent): { x: number; y: number } | null {
-  if (isTouchEvent(event)) {
-    const activeTouch =
-      getTouchFromList(event.touches, cgDragTouchId.value) ?? getTouchFromList(event.changedTouches, cgDragTouchId.value);
-    if (!activeTouch) return null;
-    return { x: activeTouch.clientX, y: activeTouch.clientY };
-  }
-
-  if ('clientX' in event && 'clientY' in event) {
-    return { x: event.clientX, y: event.clientY };
-  }
-
-  return null;
-}
-
-function startCGModalDrag(event: MouseEvent | TouchEvent | PointerEvent) {
-  if (cgDragMode.value !== 'none') {
-    stopCGModalDrag();
-  }
-  if (!isTouchEvent(event) && 'button' in event && event.button !== 0) return;
-
-  const rawTarget = event.target;
-  const targetEl = rawTarget instanceof Element ? rawTarget : (rawTarget as Node | null)?.parentElement;
-  if (targetEl?.closest('button, input, textarea, select, a, label')) return;
-  if (!cgModalContentRef.value) return;
-
-  bringCGModalToFront();
-  const point = getCGDragPoint(event);
-  if (!point) return;
-
-  cgDragStartPoint.value = {
-    x: point.x - cgModalOffset.value.x,
-    y: point.y - cgModalOffset.value.y,
-  };
-
-  if (isPointerEvent(event)) {
-    cgDragMode.value = 'pointer';
-    cgDragPointerId.value = event.pointerId;
-    const captureEl = event.currentTarget as HTMLElement | null;
-    if (captureEl?.setPointerCapture) {
-      captureEl.setPointerCapture(event.pointerId);
-      cgDragCaptureElement.value = captureEl;
-    }
-  } else if (isTouchEvent(event)) {
-    cgDragMode.value = 'touch';
-    cgDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
-  } else {
-    cgDragMode.value = 'mouse';
-  }
-
-  if (event.cancelable) event.preventDefault();
-}
-
-function handleCGModalDragMove(event: MouseEvent | TouchEvent | PointerEvent) {
-  if (cgDragMode.value === 'none' || !cgModalContentRef.value) return;
-  if (cgDragMode.value === 'pointer') {
-    if (isTouchEvent(event)) {
-      cgDragMode.value = 'touch';
-      cgDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
-    } else if (!isPointerEvent(event) || event.pointerId !== cgDragPointerId.value) {
-      return;
-    }
-  } else if (cgDragMode.value === 'touch') {
-    if (!isTouchEvent(event)) return;
-  } else if (cgDragMode.value === 'mouse') {
-    if (isTouchEvent(event)) {
-      cgDragMode.value = 'touch';
-      cgDragTouchId.value = event.changedTouches[0]?.identifier ?? event.touches[0]?.identifier ?? null;
-    } else if (isPointerEvent(event)) {
-      cgDragMode.value = 'pointer';
-      cgDragPointerId.value = event.pointerId;
-    }
-  }
-
-  const point = getCGDragPoint(event);
-  if (!point) return;
-
-  const nextX = point.x - cgDragStartPoint.value.x;
-  const nextY = point.y - cgDragStartPoint.value.y;
-  const clamped = clampCGOffsetToViewport(nextX, nextY, cgModalContentRef.value);
-  cgModalOffset.value = clamped;
-
-  if (event.cancelable) event.preventDefault();
-}
-
-function stopCGModalDrag(event?: MouseEvent | TouchEvent | PointerEvent) {
-  if (cgDragMode.value === 'pointer' && event && isPointerEvent(event)) {
-    if (cgDragPointerId.value !== null && event.pointerId !== cgDragPointerId.value) return;
-  }
-  if (cgDragCaptureElement.value && cgDragPointerId.value !== null && cgDragCaptureElement.value.releasePointerCapture) {
-    cgDragCaptureElement.value.releasePointerCapture(cgDragPointerId.value);
-  }
-  cgDragCaptureElement.value = null;
-  cgDragMode.value = 'none';
-  cgDragPointerId.value = null;
-  cgDragTouchId.value = null;
-}
-
-function clampStoredCGModalOffset() {
-  if (!cgModalContentRef.value) return;
-  cgModalOffset.value = clampCGOffsetToViewport(cgModalOffset.value.x, cgModalOffset.value.y, cgModalContentRef.value);
-}
-
-// 从cgConfig获取所有CG数据并扁平化（每张图片作为单独项）
 interface FlattenedCGImage {
   id: string;
   name: string;
@@ -424,15 +229,12 @@ interface FlattenedCGImage {
   resultKey: 'defeat' | 'victory';
 }
 
-// 将所有CG事件展开为单独的图片项
 const allCGImages = computed<FlattenedCGImage[]>(() => {
   const result: FlattenedCGImage[] = [];
 
   for (const config of CG_CONFIGS) {
-    // 处理所有事件类型
     const processEvents = (events: CGEvent[], genderKey: 'male' | 'female', resultKey: 'defeat' | 'victory') => {
       for (const event of events) {
-        // 每张图片单独作为一个CG项
         for (let i = 0; i < event.images.length; i++) {
           result.push({
             id: event.id,
@@ -457,7 +259,6 @@ const allCGImages = computed<FlattenedCGImage[]>(() => {
   return result;
 });
 
-// 可用的角色列表
 const availableCharacters = computed(() => {
   const chars = new Set<string>();
   for (const cg of allCGImages.value) {
@@ -466,23 +267,15 @@ const availableCharacters = computed(() => {
   return Array.from(chars).sort();
 });
 
-// 有CG的角色列表（用于全部模式显示，考虑仅显示已解锁过滤）
-const charactersWithCGs = computed(() => {
-  return availableCharacters.value;
-});
-
-// 过滤后的角色列表（当勾选"仅显示已解锁"时，只返回有已解锁CG的角色）
 const filteredCharactersWithCGs = computed(() => {
   if (!showOnlyUnlocked.value) {
     return availableCharacters.value;
   }
-  // 只返回至少有一个已解锁CG的角色
   return availableCharacters.value.filter(char => {
     return allCGImages.value.some(cg => cg.characterName === char && isCGImageUnlocked(cg.id, cg.imageIndex));
   });
 });
 
-// 获取某角色的所有CG（支持仅显示已解锁过滤）
 function getCharacterCGs(characterName: string): FlattenedCGImage[] {
   let cgs = allCGImages.value.filter(cg => cg.characterName === characterName);
   if (showOnlyUnlocked.value) {
@@ -491,27 +284,18 @@ function getCharacterCGs(characterName: string): FlattenedCGImage[] {
   return cgs;
 }
 
-// 获取某角色的CG总数（不受过滤影响的总数）
-function getCharacterCGCountTotal(characterName: string): number {
-  return allCGImages.value.filter(cg => cg.characterName === characterName).length;
-}
-
-// 获取某角色的CG数量（受过滤影响）
 function getCharacterCGCount(characterName: string): number {
   return getCharacterCGs(characterName).length;
 }
 
-// 获取分类模式下的总CG数量（不受仅显示已解锁过滤影响）
 const getCategoryTotalCount = computed(() => {
   let result = allCGImages.value;
 
-  // 按分类过滤
   if (currentCategory.value !== 'all') {
     const [gender, outcome] = currentCategory.value.split('_');
     result = result.filter(cg => cg.genderKey === gender && cg.resultKey === outcome);
   }
 
-  // 按角色过滤
   if (selectedCharacter.value) {
     result = result.filter(cg => cg.characterName === selectedCharacter.value);
   }
@@ -519,30 +303,24 @@ const getCategoryTotalCount = computed(() => {
   return result.length;
 });
 
-// 总CG数量
 const getTotalCGCount = computed(() => allCGImages.value.length);
 
-// 总已解锁数量
 const getTotalUnlockedCount = computed(() => {
   return allCGImages.value.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex)).length;
 });
 
-// 过滤后的CG图片列表（分类模式下使用，支持仅显示已解锁过滤）
 const filteredCGImages = computed(() => {
   let result = allCGImages.value;
 
-  // 按分类过滤
   if (currentCategory.value !== 'all') {
     const [gender, outcome] = currentCategory.value.split('_');
     result = result.filter(cg => cg.genderKey === gender && cg.resultKey === outcome);
   }
 
-  // 按角色过滤
   if (selectedCharacter.value) {
     result = result.filter(cg => cg.characterName === selectedCharacter.value);
   }
 
-  // 仅显示已解锁过滤
   if (showOnlyUnlocked.value) {
     result = result.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex));
   }
@@ -550,17 +328,34 @@ const filteredCGImages = computed(() => {
   return result;
 });
 
-// 分类模式下的已解锁数量
 const getFilteredUnlockedCount = computed(() => {
   return filteredCGImages.value.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex)).length;
 });
 
-// 生成CG图片唯一键
+const detailCGList = computed<FlattenedCGImage[]>(() => {
+  if (!modalCG.value) return [];
+
+  const sourceList = currentCategory.value === 'all'
+    ? allCGImages.value.filter(cg => cg.characterName === modalCG.value?.characterName)
+    : filteredCGImages.value;
+
+  return sourceList.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex));
+});
+
+const detailCGIndex = computed(() => {
+  if (!modalCG.value) return -1;
+  return detailCGList.value.findIndex(
+    cg => cg.id === modalCG.value?.id && cg.imageIndex === modalCG.value?.imageIndex,
+  );
+});
+
+const canShowPreviousCG = computed(() => detailCGIndex.value > 0);
+const canShowNextCG = computed(() => detailCGIndex.value >= 0 && detailCGIndex.value < detailCGList.value.length - 1);
+
 function getCGImageKey(cgId: string, imageIndex: number): string {
   return `${cgId}-${imageIndex}`;
 }
 
-// 加载已解锁的CG
 function loadUnlockedCGs() {
   try {
     const stored = localStorage.getItem('unlocked_cgs');
@@ -576,7 +371,6 @@ function loadUnlockedCGs() {
   }
 }
 
-// 保存已解锁的CG
 function saveUnlockedCGs() {
   try {
     localStorage.setItem('unlocked_cgs', JSON.stringify(Array.from(unlockedCGs.value)));
@@ -585,7 +379,6 @@ function saveUnlockedCGs() {
   }
 }
 
-// 解锁CG图片（供外部调用）
 function unlockCGImage(cgId: string, imageIndex: number) {
   const key = getCGImageKey(cgId, imageIndex);
   if (!unlockedCGs.value.has(key)) {
@@ -595,13 +388,11 @@ function unlockCGImage(cgId: string, imageIndex: number) {
   }
 }
 
-// 检查某张CG图片是否已解锁
 function isCGImageUnlocked(cgId: string, imageIndex: number): boolean {
   const key = getCGImageKey(cgId, imageIndex);
   return unlockedCGs.value.has(key);
 }
 
-// 获取分类的CG数量
 function getCategoryCount(category: string): number {
   if (category === 'all') {
     return allCGImages.value.length;
@@ -610,39 +401,32 @@ function getCategoryCount(category: string): number {
   return allCGImages.value.filter(cg => cg.genderKey === gender && cg.resultKey === outcome).length;
 }
 
-// 获取分类标签
 function getCategoryLabel(category: string): string {
   const cat = categories.find(c => c.key === category);
   return cat?.label || category;
 }
 
-// 获取角色解锁数量
 function getCharacterUnlockCount(characterName: string): number {
   return allCGImages.value.filter(cg => cg.characterName === characterName && isCGImageUnlocked(cg.id, cg.imageIndex))
     .length;
 }
 
-// 生成头像 URL（沐芯兰特殊处理）
 function getAvatarUrl(name: string): string {
-  // 沐芯兰的头像文件名是"沐芯兰_1.png"而不是"沐芯兰.png"
   const fileName = name === '沐芯兰' ? '沐芯兰_1' : name;
   return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fileName)}.png`;
 }
 
-// 生成CG图片URL
 function getCGImageUrl(cg: FlattenedCGImage): string {
   const genderFolder = cg.genderKey === 'male' ? '男u' : '女u';
   const resultFolder = cg.resultKey === 'victory' ? '战胜事件' : '战败事件';
   return `https://img.vinsimage.org/性斗学园/cg/${cg.characterName}/${genderFolder}/${resultFolder}/${cg.imageName}`;
 }
 
-// 获取模态框图片URL
 function getModalImageUrl(): string {
   if (!modalCG.value) return '';
   return getCGImageUrl(modalCG.value);
 }
 
-// 处理图片加载失败
 function handleImageError(event: Event) {
   const img = event.target as HTMLImageElement;
   img.style.display = 'none';
@@ -654,7 +438,6 @@ function handleImageError(event: Event) {
   }
 }
 
-// 处理CG图片加载失败
 function handleCGImageError(event: Event) {
   const img = event.target as HTMLImageElement;
   img.style.display = 'none';
@@ -666,7 +449,6 @@ function handleCGImageError(event: Event) {
   }
 }
 
-// 处理模态框图片加载失败
 function handleModalImageError(event: Event) {
   const img = event.target as HTMLImageElement;
   img.style.display = 'none';
@@ -679,38 +461,39 @@ function handleModalImageError(event: Event) {
   }
 }
 
-// 点击CG图片
 function handleCGImageClick(cg: FlattenedCGImage) {
   if (!isCGImageUnlocked(cg.id, cg.imageIndex)) {
-    // 未解锁，显示提示
     if (typeof toastr !== 'undefined') {
-      toastr.info('此CG尚未解锁，在性斗中触发事件后可解锁');
+      toastr.info('该 CG 尚未解锁，请先在战斗中触发对应事件。');
     }
     return;
   }
 
-  // 已解锁，显示模态框
   modalCG.value = cg;
-  showModal.value = true;
 }
 
-// 关闭模态框
+function showPreviousCG() {
+  if (!canShowPreviousCG.value) return;
+  modalCG.value = detailCGList.value[detailCGIndex.value - 1] ?? modalCG.value;
+}
+
+function showNextCG() {
+  if (!canShowNextCG.value) return;
+  modalCG.value = detailCGList.value[detailCGIndex.value + 1] ?? modalCG.value;
+}
+
 function closeModal() {
-  showModal.value = false;
   modalCG.value = null;
 }
 
-// 监听全局CG解锁事件（兼容旧格式：解锁整个事件的所有图片）
 function handleCGUnlockEvent(event: CustomEvent) {
   const cgId = event.detail?.cgId;
   const imageIndex = event.detail?.imageIndex;
 
   if (cgId !== undefined) {
     if (imageIndex !== undefined) {
-      // 新格式：解锁单张图片
       unlockCGImage(cgId, imageIndex);
     } else {
-      // 旧格式：解锁该事件的所有图片
       const eventCGs = allCGImages.value.filter(cg => cg.id === cgId);
       for (const cg of eventCGs) {
         unlockCGImage(cg.id, cg.imageIndex);
@@ -719,14 +502,12 @@ function handleCGUnlockEvent(event: CustomEvent) {
   }
 }
 
-// 初始化时默认选中第一个有CG的角色，并折叠所有角色
 watch(
   availableCharacters,
   chars => {
     if (chars.length > 0 && !selectedCharacter.value) {
       selectedCharacter.value = chars[0];
     }
-    // 默认折叠所有角色
     if (chars.length > 0 && collapsedCharacters.value.size === 0) {
       chars.forEach(char => collapsedCharacters.value.add(char));
     }
@@ -737,35 +518,14 @@ watch(
 onMounted(() => {
   loadUnlockedCGs();
 
-  // 监听CG解锁事件
   window.addEventListener('cg-unlocked', handleCGUnlockEvent as EventListener);
-  window.addEventListener('pointermove', handleCGModalDragMove);
-  window.addEventListener('pointerup', stopCGModalDrag);
-  window.addEventListener('pointercancel', stopCGModalDrag);
-  window.addEventListener('mousemove', handleCGModalDragMove);
-  window.addEventListener('mouseup', stopCGModalDrag);
-  window.addEventListener('touchmove', handleCGModalDragMove, { passive: false });
-  window.addEventListener('touchend', stopCGModalDrag);
-  window.addEventListener('touchcancel', stopCGModalDrag);
-  window.addEventListener('resize', clampStoredCGModalOffset);
 
-  // 暴露解锁函数到全局（供战斗系统调用）
   const globalAny = window as any;
   globalAny.__cgUnlockImage = unlockCGImage;
 });
 
-// 组件卸载时移除事件监听
 onUnmounted(() => {
   window.removeEventListener('cg-unlocked', handleCGUnlockEvent as EventListener);
-  window.removeEventListener('pointermove', handleCGModalDragMove);
-  window.removeEventListener('pointerup', stopCGModalDrag);
-  window.removeEventListener('pointercancel', stopCGModalDrag);
-  window.removeEventListener('mousemove', handleCGModalDragMove);
-  window.removeEventListener('mouseup', stopCGModalDrag);
-  window.removeEventListener('touchmove', handleCGModalDragMove);
-  window.removeEventListener('touchend', stopCGModalDrag);
-  window.removeEventListener('touchcancel', stopCGModalDrag);
-  window.removeEventListener('resize', clampStoredCGModalOffset);
 });
 </script>
 
@@ -778,7 +538,6 @@ onUnmounted(() => {
   padding-bottom: 80px; // 为底部导航栏留出空间
 }
 
-// 分类标签
 .category-tabs {
   display: flex;
   gap: 6px;
@@ -834,7 +593,6 @@ onUnmounted(() => {
   }
 }
 
-// 角色选择器
 .character-selector {
   margin-bottom: 16px;
 }
@@ -924,7 +682,6 @@ onUnmounted(() => {
   }
 }
 
-// 内容区域
 .cg-content {
   flex: 1;
 }
@@ -963,7 +720,6 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
-// 角色分组区域
 .character-section {
   margin-bottom: 24px;
 
@@ -1033,7 +789,6 @@ onUnmounted(() => {
   }
 }
 
-// 仅显示已解锁CG勾选框样式
 .unlock-filter-checkbox {
   display: flex;
   align-items: center;
@@ -1098,7 +853,6 @@ onUnmounted(() => {
   }
 }
 
-// CG网格
 .cg-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1197,7 +951,6 @@ onUnmounted(() => {
   }
 }
 
-// 空状态
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -1236,132 +989,93 @@ onUnmounted(() => {
   }
 }
 
-// 模态框 - fixed定位居中 + 视口单位实现等比例缩放
-// 手机UI基准尺寸: 390px x 722px
-.cg-modal {
-  position: fixed; // 相对于视口定位，确保始终可见
-  inset: 0;
-  z-index: 120000;
+.cg-detail-view {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow-y: auto;
-  // 使用视口单位padding，与手机UI保持相对比例
-  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
-    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  flex-direction: column;
+  gap: 14px;
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.9);
-  backdrop-filter: blur(8px);
+.detail-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  cursor: pointer;
+}
+
+.detail-counter {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .modal-content {
   position: relative;
-  background: linear-gradient(135deg, rgba(30, 30, 40, 0.98), rgba(20, 20, 30, 0.98));
-  // 圆角使用视口单位，与容器保持相对比例
-  border-radius: clamp(12px, 2vmin, 18px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  // 宽度：最小200px，最大350px，中间按视口85%缩放
-  width: clamp(200px, 85vmin, 350px);
-  // 高度：最小300px，最大600px，中间按视口75%缩放
-  max-height: clamp(300px, 75vmin, 600px);
-  max-height: calc(100dvh - 20px);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  will-change: transform;
+  background: linear-gradient(135deg, rgba(30, 30, 40, 0.98), rgba(20, 20, 30, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
 }
 
-.modal-close {
-  position: absolute;
-  top: clamp(8px, 1.5vmin, 12px);
-  right: clamp(8px, 1.5vmin, 12px);
-  // 按钮尺寸使用视口单位
-  width: clamp(24px, 4vmin, 32px);
-  height: clamp(24px, 4vmin, 32px);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  z-index: 10;
-  font-size: clamp(12px, 2vmin, 16px);
-
-  &:hover {
-    background: rgba(248, 113, 113, 0.8);
-  }
+.cg-detail-card {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .modal-header {
-  // 使用视口单位padding
-  padding: clamp(10px, 2vmin, 16px) clamp(12px, 2.5vmin, 20px);
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 
   h3 {
     margin: 0;
-    font-size: clamp(12px, 2vmin, 16px);
+    font-size: 16px;
     font-weight: 600;
     color: white;
-    padding-right: clamp(28px, 5vmin, 40px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .modal-character {
-    font-size: clamp(10px, 1.5vmin, 12px);
-    color: rgba(255, 255, 255, 0.5);
-    margin-top: clamp(2px, 0.5vmin, 4px);
     display: block;
-  }
-}
-
-.modal-drag-handle {
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-
-  &:active {
-    cursor: grabbing;
+    margin-top: 4px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
   }
 }
 
 .modal-body {
-  // 使用视口单位padding
-  padding: clamp(10px, 2vmin, 16px);
-  overflow-y: auto;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.5vmin, 12px);
-  flex: 1;
-  min-height: 0; // 允许flex子项收缩
+  gap: 12px;
 }
 
-// 单张图片容器（不再使用轮播）- 使用视口单位保持比例
 .image-container {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 280px;
   background: rgba(0, 0, 0, 0.3);
-  border-radius: clamp(8px, 1.5vmin, 12px);
+  border-radius: 14px;
   overflow: hidden;
-  flex: 1;
-  min-height: 0; // 允许flex子项收缩
 
   .modal-cg-img {
     width: 100%;
-    height: 100%;
-    max-height: clamp(150px, 40vmin, 350px);
+    max-height: min(68vh, 720px);
     object-fit: contain;
   }
 
@@ -1369,33 +1083,85 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(6px, 1vmin, 10px);
+    gap: 10px;
+    padding: 40px;
     color: rgba(255, 255, 255, 0.4);
-    padding: clamp(20px, 4vmin, 40px);
 
     i {
-      font-size: clamp(20px, 4vmin, 32px);
+      font-size: 32px;
     }
 
     p {
-      font-size: clamp(10px, 1.5vmin, 13px);
       margin: 0;
+      font-size: 13px;
     }
   }
 }
 
-// 描述
 .modal-description {
-  padding: clamp(8px, 1.5vmin, 12px);
+  padding: 12px;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: clamp(8px, 1.5vmin, 12px);
-  flex-shrink: 0;
+  border-radius: 12px;
 
   p {
     margin: 0;
-    font-size: clamp(11px, 1.8vmin, 14px);
-    line-height: 1.5;
+    font-size: 14px;
+    line-height: 1.6;
     color: rgba(255, 255, 255, 0.7);
+  }
+}
+
+.cg-detail-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.detail-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 120px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &.primary {
+    margin-left: auto;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.28), rgba(168, 85, 247, 0.28));
+    border-color: rgba(236, 72, 153, 0.32);
+  }
+}
+
+@media (max-width: 640px) {
+  .detail-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-counter {
+    text-align: right;
+  }
+
+  .cg-detail-footer {
+    flex-direction: column;
+  }
+
+  .detail-nav-btn,
+  .detail-nav-btn.primary {
+    width: 100%;
+    margin-left: 0;
   }
 }
 </style>

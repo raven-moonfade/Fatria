@@ -92,7 +92,7 @@
     </div>
 
     <!-- 商品列表 -->
-    <div class="shop-content">
+    <div v-if="!selectedItem && !(fetishDecisionModalVisible && pendingFetishDecision)" class="shop-content">
       <!-- 装备类 -->
       <div v-if="activeCategory === 'equipment'" class="item-section">
         <div class="item-grid">
@@ -250,35 +250,26 @@
     </div>
 
     <!-- 性癖奖励选择弹窗 -->
-    <div v-if="fetishDecisionModalVisible && pendingFetishDecision" class="purchase-modal fetish-modal">
-      <div
-        ref="fetishModalContentRef"
-        class="modal-content fetish-modal-content"
-        :style="fetishModalStyle"
-        @pointerdown="bringFetishModalToFront"
-        @mousedown="bringFetishModalToFront"
-        @touchstart="bringFetishModalToFront"
-      >
-        <div
-          class="modal-header modal-drag-handle"
-          @pointerdown="startFetishModalDrag"
-          @pointermove.prevent="handleModalDragMove"
-          @pointerup="stopModalDrag"
-          @pointercancel="stopModalDrag"
-          @mousedown="startFetishModalDrag"
-          @mousemove.prevent="handleModalDragMove"
-          @mouseup="stopModalDrag"
-          @touchstart="startFetishModalDrag"
-          @touchmove.prevent="handleModalDragMove"
-          @touchend="stopModalDrag"
-          @touchcancel="stopModalDrag"
-        >
-          <h3>性癖奖励确认</h3>
+    
+    <div v-else-if="fetishDecisionModalVisible && pendingFetishDecision" class="shop-detail-view">
+      <div class="detail-page-header fetish-detail-header">
+        <div class="detail-title-block">
+          <span class="detail-page-title">性癖奖励</span>
+          <span class="detail-page-subtitle">转盘抽取结果</span>
         </div>
-        <div class="modal-body">
+      </div>
+
+      <div class="modal-content shop-detail-card fetish-detail-card">
+        <div class="modal-header">
+          <h3>{{ pendingFetishDecision.name }}</h3>
+          <span class="modal-character">{{ pendingFetishAlignmentLabel }}</span>
+        </div>
+        <div class="modal-body shop-detail-body">
           <div class="fetish-name-row">
             <span class="fetish-name">{{ pendingFetishDecision.name }}</span>
-            <span class="fetish-align-tag" :class="`align-${pendingFetishDecision.alignment.toLowerCase()}`">
+            <span class="fetish-align-tag" :class="
+              pendingFetishDecision.alignment ? 'align-' + pendingFetishDecision.alignment.toLowerCase() : ''
+            ">
               {{ pendingFetishAlignmentLabel }}
             </span>
           </div>
@@ -296,60 +287,43 @@
               </div>
             </div>
           </div>
-          <div class="fetish-reroll-tip">重roll不消耗额外次数，可无限重roll直到决定保留或舍弃。</div>
+          <div class="fetish-reroll-tip">重抽不会消耗额外次数，你可以反复重抽，直到决定保留或舍弃。</div>
         </div>
-        <div class="modal-footer fetish-footer">
+        <div class="modal-footer shop-detail-footer fetish-footer">
           <button class="cancel-btn" @click="handleFetishDecision('discard')">舍弃</button>
-          <button class="reroll-btn" @click="handleFetishDecision('reroll')">重roll</button>
+          <button class="reroll-btn" @click="handleFetishDecision('reroll')">重抽</button>
           <button class="confirm-btn" @click="handleFetishDecision('keep')">保留</button>
         </div>
       </div>
     </div>
 
-    <!-- 购买确认弹窗 -->
-    <div v-if="selectedItem" class="purchase-modal" @click.self="selectedItem = null">
-      <div
-        ref="purchaseModalContentRef"
-        class="modal-content"
-        :style="purchaseModalStyle"
-        @pointerdown="bringPurchaseModalToFront"
-        @mousedown="bringPurchaseModalToFront"
-        @touchstart="bringPurchaseModalToFront"
-      >
-        <div
-          class="modal-header modal-drag-handle"
-          @pointerdown="startPurchaseModalDrag"
-          @pointermove.prevent="handleModalDragMove"
-          @pointerup="stopModalDrag"
-          @pointercancel="stopModalDrag"
-          @mousedown="startPurchaseModalDrag"
-          @mousemove.prevent="handleModalDragMove"
-          @mouseup="stopModalDrag"
-          @touchstart="startPurchaseModalDrag"
-          @touchmove.prevent="handleModalDragMove"
-          @touchend="stopModalDrag"
-          @touchcancel="stopModalDrag"
-        >
+    <div v-else-if="selectedItem" class="shop-detail-view">
+      <div class="detail-page-header">
+        <button class="detail-back-btn" @click="selectedItem = null">
+          <i class="fas fa-arrow-left"></i>
+          <span>返回商店</span>
+        </button>
+      </div>
+
+      <div class="modal-content shop-detail-card">
+        <div class="modal-header">
           <h3>确认购买</h3>
-          <button class="close-btn" @click="selectedItem = null">
-            <i class="fas fa-times"></i>
-          </button>
         </div>
-        <div class="modal-body">
-          <div class="selected-item-preview">
-            <div class="preview-icon" :class="getItemGradeClass(selectedItem)">
-              <i :class="selectedItem.icon"></i>
+        <div class="modal-body shop-detail-body">
+          <div class="selected-item-preview detail-preview">
+            <div class="preview-icon" :class="selectedItem ? getItemGradeClass(selectedItem) : ''">
+              <i :class="selectedItem?.icon"></i>
             </div>
             <div class="preview-info">
-              <span class="preview-name">{{ selectedItem.name }}</span>
-              <span class="preview-desc">{{ selectedItem.description }}</span>
+              <span class="preview-name">{{ selectedItem?.name }}</span>
+              <span class="preview-desc">{{ selectedItem?.description }}</span>
             </div>
           </div>
 
-          <div class="item-details" v-if="selectedItem.bonuses">
+          <div class="item-details" v-if="selectedItem?.bonuses">
             <div class="detail-title">属性加成</div>
             <div class="bonus-list">
-              <div v-for="(value, key) in selectedItem.bonuses" :key="key" class="bonus-item">
+              <div v-for="(value, key) in selectedItem?.bonuses" :key="key" class="bonus-item">
                 <span class="bonus-name">{{ key }}</span>
                 <span class="bonus-value" :class="value > 0 ? 'positive' : 'negative'">
                   {{ value > 0 ? '+' : '' }}{{ value }}
@@ -358,59 +332,47 @@
             </div>
           </div>
 
-          <div class="quantity-selector" v-if="selectedItem.category !== 'equipment'">
+          <div class="quantity-selector" v-if="selectedItem?.category !== 'equipment'">
             <span class="qty-label">数量:</span>
             <div class="quantity-control">
-              <button
-                class="qty-btn"
-                @click="purchaseQuantity = Math.max(1, purchaseQuantity - 1)"
-                :disabled="isGoldInsufficient"
-              >
+              <button class="qty-btn" :disabled="isGoldInsufficient" @click="purchaseQuantity = Math.max(1, purchaseQuantity - 1)">
                 -
               </button>
               <input
-                type="number"
                 v-model.number="purchaseQuantity"
+                type="number"
                 min="1"
                 :max="maxPurchaseQuantity || 1"
-                @blur="validatePurchaseQuantity"
                 :disabled="isGoldInsufficient"
+                @blur="validatePurchaseQuantity"
               />
-              <button
-                class="qty-btn"
-                @click="purchaseQuantity = Math.min(maxPurchaseQuantity, purchaseQuantity + 1)"
-                :disabled="isGoldInsufficient || purchaseQuantity >= maxPurchaseQuantity"
-              >
+              <button class="qty-btn" :disabled="isGoldInsufficient || purchaseQuantity >= maxPurchaseQuantity" @click="purchaseQuantity = Math.min(maxPurchaseQuantity, purchaseQuantity + 1)">
                 +
               </button>
             </div>
             <span class="max-hint" :class="{ insufficient: isGoldInsufficient }">
-              {{ isGoldInsufficient ? '金币不足！' : `最多可买 ${maxPurchaseQuantity} 个` }}
+              {{ isGoldInsufficient ? '金币不足' : '最多可购买 ' + maxPurchaseQuantity + ' 个' }}
             </span>
           </div>
 
-          <div class="price-summary">
+          <div class="price-summary detail-price-summary">
             <span>总价:</span>
             <span class="total-price">
               <i class="fas fa-coins"></i>
-              <template v-if="getItemDiscount(selectedItem) > 0">
-                <span class="original-price">{{ selectedItem.price * purchaseQuantity }}</span>
-                <span class="discounted-price">{{ getDiscountedPrice(selectedItem) * purchaseQuantity }}</span>
-                <span class="discount-tag">-{{ getItemDiscount(selectedItem) }}%</span>
+              <template v-if="selectedItem && getItemDiscount(selectedItem) > 0">
+                <span class="original-price">{{ (selectedItem?.price || 0) * purchaseQuantity }}</span>
+                <span class="discounted-price">{{ selectedItem ? getDiscountedPrice(selectedItem) * purchaseQuantity : 0 }}</span>
+                <span class="discount-tag">-{{ selectedItem ? getItemDiscount(selectedItem) : 0 }}%</span>
               </template>
               <template v-else>
-                {{ selectedItem.price * purchaseQuantity }}
+                {{ (selectedItem?.price || 0) * purchaseQuantity }}
               </template>
             </span>
           </div>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer shop-detail-footer">
           <button class="cancel-btn" @click="selectedItem = null">取消</button>
-          <button
-            class="confirm-btn"
-            :disabled="goldCoins < getDiscountedPrice(selectedItem) * purchaseQuantity"
-            @click="purchaseItem"
-          >
+          <button class="confirm-btn" :disabled="!selectedItem || goldCoins < getDiscountedPrice(selectedItem) * purchaseQuantity" @click="purchaseItem">
             <i class="fas fa-shopping-cart"></i>
             购买
           </button>
@@ -4011,6 +3973,87 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
     font-weight: 700;
     color: #fcd34d;
   }
+}
+
+
+.shop-detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detail-page-header {
+  display: flex;
+  align-items: center;
+}
+
+.detail-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  cursor: pointer;
+}
+
+
+.detail-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-page-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.detail-page-subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.fetish-detail-header {
+  justify-content: space-between;
+}
+
+.fetish-detail-card {
+  max-width: 760px;
+}
+
+.shop-detail-card {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #1e1e2e, #151520);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.detail-preview {
+  margin: 16px;
+  margin-bottom: 0;
+}
+
+.shop-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-price-summary {
+  margin-bottom: 0;
+}
+
+.shop-detail-footer {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(30, 30, 46, 0.98), rgba(21, 21, 32, 0.98));
+  backdrop-filter: blur(10px);
 }
 
 .category-tabs {

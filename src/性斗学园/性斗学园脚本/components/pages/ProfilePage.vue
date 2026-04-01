@@ -1,7 +1,7 @@
 <template>
   <div class="profile-page">
     <!-- 版本号显示 -->
-    <div class="version-label">版本：2.5.5.2</div>
+    <div class="version-label">版本：2.5.6.0</div>
 
     <button class="help-btn" @click="showHelp = true" title="玩法说明">
       <i class="fas fa-question"></i>
