@@ -28,8 +28,8 @@
     <div class="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
       <h3 class="mb-3 text-xl font-bold text-white">已测试模型/预设</h3>
       <div class="space-y-2 text-sm text-gray-200">
-        <div>Claude opus 4.5（推荐）: Mur鹿鹿预设</div>
-        <div>Gemini 3.0 pro（不建议，卡太大）: Kemini/Izumi</div>
+        <div>Claude opus 4.6: Ny/Mur鹿鹿预设</div>
+        <div>Gemini 3.1 pro: Izumi</div>
       </div>
     </div>
 
