@@ -2094,48 +2094,64 @@ const sendCharacterDataToTavern = async () => {
         },
       ]);
 
-      // 2. 将角色信息写入世界书「性斗学园」的user条目（uid=107583）
+      // 2. 将角色信息写入世界书「性斗学园」中名字为 user 的条目
       // 直接访问世界书数据并更新，避免通过消息发送
       try {
         const globalAny = window as any;
         let worldbookUpdated = false;
+        let userEntryUid: number | null = null;
+        const targetEntryName = 'user';
 
         // 方法1: 尝试直接访问世界书数据（与 uid=1 写入方式一致）
         try {
           // @ts-ignore - updateWorldbookWith 为全局注入
           if (typeof updateWorldbookWith === 'function') {
+            let updatedByName = false;
             // @ts-ignore
             await updateWorldbookWith(
               '性斗学园',
               (worldbook: any[]) => {
-                const uidStr = '0';
-                let entry = worldbook.find((e: any) => String(e.uid) === uidStr);
+                const entry = worldbook.find((e: any) => e?.name === targetEntryName);
                 if (!entry) {
-                  entry = { uid: 0, name: 'uid_0', content: '' };
-                  worldbook.push(entry);
+                  return worldbook;
                 }
                 entry.content = characterDescription;
+                if (entry.uid !== undefined && entry.uid !== null) {
+                  const parsedUid = Number(entry.uid);
+                  if (Number.isFinite(parsedUid)) {
+                    userEntryUid = parsedUid;
+                  }
+                }
+                updatedByName = true;
                 return worldbook;
               },
               { render: 'immediate' },
             );
-            worldbookUpdated = true;
-            console.info('[开局] 世界书 uid=0 已通过 updateWorldbookWith 更新');
+            if (updatedByName) {
+              worldbookUpdated = true;
+              console.info('[开局] 世界书 name=user 已通过 updateWorldbookWith 更新');
+            }
           }
 
           // @ts-ignore - getWorldbook 为全局注入
           if (typeof getWorldbook === 'function') {
             // @ts-ignore
             const worldbook = await getWorldbook('性斗学园');
-            const entry = worldbook.find((e: any) => String(e.uid) === '0' || e.uid === 0);
+            const entry = worldbook.find((e: any) => e?.name === targetEntryName);
             if (entry) {
               entry.content = characterDescription;
+              if (entry.uid !== undefined && entry.uid !== null) {
+                const parsedUid = Number(entry.uid);
+                if (Number.isFinite(parsedUid)) {
+                  userEntryUid = parsedUid;
+                }
+              }
               // @ts-ignore - replaceWorldbook 为全局注入
               if (typeof replaceWorldbook === 'function') {
                 // @ts-ignore
                 await replaceWorldbook('性斗学园', worldbook);
                 worldbookUpdated = true;
-                console.info('[开局] 世界书 uid=0 已直接更新');
+                console.info('[开局] 世界书 name=user 已直接更新');
               }
             }
           }
@@ -2145,57 +2161,77 @@ const sendCharacterDataToTavern = async () => {
 
         // 方法2: 如果无法直接访问，尝试通过slash命令执行器（与 uid=1 写入方式一致）
         if (!worldbookUpdated) {
-          const command = `/setentryfield file=性斗学园 uid=0 field=content ${characterDescription}`;
-
-          // 尝试通过triggerSlash执行命令（如果可用）
-          try {
-            // @ts-ignore - triggerSlash 为全局注入
-            if (typeof triggerSlash === 'function') {
+          if ((userEntryUid === null || !Number.isFinite(userEntryUid)) && typeof getWorldbook === 'function') {
+            try {
               // @ts-ignore
-              await triggerSlash(command);
-              worldbookUpdated = true;
-              console.info('[开局] 已通过triggerSlash更新世界书 uid=0');
+              const worldbook = await getWorldbook('性斗学园');
+              const entry = worldbook.find((e: any) => e?.name === targetEntryName);
+              if (entry?.uid !== undefined && entry?.uid !== null) {
+                const parsedUid = Number(entry.uid);
+                if (Number.isFinite(parsedUid)) {
+                  userEntryUid = parsedUid;
+                }
+              }
+            } catch (e) {
+              console.warn('[开局] 获取 name=user 条目 uid 失败:', e);
             }
-          } catch (e) {
-            console.warn('[开局] triggerSlash执行失败:', e);
           }
 
-          // 如果triggerSlash不可用，尝试其他执行方式
-          if (!worldbookUpdated) {
-            const executors = [
-              () => globalAny.SillyTavern?.executeSlashCommand?.(command),
-              () => globalAny.executeSlashCommand?.(command),
-              () => globalAny.SillyTavern?.processSlashCommand?.(command),
-              () => globalAny.parent?.SillyTavern?.executeSlashCommand?.(command),
-              () => globalAny.parent?.executeSlashCommand?.(command),
-              // 尝试通过消息输入框模拟输入
-              () => {
-                const inputElement = document.querySelector(
-                  '#send_textarea, textarea[placeholder*="Message"], .chat-input textarea',
-                ) as HTMLTextAreaElement;
-                if (inputElement) {
-                  inputElement.value = command;
-                  inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-                  const form = inputElement.closest('form');
-                  if (form) {
-                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                  }
-                  return true;
-                }
-                return false;
-              },
-            ];
+          if (userEntryUid === null || !Number.isFinite(userEntryUid)) {
+            console.warn('[开局] 未找到世界书 name=user 条目，无法通过 slash 更新');
+          } else {
+            const command = `/setentryfield file=性斗学园 uid=${userEntryUid} field=content ${characterDescription}`;
 
-            for (const executor of executors) {
-              try {
-                const result = await executor();
-                if (result !== undefined && result !== false) {
-                  worldbookUpdated = true;
-                  console.info('[开局] 已通过slash命令执行器更新世界书');
-                  break;
+            // 尝试通过triggerSlash执行命令（如果可用）
+            try {
+              // @ts-ignore - triggerSlash 为全局注入
+              if (typeof triggerSlash === 'function') {
+                // @ts-ignore
+                await triggerSlash(command);
+                worldbookUpdated = true;
+                console.info('[开局] 已通过triggerSlash更新世界书 name=user');
+              }
+            } catch (e) {
+              console.warn('[开局] triggerSlash执行失败:', e);
+            }
+
+            // 如果triggerSlash不可用，尝试其他执行方式
+            if (!worldbookUpdated) {
+              const executors = [
+                () => globalAny.SillyTavern?.executeSlashCommand?.(command),
+                () => globalAny.executeSlashCommand?.(command),
+                () => globalAny.SillyTavern?.processSlashCommand?.(command),
+                () => globalAny.parent?.SillyTavern?.executeSlashCommand?.(command),
+                () => globalAny.parent?.executeSlashCommand?.(command),
+                // 尝试通过消息输入框模拟输入
+                () => {
+                  const inputElement = document.querySelector(
+                    '#send_textarea, textarea[placeholder*="Message"], .chat-input textarea',
+                  ) as HTMLTextAreaElement;
+                  if (inputElement) {
+                    inputElement.value = command;
+                    inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+                    const form = inputElement.closest('form');
+                    if (form) {
+                      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    }
+                    return true;
+                  }
+                  return false;
+                },
+              ];
+
+              for (const executor of executors) {
+                try {
+                  const result = await executor();
+                  if (result !== undefined && result !== false) {
+                    worldbookUpdated = true;
+                    console.info('[开局] 已通过slash命令执行器更新世界书');
+                    break;
+                  }
+                } catch (e) {
+                  continue;
                 }
-              } catch (e) {
-                continue;
               }
             }
           }
@@ -2203,7 +2239,7 @@ const sendCharacterDataToTavern = async () => {
 
         if (!worldbookUpdated) {
           console.warn('[开局] 无法自动更新世界书，请手动执行以下命令:');
-          console.warn(`/setentryfield file=性斗学园 uid=0 field=content ${characterDescription}`);
+          console.warn(`[开局] 请先确认存在 name=user 的条目，再执行 /setentryfield file=性斗学园 uid=<该条目uid> field=content ...`);
         }
       } catch (worldbookError) {
         console.warn('[开局] 更新世界书失败:', worldbookError);
