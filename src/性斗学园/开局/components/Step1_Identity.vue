@@ -1,16 +1,16 @@
 <template>
-  <div class="space-y-6 animate-slide-up">
+  <div class="animate-slide-up space-y-6">
     <!-- Mode Toggle Button (右上角) -->
-    <div class="flex justify-end mb-2">
+    <div class="mb-2 flex justify-end">
       <button
-        @click="toggleLifeSimMode"
         :class="[
-          'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 border',
+          'flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all duration-300',
           isLifeSimMode
-            ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 hover:bg-purple-500/30 shadow-lg shadow-purple-500/20'
-            : 'bg-white/10 text-gray-300 border-white/20 hover:bg-white/20 hover:text-white',
+            ? 'border-purple-500/50 bg-purple-500/20 text-purple-300 shadow-lg shadow-purple-500/20 hover:bg-purple-500/30'
+            : 'border-white/20 bg-white/10 text-gray-300 hover:bg-white/20 hover:text-white',
         ]"
         :title="isLifeSimMode ? '切换到正常模式' : '切换到生活模拟模式'"
+        @click="toggleLifeSimMode"
       >
         <i :class="['fas', isLifeSimMode ? 'fa-user-secret' : 'fa-user']"></i>
         <span v-if="isLifeSimMode">生活模拟</span>
@@ -20,24 +20,24 @@
 
     <!-- 正常模式：角色创建 -->
     <template v-if="!isLifeSimMode">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <!-- Name Input -->
         <div class="group relative">
-          <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+          <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
             <i class="fas fa-user text-secondary"></i> 姓名
           </label>
           <input
             type="text"
             :value="data.name"
-            @input="e => updateData({ name: (e.target as HTMLInputElement).value })"
-            class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-transparent transition-all duration-300 backdrop-blur-sm"
+            class="focus:ring-secondary/50 focus:border-transparent focus:ring-2 focus:outline-none w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 backdrop-blur-sm transition-all duration-300"
             placeholder="输入你的角色名..."
+            @input="e => updateData({ name: (e.target as HTMLInputElement).value })"
           />
         </div>
 
         <!-- Age Input -->
         <div class="group relative">
-          <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+          <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
             <i class="fas fa-graduation-cap text-secondary"></i> 年龄
           </label>
           <input
@@ -45,27 +45,27 @@
             min="15"
             max="25"
             :value="data.age"
+            class="focus:ring-secondary/50 focus:ring-2 focus:outline-none w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white backdrop-blur-sm transition-all"
             @input="e => updateData({ age: parseInt((e.target as HTMLInputElement).value) || 16 })"
-            class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all backdrop-blur-sm"
           />
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <!-- Gender Selection -->
         <div>
-          <label class="block text-sm font-medium text-gray-300 mb-2">性别</label>
-          <div class="flex bg-white/5 rounded-xl p-1 border border-white/10 backdrop-blur-sm">
+          <label class="mb-2 block text-sm font-medium text-gray-300">性别</label>
+          <div class="flex rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur-sm">
             <button
               v-for="g in Object.values(Gender)"
               :key="g"
-              @click="handleGenderChange(g as Gender)"
               :class="[
-                'flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-300',
+                'flex-1 rounded-lg py-2 text-sm font-medium transition-all duration-300',
                 data.gender === g
                   ? 'bg-secondary text-white shadow-lg shadow-pink-500/30'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5',
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white',
               ]"
+              @click="handleGenderChange(g as Gender)"
             >
               {{ g }}
             </button>
@@ -74,19 +74,19 @@
 
         <!-- Difficulty Selection -->
         <div>
-          <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+          <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
             <i class="fas fa-exclamation-circle text-red-400"></i> 游戏难度
           </label>
           <select
             :value="data.difficulty"
-            @change="e => updateData({ difficulty: (e.target as HTMLSelectElement).value as Difficulty })"
             :disabled="data.difficulty === Difficulty.CHEATER"
             :class="[
-              'w-full bg-white/5 border rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 appearance-none backdrop-blur-sm',
+              'w-full appearance-none rounded-xl border bg-white/5 px-4 py-3 text-white backdrop-blur-sm focus:ring-2 focus:ring-red-500/50 focus:outline-none',
               data.difficulty === Difficulty.CHEATER
-                ? 'border-yellow-500/50 cursor-not-allowed opacity-75 bg-yellow-500/10'
-                : 'border-white/10 cursor-pointer',
+                ? 'cursor-not-allowed border-yellow-500/50 bg-yellow-500/10 opacity-75'
+                : 'cursor-pointer border-white/10',
             ]"
+            @change="e => updateData({ difficulty: (e.target as HTMLSelectElement).value as Difficulty })"
           >
             <option
               v-for="d in availableDifficulties"
@@ -104,11 +104,11 @@
           </select>
           <div
             v-if="data.difficulty === Difficulty.MASOCHIST"
-            class="mt-2 text-xs text-pink-400 flex items-center gap-1"
+            class="mt-2 flex items-center gap-1 text-xs text-pink-400"
           >
             <i class="fas fa-lock"></i> 已选择抖M特化难度
           </div>
-          <p v-if="data.difficulty === Difficulty.CHEATER" class="mt-2 text-xs text-yellow-400 flex items-center gap-1">
+          <p v-if="data.difficulty === Difficulty.CHEATER" class="mt-2 flex items-center gap-1 text-xs text-yellow-400">
             <i class="fas fa-lock"></i> 作弊模式已激活，难度已锁定
           </p>
         </div>
@@ -116,29 +116,29 @@
 
       <!-- Appearance Textarea -->
       <div>
-        <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+        <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
           <i class="fas fa-face-smile text-secondary"></i> 外貌描述
         </label>
         <textarea
           rows="2"
           :value="data.appearance"
-          @input="e => updateData({ appearance: (e.target as HTMLTextAreaElement).value })"
-          class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all backdrop-blur-sm resize-none"
+          class="focus:ring-secondary/50 focus:ring-2 focus:outline-none w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 backdrop-blur-sm transition-all"
           placeholder="例如：银色长发，红瞳，身材娇小，常年围着一条红色围巾..."
+          @input="e => updateData({ appearance: (e.target as HTMLTextAreaElement).value })"
         />
       </div>
 
       <!-- Personality Textarea -->
       <div>
-        <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+        <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
           <i class="fas fa-align-left text-secondary"></i> 性格与背景
         </label>
         <textarea
           rows="3"
           :value="data.personality"
-          @input="e => updateData({ personality: (e.target as HTMLTextAreaElement).value })"
-          class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all backdrop-blur-sm resize-none"
+          class="focus:ring-secondary/50 focus:ring-2 focus:outline-none w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 backdrop-blur-sm transition-all"
           placeholder="你的性格特点，以及你是如何进入这所学院的..."
+          @input="e => updateData({ personality: (e.target as HTMLTextAreaElement).value })"
         />
       </div>
     </template>
@@ -149,19 +149,19 @@
 
       <!-- 难度选择（生活模拟模式） -->
       <div v-if="localSelectedNpc" class="mt-4">
-        <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+        <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
           <i class="fas fa-exclamation-circle text-red-400"></i> 游戏难度
         </label>
         <select
           :value="data.difficulty"
-          @change="e => updateData({ difficulty: (e.target as HTMLSelectElement).value as Difficulty })"
           :disabled="data.difficulty === Difficulty.CHEATER"
           :class="[
-            'w-full bg-white/5 border rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 appearance-none backdrop-blur-sm',
+            'w-full appearance-none rounded-xl border bg-white/5 px-4 py-3 text-white backdrop-blur-sm focus:ring-2 focus:ring-purple-500/50 focus:outline-none',
             data.difficulty === Difficulty.CHEATER
-              ? 'border-yellow-500/50 cursor-not-allowed opacity-75 bg-yellow-500/10'
-              : 'border-purple-500/30 cursor-pointer',
+              ? 'cursor-not-allowed border-yellow-500/50 bg-yellow-500/10 opacity-75'
+              : 'cursor-pointer border-purple-500/30',
           ]"
+          @change="e => updateData({ difficulty: (e.target as HTMLSelectElement).value as Difficulty })"
         >
           <option
             v-for="d in availableDifficulties"
@@ -177,31 +177,54 @@
             {{ getDifficultyDisplayName(d) }}
           </option>
         </select>
-        <p v-if="data.difficulty === Difficulty.CHEATER" class="mt-2 text-xs text-yellow-400 flex items-center gap-1">
+        <p v-if="data.difficulty === Difficulty.CHEATER" class="mt-2 flex items-center gap-1 text-xs text-yellow-400">
           <i class="fas fa-lock"></i> 作弊模式已激活，难度已锁定
         </p>
       </div>
 
       <!-- 开局场景输入 -->
       <div v-if="localSelectedNpc" class="mt-4">
-        <label class="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+        <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
           <i class="fas fa-map-marker-alt text-purple-400"></i> 开局场景
         </label>
         <textarea
-          rows="3"
           v-model="openingScene"
-          class="w-full bg-white/5 border border-purple-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all backdrop-blur-sm resize-none"
+          rows="3"
+          class="w-full resize-none rounded-xl border border-purple-500/30 bg-white/5 px-4 py-3 text-white placeholder-gray-500 backdrop-blur-sm transition-all focus:ring-2 focus:ring-purple-500/50 focus:outline-none"
           placeholder="描述你的开局场景，例如：正在教室备课/刚从体育馆训练结束..."
         />
       </div>
     </template>
+
+    <div class="mt-2">
+      <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
+        <i class="fas fa-calendar-alt text-secondary"></i> 主线时间线
+      </label>
+      <select
+        :value="data.mainlineTimeline"
+        class="focus:ring-secondary/50 focus:ring-2 focus:outline-none w-full appearance-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white backdrop-blur-sm"
+        @change="e => updateData({ mainlineTimeline: (e.target as HTMLSelectElement).value as MainlineTimeline })"
+      >
+        <option
+          v-for="timeline in Object.values(MainlineTimeline)"
+          :key="timeline"
+          :value="timeline"
+          class="bg-slate-900 text-white"
+        >
+          {{ timeline }}
+        </option>
+      </select>
+      <p class="mt-2 text-xs text-gray-400">
+        选择“无”时不改动日期；选择主线后会把开局日期设置为该主线触发日前两天。注：会导致之前的剧情无法触发，慎选。
+      </p>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { NpcCharacter } from '../data/npcCharacters';
-import { CharacterData, Difficulty, Gender } from '../types';
+import { CharacterData, Difficulty, Gender, MainlineTimeline } from '../types';
 import NpcCharacterSelect from './NpcCharacterSelect.vue';
 
 const props = defineProps<{

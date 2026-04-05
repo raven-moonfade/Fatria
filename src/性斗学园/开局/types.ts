@@ -12,6 +12,13 @@ export enum Difficulty {
   MASOCHIST = '抖M',
 }
 
+export enum MainlineTimeline {
+  NONE = '入学线',
+  IDOL = '偶像线',
+  SPORTS = '运动会线',
+  FESTIVAL = '学院祭线',
+}
+
 // 根据 [initvar].yaml 的 MVU 变量结构定义
 // _ 前缀：只读属性（对AI不可修改）
 // $ 前缀：对AI不可见、不可修改
@@ -94,6 +101,7 @@ export interface CharacterData {
   personality: string;
   background: string;
   difficulty: Difficulty;
+  mainlineTimeline: MainlineTimeline;
   archetypeId: string | null;
 
   // The core stats - 使用嵌套结构匹配 MVU 变量
@@ -158,6 +166,7 @@ export const INITIAL_CHARACTER_DATA: CharacterData = {
   personality: '',
   background: '',
   difficulty: Difficulty.NORMAL,
+  mainlineTimeline: MainlineTimeline.NONE,
   archetypeId: null,
   attributes: { ...INITIAL_ATTRIBUTES },
   height: 165,

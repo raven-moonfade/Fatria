@@ -550,7 +550,7 @@ import Step4_Skills from './components/Step4_Skills.vue';
 import { ARCHETYPES } from './constants';
 import { getConstitutionById } from './data/constitutions';
 import { STARTER_SKILLS } from './data/skills';
-import { CharacterData, Difficulty, Gender, INITIAL_ATTRIBUTES, INITIAL_CHARACTER_DATA } from './types';
+import { CharacterData, Difficulty, Gender, INITIAL_ATTRIBUTES, INITIAL_CHARACTER_DATA, MainlineTimeline } from './types';
 import { getMvuData, syncFromMvu, updateMvuVariables } from './utils/mvu-helper';
 import { convertSkillsToMvu } from './utils/skill-converter';
 
@@ -1633,10 +1633,30 @@ const resetAttributes = () => {
   };
 };
 
+const buildMainlineTimelineUpdates = (timeline: MainlineTimeline): Record<string, string | number> => {
+  const timelineStartMap: Partial<Record<MainlineTimeline, { date: string; weekday: number }>> = {
+    [MainlineTimeline.IDOL]: { date: '2025-03-24', weekday: 1 },
+    [MainlineTimeline.SPORTS]: { date: '2025-04-08', weekday: 2 },
+    [MainlineTimeline.FESTIVAL]: { date: '2025-04-21', weekday: 1 },
+  };
+
+  const selectedStart = timelineStartMap[timeline];
+  if (!selectedStart) {
+    return {};
+  }
+
+  return {
+    '时间系统.日期': selectedStart.date,
+    '时间系统.星期': selectedStart.weekday,
+  };
+};
+
 const handleStartGame = async () => {
   loading.value = true;
 
   try {
+    const mainlineTimelineUpdates = buildMainlineTimelineUpdates(characterData.value.mainlineTimeline);
+
     // ==================== 生活模拟模式特殊处理 ====================
     if (isLifeSimMode.value && selectedNpc.value) {
       const npcData = ENEMY_DATABASE[selectedNpc.value.dbKey];
@@ -1819,6 +1839,7 @@ const handleStartGame = async () => {
         // 永久状态
         '永久状态.状态列表': permanentStateList,
         '永久状态.加成统计': permanentBonusStats,
+        ...mainlineTimelineUpdates,
       });
 
       console.info('[开局] 生活模拟模式 - NPC数据已写入MVU');
@@ -1930,6 +1951,7 @@ const handleStartGame = async () => {
       '角色基础._姓名': characterData.value.name,
       '角色基础.难度': mvuDifficulty, // 新增：写入难度
       '角色基础.性别': mvuGender, // 新增：写入性别
+      ...mainlineTimelineUpdates,
     });
 
     console.info('[开局] 数据已保存到 MVU');
