@@ -368,6 +368,15 @@ export const NPC_CHARACTERS: NpcCharacter[] = [
     description: '能够操控头发的茶艺社主人',
   },
   {
+    id: 'meiduo',
+    name: '梅朵',
+    dbKey: '梅朵',
+    skillKey: '梅朵',
+    level: 65,
+    category: '独立势力',
+    description: '外校广播社社长，擅长实况解说与声音羞辱',
+  },
+  {
     id: 'jiaodun_hualin',
     name: '角楯花凛',
     dbKey: '角楯花凛',
