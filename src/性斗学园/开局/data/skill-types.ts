@@ -9,7 +9,7 @@
 export enum SkillType {
   /** 物理攻击 - 直接造成快感伤害 */
   PHYSICAL = 'physical',
-  /** 精神攻击 - 降低意志力和精神防御 */
+  /** 精神攻击 - 通过语言、心理压迫或状态扰乱制造优势 */
   MENTAL = 'mental',
   /** 魅力技能 - 基于魅力值的特殊效果 */
   CHARM = 'charm',
@@ -33,8 +33,6 @@ export enum DamageSource {
   CHARM = 'charm',
   /** 幸运 - 随机伤害 */
   LUCK = 'luck',
-  /** 意志力 - 精神伤害 */
-  WILLPOWER = 'willpower',
   /** 等级 - 基于等级的伤害 */
   LEVEL = 'level',
   /** 潜力 - 基于潜力的伤害 */
@@ -108,8 +106,6 @@ export enum BuffType {
   DODGE_DOWN = 'dodge_down',
   /** 持续快感 - 每回合增加快感 */
   DOT_LUST = 'dot_lust',
-  /** 意志力下降 */
-  WILLPOWER_DOWN = 'willpower_down',
   /** 沉默 - 无法使用精神技能 */
   SILENCE = 'silence',
   /** 束缚 - 无法使用物理技能 */
@@ -124,7 +120,7 @@ export enum BuffType {
   AROUSAL = 'arousal',
   /** 敏感 - 受到的快感伤害增加 */
   SENSITIVE = 'sensitive',
-  /** 羞耻 - 意志力持续下降 */
+  /** 羞耻 - 使目标持续承受压力或快感 */
   SHAME = 'shame',
   /** 高潮边缘 - 快感上限暂时降低 */
   EDGE = 'edge',
@@ -249,8 +245,6 @@ export interface SkillData {
   staminaCost: number;
   /** 快感消耗（某些特殊技能） */
   lustCost?: number;
-  /** 意志力消耗 */
-  willpowerCost?: number;
   /** 冷却回合数 */
   cooldown: number;
   /** 施放时间（0=即时，>0需要蓄力回合） */
@@ -335,7 +329,6 @@ export const DAMAGE_SOURCE_NAMES: Record<DamageSource, string> = {
   [DamageSource.SEX_POWER]: '性斗力',
   [DamageSource.CHARM]: '魅力',
   [DamageSource.LUCK]: '幸运',
-  [DamageSource.WILLPOWER]: '意志力',
   [DamageSource.LEVEL]: '等级',
   [DamageSource.POTENTIAL]: '潜力',
   [DamageSource.FIXED]: '固定值',
@@ -364,7 +357,6 @@ export const BUFF_TYPE_NAMES: Record<BuffType, string> = {
   [BuffType.CRIT_DOWN]: '暴击下降',
   [BuffType.DODGE_DOWN]: '闪避下降',
   [BuffType.DOT_LUST]: '持续快感',
-  [BuffType.WILLPOWER_DOWN]: '意志下降',
   [BuffType.SILENCE]: '沉默',
   [BuffType.BIND]: '束缚',
   [BuffType.CONFUSION]: '混乱',

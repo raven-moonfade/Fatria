@@ -3718,6 +3718,206 @@ const aiLiSiWenTeConfig: CharacterCGConfig = {
   },
 };
 
+// 娜塔莎斯迈尔的CG配置
+const naTaShaSiMaiErConfig: CharacterCGConfig = {
+  characterName: '娜塔莎斯迈尔',
+  male: {
+    defeat: [
+      {
+        id: 'natasha_no_contact_verbal_defeat_male',
+        name: '娜塔莎-无接触骂倒事件',
+        description:
+          '你被娜塔莎击败，作为惩罚她骑在你的跨上，摆出鄙视与比心的手势，比心的手势翘起小拇指，实际上是对你短小无能的鄙视。还对你进行辱骂与甜美偶像音的双重asmr调教，双重asmr里直白的辱骂与虚情假意的偶像音交替进行，最终你在无接触的情况下爆射，在高潮的强烈快感下你只能看见娜塔莎嘲讽的笑意与手势。',
+        images: ['无接触骂倒事件-1.png', '无接触骂倒事件-2.png'],
+      },
+      {
+        id: 'natasha_gaming_chair_tickling_defeat_male',
+        name: '娜塔莎-电竞椅挠痒调教事件',
+        description:
+          '你被娜塔莎击败，作为惩罚，你被她强制绑在她那改造过的调教电竞椅上，一边被她用跳蛋、飞机杯进行乳首、肉棒套弄，一边被她的电竞椅改造的机械手挠脚心与腋窝。',
+        images: ['电竞椅调教事件-1.png', '电竞椅调教事件-2.png'],
+      },
+      {
+        id: 'natasha_stocking_footjob_defeat_male',
+        name: '娜塔莎-丝袜足交事件',
+        description: '你被娜塔莎击败，作为惩罚她给你的肉棒套上裹满润滑液的白丝，用穿着白丝的玉足套弄你的肉，给你进行丝袜足交，强烈的磨砂感让你的肉棒十分敏感，最终爆射。',
+        images: ['丝袜足交事件-1.png', '丝袜足交事件-2.png'],
+      },
+      {
+        id: 'natasha_stocking_handjob_defeat_male',
+        name: '娜塔莎-丝责事件',
+        description: '你被娜塔莎击败，作为惩罚她给你的肉棒套上裹满润滑液的白丝，用手给你套弄肉棒，进行丝袜责，强烈的磨砂感让你的肉棒十分敏感，最终爆射。',
+        images: ['丝责事件-1.png'],
+      },
+      {
+        id: 'natasha_dog_training_face_step_defeat_male',
+        name: '娜塔莎-驯狗踩脸事件',
+        description: '你被娜塔莎击败，作为惩罚她给你穿项圈狗链，将玉足踩在你的脸色，命令你躺在地上像狗一样给她舔脚',
+        images: ['训狗踩脸事件-1.png', '训狗踩脸事件-3.png', '训狗事件踩脸-3.png'],
+      },
+      {
+        id: 'natasha_crotch_kick_defeat_male',
+        name: '娜塔莎-踢裆事件',
+        description: '你被娜塔莎击败，作为惩罚她命令你怪怪站好，然后用脚狠狠地踢你的裆部，在强烈的疼痛感作用下，你最终爆射。',
+        images: ['踢裆事件-1.png', '踢裆事件-2.png'],
+      },
+      {
+        id: 'natasha_cup_milking_defeat_male',
+        name: '娜塔莎-飞机杯榨取事件',
+        description:
+          '你被娜塔莎击败，作为惩罚她使用飞机杯给你撸管，她发挥自己电竞选手的手速握住飞机杯对你的肉棒进行高速套弄，最终你爆射在飞机杯里，她那蔑视嘲讽的表情似乎是在告诉你，你都不配将精液射在她的身上。',
+        images: ['飞机杯榨取事件-1.png', '飞机杯榨取事件-3.png'],
+      },
+      {
+        id: 'natasha_no_contact_panty_humiliation_defeat_male',
+        name: '娜塔莎-无接触骂倒羞辱事件',
+        description:
+          '你被娜塔莎击败，作为惩罚她骑在你的跨上，强制让你套上黑色蕾丝的女式内裤，对你摆出鄙视与比心的手势，比心的手势实际上是对你短小无能的鄙视。还对你进行辱骂与甜美偶像音的双重asmr调教，双重asmr里直白的辱骂与虚情假意的偶像音交替进行，最终你在无接触的情况下爆射，在高潮的强烈快感下你只能看见娜塔莎嘲讽的笑意与手势。',
+        images: ['无接触骂倒羞辱事件-1.png'],
+      },
+      {
+        id: 'natasha_facesit_nipple_defeat_male',
+        name: '娜塔莎-坐脸乳头责事件',
+        description: '你被娜塔莎击败，作为惩罚她脱下内裤坐到你的脸上，用手指刺激你的乳头，最终在未触碰肉棒的情况下，你被调教至高潮。',
+        images: ['坐脸乳头责事件-1.png', '坐脸乳头责事件-2.png'],
+      },
+      {
+        id: 'natasha_ear_licking_denial_defeat_male',
+        name: '娜塔莎-舔耳寸止事件',
+        description:
+          '你被娜塔莎击败，为惩罚她给你戴上口球与寸止环，一边对你进行辱骂与甜美偶像音双重asmr舔耳调教，一边撸动你的肉棒在你快要高潮前停下，对你进行寸止，在反复进行多次后，你终于承受不住而爆射出来。',
+        images: ['舔耳寸止事件-1.png'],
+      },
+      {
+        id: 'natasha_blindfold_ear_licking_denial_rare_defeat_male',
+        name: '（稀有事件）娜塔莎-蒙眼舔耳寸止事件',
+        description:
+          '你被娜塔莎击败，作为惩罚她给你戴上眼罩、口球与寸止环，一边对你进行辱骂与甜美偶像音双重asmr舔耳调教，一边撸动你的肉棒在你快要高潮前停下，对你进行寸止，在反复进行多次后，你一遍又一遍的祈求娜塔莎给你释放，但她无所动摇直到你接近崩溃，她要求你成为她的奴隶粉丝，只准粉她一个人，绝对听令于她。在崩溃之际，你答应她。',
+        images: ['蒙眼舔耳寸止事件-1.png'],
+        probability: 0.05,
+      },
+    ],
+    victory: [
+      {
+        id: 'natasha_butt_hook_spanking_victory_male',
+        name: '娜塔莎-股钩打屁股战胜事件',
+        description: '你战胜了娜塔莎，作为奖励你给她的菊穴带上钩子，让她跪在地上，狠狠拍打她的屁股，疼痛感让她挣扎，但一挣扎，菊穴里的股钩就会刺激她的菊穴，如此调教，她最终高潮了。',
+        images: ['股钩打屁股战胜事件-1.png'],
+      },
+      {
+        id: 'natasha_gaming_chair_victory_male',
+        name: '娜塔莎-电竞椅调教战胜事件',
+        description: '你战胜了娜塔莎，作为奖励你将她绑在她那改造过的调教电竞椅上，用AV震动棒刺激她的小穴、跳蛋刺激乳头，改造的机械手挠乳头、脚心、腋下，在多重刺激下，她最终高潮。',
+        images: ['电竞椅调教战胜事件-1.png', '电竞椅调教战胜事件-2.png'],
+      },
+      {
+        id: 'natasha_park_spanking_victory_male',
+        name: '娜塔莎-打屁股公园战胜事件',
+        description: '你战胜了娜塔莎，作为奖励你命令她脱下内裤像狗一样跪在公园地上，用手狠狠拍打她的屁股，对她进行公开调教。',
+        images: ['打屁股公园战胜事件-1.png'],
+      },
+      {
+        id: 'natasha_urination_victory_male',
+        name: '娜塔莎-排尿战胜事件',
+        description: '你战胜了娜塔莎，作为奖励你命令她摆出小狗撒尿的姿势在你面前撒尿，在羞愤与尴尬的情感下她一开始尿不出来，尴尬了段时间终于当着你的面尿了出来。',
+        images: ['排尿战胜事件-1.png', '排尿战胜事件-2.png'],
+      },
+      {
+        id: 'natasha_stairway_breastjob_rare_victory_male',
+        name: '（稀有事件）娜塔莎-教室贫乳乳交战胜事件',
+        description:
+          '你战胜了娜塔莎，作为奖励你命令她在楼梯口对你进行乳交，娜塔莎十分羞愤和恼怒，一方面是因为此时正在上课，虽然楼梯口次数没什么人，但她还是很怕被其他人发现，另一方面是她只有a罩杯，让自己乳交是在嘲讽自己胸小。她羞愤的挤着胸部生疏、卖力（想快点结束，因为害怕被发现）地对你进行乳交，最终你爆射在她的脸上和胸前。',
+        images: ['楼梯口贫乳乳交战胜事件-1.png'],
+        probability: 0.05,
+      },
+    ],
+  },
+  female: {
+    defeat: [
+      {
+        id: 'natasha_facesit_nipple_defeat_female',
+        name: '娜塔莎-坐脸乳头责事件',
+        description: '你被娜塔莎击败，作为惩罚她脱下内裤坐在你的脸上，给你夹上乳环，还用手指刺激你的乳头，最终在没接触你小穴的情况下让你到达了高潮。。',
+        images: ['坐脸乳头责事件-1.png'],
+      },
+      {
+        id: 'natasha_gaming_chair_self_play_defeat_female',
+        name: '娜塔莎-电竞椅调教自己玩游戏事件',
+        description:
+          '你被娜塔莎击败，你被她强制绑在她那改造过的调教电竞椅上，电竞椅对你进行全自动的机械调教，一边用AV震动棒刺激你的阴蒂，一边用毛刷、机械手挠你的腋窝、脚心，刺激你的胸部、乳头，给你戴上播放舔耳asmr的耳机，而娜塔莎全然无视你，自顾自的开了局游戏，在这种放置调教的情况下， 你高潮失神。',
+        images: ['电竞椅调教自己玩游戏事件-1.png'],
+      },
+      {
+        id: 'natasha_gaming_chair_defeat_female',
+        name: '娜塔莎-电竞椅调教事件',
+        description:
+          '你被娜塔莎击败，你被她强制绑在她那改造过的调教电竞椅上，电竞椅对你进行全自动的机械调教，一边用AV震动棒刺激你的阴蒂，一边用毛刷、机械手挠你的腋窝、脚心，刺激你的胸部、乳头，娜塔莎在你旁边对你进行辱骂与甜美偶像音交替着羞辱你，还用手对你进行挠痒、刺激乳头，最终你高潮失神。',
+        images: ['电竞椅调教事件-1.png'],
+      },
+      {
+        id: 'natasha_stocking_gag_bell_fingering_defeat_female',
+        name: '娜塔莎-丝袜塞嘴乳铃扣穴事件',
+        description: '你被娜塔莎击败，作为惩罚她将白丝袜脱下塞进你的嘴里，给你戴上乳铃，扣你的小穴，最终你高潮了。',
+        images: ['丝袜塞嘴乳铃扣穴事件-1.png'],
+      },
+      {
+        id: 'natasha_stocking_gag_bell_dildo_defeat_female',
+        name: '娜塔莎-丝袜塞嘴乳铃自慰棒事件',
+        description: '你被娜塔莎击败，作为惩罚她将白丝袜脱下塞进你的嘴里，给你戴上乳铃、眼罩，拿自慰棒抽插你的小穴，最终你高潮了。',
+        images: ['丝袜塞嘴乳铃自慰棒事件-1.png'],
+      },
+      {
+        id: 'natasha_dogeza_spanking_step_defeat_female',
+        name: '娜塔莎-打屁股士下座踩踏事件',
+        description: '你被娜塔莎击败，作为惩罚她命令你脱光衣服叠放整齐，摆出士下座的姿势在地上跪好，她用脚踹、踩你的屁股和背部，对你进行羞辱调教。',
+        images: ['打屁股士下座踩踏事件-1.png', '打屁股士下座踩踏事件-2.png'],
+      },
+      {
+        id: 'natasha_ear_licking_defeat_female',
+        name: '娜塔莎-舔耳事件',
+        description: '你被娜塔莎击败，作为惩罚她将你推倒在电竞椅上，对你进行辱骂与甜美偶像音的双重asmr调教，双重asmr里直白的辱骂与虚情假意的偶像音交替进行，同时还用手指扣挖你的小穴，最终你高潮失神。',
+        images: ['舔耳事件-1.png', '舔耳事件-2.png'],
+      },
+      {
+        id: 'natasha_bondage_defeat_female',
+        name: '娜塔莎-拘束调教事件',
+        description: '你被娜塔莎击败，作为惩罚她给你戴上眼罩、口枷、乳夹，拿绳索绑住你的双手吊在天上，一边刺激你的乳头，一边拿假阳具抽插你的小穴，最终你高潮失神。',
+        images: ['拘束调教事件-1.png', '拘束调教事件-2.png'],
+      },
+      {
+        id: 'natasha_chastity_bondage_rare_defeat_female',
+        name: '（稀有事件）娜塔莎-贞操锁束缚事件',
+        description:
+          '你被娜塔莎击败，作为惩罚她给你戴上眼罩、乳夹与贞操锁，拿锁链锁住你的双手吊在天上，喂你喝下春药，启动电动自慰棒放在你的耳边让你不断联想自慰的场景，你被春药作用努力夹腿自慰可惜被贞操锁束缚没得到一丝快感，你一遍又一遍的祈求娜塔莎给你释放，但她无所动摇直到你接近崩溃，她要求你成为她的奴隶粉丝，只准粉她一个人，绝对听令于她。在崩溃之际，你答应了她。',
+        images: ['贞操锁束缚事件-1.png'],
+        probability: 0.05,
+      },
+    ],
+    victory: [
+      {
+        id: 'natasha_gaming_chair_victory_female',
+        name: '娜塔莎-电竞椅调教战胜事件',
+        description: '你战胜了娜塔莎，作为奖励你将她绑在她那改造过的调教电竞椅上，用AV震动棒刺激她的小穴、跳蛋刺激乳头，改造的机械手挠乳头、脚心、腋下，在多重刺激下，她最终高潮。',
+        images: ['电竞椅调教战胜事件-1.png', '电竞椅调教战胜事件-2.png'],
+      },
+      {
+        id: 'natasha_urination_victory_female',
+        name: '娜塔莎-排尿战胜事件',
+        description: '你战胜了娜塔莎，作为奖励你命令她摆出小狗撒尿的姿势在你面前撒尿，在羞愤与尴尬的情感下她一开始尿不出来，尴尬了段时间终于当着你的面尿了出来。',
+        images: ['排尿战胜事件-1.png'],
+      },
+      {
+        id: 'natasha_classroom_yuri_rare_victory_female',
+        name: '（稀有事件）娜塔莎-教室隐秘百合战胜事件',
+        description:
+          '你战胜了娜塔莎，作为奖励你命令她在空教室脱下胸罩坐在自己的腿上，娜塔莎十分羞愤和恼怒，因为这是教室，虽然已经放学了此时空无一人，但她还是很怕被其他人发现。她按照你的要求坐到你的腿上，你用手指扣挖她的小穴，而模仿她的甜美偶像音在她耳边说着羞耻、侮辱的话，娜塔莎羞愤不已，最终高潮。',
+        images: ['教室隐秘百合战胜事件-1.png', '教室隐秘百合战胜事件-2.png'],
+        probability: 0.05,
+      },
+    ],
+  },
+};
+
 // 所有角色的CG配置
 export const CG_CONFIGS: CharacterCGConfig[] = [
   xingYeGuangConfig,
@@ -3741,6 +3941,7 @@ export const CG_CONFIGS: CharacterCGConfig[] = [
   weiSiPeiLaConfig,
   mingRiXiangConfig,
   aiLiSiWenTeConfig,
+  naTaShaSiMaiErConfig,
 ];
 
 // 根据角色名称获取CG配置

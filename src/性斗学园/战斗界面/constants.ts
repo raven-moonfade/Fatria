@@ -1,4 +1,5 @@
 import { SkillType, type Character, type CombatLogEntry, type Item, type Skill } from './types';
+import { clearStoredPlayerAvatar, getStoredPlayerAvatar, saveStoredPlayerAvatar } from '../shared/localPreferences';
 
 // R2 立绘基础路径
 const R2_PORTRAIT_BASE_URL = 'https://img.vinsimage.org/性斗学园/立绘';
@@ -11,9 +12,6 @@ const RANDOM_IMAGE_URLS = [
   'https://picsum.photos/400/600?random=4',
   'https://picsum.photos/400/600?random=5',
 ];
-
-// LocalStorage 键名
-const PLAYER_AVATAR_KEY = 'combat_player_custom_avatar';
 
 /**
  * 根据敌人全名生成立绘 URL
@@ -43,12 +41,7 @@ export function getRandomImageUrl(): string {
  * @returns 玩家头像 URL 或 null
  */
 export function getPlayerCustomAvatar(): string | null {
-  try {
-    return localStorage.getItem(PLAYER_AVATAR_KEY);
-  } catch (e) {
-    console.warn('[战斗界面] 无法读取玩家自定义头像:', e);
-    return null;
-  }
+  return getStoredPlayerAvatar();
 }
 
 /**
@@ -56,24 +49,16 @@ export function getPlayerCustomAvatar(): string | null {
  * @param avatarUrl 头像 URL（base64 或 URL）
  */
 export function savePlayerCustomAvatar(avatarUrl: string): void {
-  try {
-    localStorage.setItem(PLAYER_AVATAR_KEY, avatarUrl);
-    console.info('[战斗界面] 玩家自定义头像已保存');
-  } catch (e) {
-    console.error('[战斗界面] 保存玩家自定义头像失败:', e);
-  }
+  saveStoredPlayerAvatar(avatarUrl);
+  console.info('[战斗界面] 玩家自定义头像已保存');
 }
 
 /**
  * 清除玩家自定义头像
  */
 export function clearPlayerCustomAvatar(): void {
-  try {
-    localStorage.removeItem(PLAYER_AVATAR_KEY);
-    console.info('[战斗界面] 玩家自定义头像已清除');
-  } catch (e) {
-    console.error('[战斗界面] 清除玩家自定义头像失败:', e);
-  }
+  clearStoredPlayerAvatar();
+  console.info('[战斗界面] 玩家自定义头像已清除');
 }
 
 // 创建日志辅助函数

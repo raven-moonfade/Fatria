@@ -42,9 +42,9 @@
       </div>
     </div>
 
-    <!-- 装备总加成 -->
+    <!-- 装备加成汇总 -->
     <div class="section-card" v-if="hasEquipmentBonuses">
-      <h3 class="section-title"><i class="fas fa-chart-line"></i> 装备总加成</h3>
+      <h3 class="section-title"><i class="fas fa-chart-line"></i> 装备加成汇总</h3>
       <div class="bonus-grid">
         <div v-for="(value, key) in equipmentBonuses" :key="key" class="bonus-item" v-show="value !== 0">
           <span class="bonus-label">{{ formatBonusLabel(String(key)) }}</span>
@@ -165,6 +165,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
+import { calculateEquipmentBonus } from '../../../shared/statSelectors';
 
 const props = defineProps<{
   characterData: any;
@@ -229,9 +231,9 @@ const equipmentSlots = computed(() => {
   ];
 });
 
-// 装备总加成
+// 装备加成汇总
 const equipmentBonuses = computed(() => {
-  return props.characterData.物品系统?.装备总加成 || {};
+  return calculateEquipmentBonus(props.characterData);
 });
 
 const hasEquipmentBonuses = computed(() => {
@@ -310,7 +312,6 @@ function formatBonusLabel(key: string): string {
     基础忍耐力成算: '忍耐力%',
     闪避率加成: '闪避率',
     暴击率加成: '暴击率',
-    意志力加成: '意志力',
   };
   return labelMap[key] || key;
 }
@@ -442,7 +443,6 @@ function createFullBonusAttributes(partial?: any): Record<string, number> {
     基础忍耐力成算: 0,
     闪避率加成: 0,
     暴击率加成: 0,
-    意志力加成: 0,
   };
 
   if (!partial || typeof partial !== 'object') {
@@ -462,14 +462,8 @@ async function equipItem(itemKey: string, item: any) {
     return;
   }
 
-  const globalAny = window as any;
-  if (!globalAny.Mvu) {
-    console.error('[背包界面] MVU 未初始化');
-    return;
-  }
-
   try {
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.error('[背包界面] 无法获取 MVU 数据');
       return;
@@ -544,11 +538,8 @@ async function equipItem(itemKey: string, item: any) {
       描述: item.描述 || '',
     };
 
-    // 重新计算装备总加成
-    calculateEquipmentBonuses(statData);
-
     // 更新 MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     // 显示成功提示
     if (typeof toastr !== 'undefined') {
@@ -569,14 +560,8 @@ async function discardItem(itemKey: string) {
   const ok = confirm(`确认售卖「${itemKey}」吗？每件固定 50 金币`);
   if (!ok) return;
 
-  const globalAny = window as any;
-  if (!globalAny.Mvu) {
-    console.error('[背包界面] MVU 未初始化');
-    return;
-  }
-
   try {
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.error('[背包界面] 无法获取 MVU 数据');
       return;
@@ -601,7 +586,7 @@ async function discardItem(itemKey: string) {
     const currentCoins = Number(statData.物品系统.学园金币 ?? 0) || 0;
     statData.物品系统.学园金币 = currentCoins + 50;
 
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`已售卖 ${itemKey}，获得 50 金币`);
@@ -627,14 +612,8 @@ async function bulkSellFilteredItems() {
   );
   if (!ok) return;
 
-  const globalAny = window as any;
-  if (!globalAny.Mvu) {
-    console.error('[背包界面] MVU 未初始化');
-    return;
-  }
-
   try {
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.error('[背包界面] 无法获取 MVU 数据');
       return;
@@ -666,7 +645,7 @@ async function bulkSellFilteredItems() {
     const gainedCoins = soldCount * SELL_PRICE_PER_ITEM;
     statData.物品系统.学园金币 = currentCoins + gainedCoins;
 
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`已批量售卖 ${soldTypes} 种共 ${soldCount} 件，获得 ${gainedCoins} 金币`);
@@ -683,16 +662,10 @@ async function bulkSellFilteredItems() {
 
 // 卸下装备
 async function unequipItem(slotKey: string) {
-  const globalAny = window as any;
-  if (!globalAny.Mvu) {
-    console.error('[背包界面] MVU 未初始化');
-    return;
-  }
-
   try {
     console.log('[背包界面] 开始卸下装备，槽位:', slotKey);
 
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.error('[背包界面] 无法获取 MVU 数据');
       return;
@@ -753,13 +726,8 @@ async function unequipItem(slotKey: string) {
 
     console.log('[背包界面] 装备槽位已清空');
 
-    // 重新计算装备总加成
-    calculateEquipmentBonuses(statData);
-
-    console.log('[背包界面] 装备总加成已重新计算:', statData.物品系统.装备总加成);
-
     // 更新 MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     console.log('[背包界面] MVU 数据已更新');
 
@@ -777,37 +745,6 @@ async function unequipItem(slotKey: string) {
       toastr.error('卸下失败，请重试');
     }
   }
-}
-
-// 计算装备总加成
-function calculateEquipmentBonuses(statData: any) {
-  const equipmentSlots = ['主装备', '副装备', '饰品1', '饰品2', '特殊装备'];
-  const totalBonuses: Record<string, number> = {
-    魅力加成: 0,
-    幸运加成: 0,
-    基础性斗力加成: 0,
-    基础性斗力成算: 0,
-    基础忍耐力加成: 0,
-    基础忍耐力成算: 0,
-    闪避率加成: 0,
-    暴击率加成: 0,
-    意志力加成: 0,
-  };
-
-  equipmentSlots.forEach(slotKey => {
-    const item = statData.物品系统?._装备栏?.[slotKey];
-    if (item && item.加成属性) {
-      Object.keys(totalBonuses).forEach(key => {
-        totalBonuses[key] += item.加成属性[key] || 0;
-      });
-    }
-  });
-
-  // 更新装备总加成
-  if (!statData.物品系统) {
-    statData.物品系统 = {};
-  }
-  statData.物品系统.装备总加成 = totalBonuses;
 }
 </script>
 

@@ -29,21 +29,20 @@
           <div class="help-section">
             <div class="help-section-title">基础属性</div>
             <div class="help-text">
-              <div>加点修改的是基础值；最终显示值 = 基础值 + 永久加成 + 临时加成 + 装备加成（以脚本结算为准）。</div>
-              <div>魅力 = 基础魅力 + (临时状态.魅力加成) + (永久状态.魅力加成) + (装备总加成.魅力加成)。</div>
-              <div>幸运 = 基础幸运 + (临时状态.幸运加成) + (永久状态.幸运加成) + (装备总加成.幸运加成)。</div>
+              <div>加点修改的是基础值；最终显示值 = 基础属性 + 状态加成 + 装备加成 + 天赋加成。</div>
+              <div>魅力与幸运从“基础属性”读取基础值，装备和状态只保留各自事实，页面实时计算总值。</div>
             </div>
           </div>
 
           <div class="help-section">
             <div class="help-section-title">战斗相关</div>
             <div class="help-text">
-              <div>性斗力（实时性斗力）= round( (基础性斗力 + 加成和) × (1 + 成算和/100) )。</div>
+              <div>当前性斗力 = round( (基础性斗力 + 加成和) × (1 + 成算和/100) )。</div>
               <div>
                 其中：加成和 = 临时.基础性斗力加成 + 永久.基础性斗力加成 + 装备.基础性斗力加成；成算和 =
                 临时.基础性斗力成算 + 永久.基础性斗力成算 + 装备.基础性斗力成算。
               </div>
-              <div>忍耐力（实时忍耐力）= round( (基础忍耐力 + 加成和) × (1 + 成算和/100) )。</div>
+              <div>当前忍耐力 = round( (基础忍耐力 + 加成和) × (1 + 成算和/100) )。</div>
               <div>
                 其中：加成和 = 临时.基础忍耐力加成 + 永久.基础忍耐力加成 + 装备.基础忍耐力加成；成算和 =
                 临时.基础忍耐力成算 + 永久.基础忍耐力成算 + 装备.基础忍耐力成算。
@@ -56,7 +55,7 @@
                 暴击率（上限100） = clamp( 基础暴击率 + (临时.暴击率加成) + (永久.暴击率加成) + (装备.暴击率加成),
                 0..100 )。
               </div>
-              <div>段位：你当前的竞技/评价等级；段位积分会影响升段流程。</div>
+              <div>段位：你当前的竞技/评价等级；当前按等级自动更新。</div>
               <div>战斗判定（来自战斗计算）：</div>
               <div>
                 - 闪避判定：最终命中率 = 技能命中率 - 目标闪避率 + (攻击者幸运/8)，并 clamp 到 10%..95%；随机
@@ -85,16 +84,16 @@
           <div class="help-section">
             <div class="help-section-title">状态与加成</div>
             <div class="help-text">
-              <div>永久状态：长期生效的标签/效果，会产生加成统计。</div>
+              <div>永久状态：长期生效的标签/效果，每个状态携带自己的加成。</div>
               <div>临时状态：按“回合数”持续，结束后失效，同样可能产生临时加成。</div>
-              <div>加成统计：展示对核心属性/战斗属性的增减（正数为绿色，负数为红色）。</div>
+              <div>页面展示的加成汇总由状态列表实时计算，不写回变量。</div>
             </div>
           </div>
 
           <div class="help-section">
             <div class="help-section-title">装备与最终数值</div>
             <div class="help-text">
-              <div>装备会提供加成属性，系统会汇总为“装备总加成”。</div>
+              <div>装备会提供加成属性，页面从装备栏实时汇总装备加成。</div>
               <div>常见口径：最终属性 ≈ 基础属性（基础xxx / 上限） + 永久加成 + 临时加成 + 装备加成。</div>
               <div>提示：具体公式以脚本结算为准；界面显示的是结算后的最终/实时结果。</div>
             </div>
@@ -142,10 +141,31 @@
 
     <!-- 可加点属性 -->
     <div class="detail-card" v-if="availablePoints > 0">
-      <h3 class="detail-title">
-        <i class="fas fa-plus-circle"></i> 属性加点
-        <span class="points-remaining">(剩余 {{ availablePoints }} 点)</span>
-      </h3>
+      <div class="upgrade-card-header">
+        <h3 class="detail-title">
+          <i class="fas fa-plus-circle"></i> 属性加点
+          <span class="points-remaining">(剩余 {{ availablePoints }} 点)</span>
+        </h3>
+        <div class="upgrade-mode-toggle" aria-label="属性加点倍率">
+          <button
+            type="button"
+            :class="{ active: pointCostMultiplier === 1 }"
+            title="每次消耗1点属性点"
+            @click="setPointCostMultiplier(1)"
+          >
+            x1
+          </button>
+          <button
+            type="button"
+            :class="{ active: pointCostMultiplier === 10 }"
+            :disabled="availablePoints < 10"
+            title="每次消耗10点属性点"
+            @click="setPointCostMultiplier(10)"
+          >
+            x10
+          </button>
+        </div>
+      </div>
       <div class="attribute-upgrade-grid">
         <div class="upgrade-item" v-for="attr in upgradeableAttributes" :key="attr.key">
           <div class="upgrade-info">
@@ -155,11 +175,12 @@
           </div>
           <button
             class="upgrade-btn"
-            @click="upgradeAttribute(attr.key, attr.increment)"
-            :disabled="availablePoints <= 0"
+            :disabled="availablePoints < pointCostMultiplier || isUpgrading"
+            :title="`消耗${pointCostMultiplier}点属性点`"
+            @click="upgradeAttribute(attr.key, attr.increment, pointCostMultiplier)"
           >
             <i class="fas fa-plus"></i>
-            <span>+{{ attr.increment }}{{ attr.isPercent ? '%' : '' }}</span>
+            <span>+{{ attr.increment * pointCostMultiplier }}{{ attr.isPercent ? '%' : '' }}</span>
           </button>
         </div>
       </div>
@@ -171,28 +192,28 @@
         <div class="stat-icon"><i class="fas fa-heart"></i></div>
         <div class="stat-info">
           <div class="stat-label">魅力</div>
-          <div class="stat-value">{{ characterData.核心状态?._魅力 || 10 }}</div>
+          <div class="stat-value">{{ derivedStats.charm }}</div>
         </div>
       </div>
       <div class="stat-card luck">
         <div class="stat-icon"><i class="fas fa-clover"></i></div>
         <div class="stat-info">
           <div class="stat-label">幸运</div>
-          <div class="stat-value">{{ characterData.核心状态?._幸运 || 10 }}</div>
+          <div class="stat-value">{{ derivedStats.luck }}</div>
         </div>
       </div>
       <div class="stat-card combat">
         <div class="stat-icon"><i class="fas fa-fire"></i></div>
         <div class="stat-info">
           <div class="stat-label">性斗力</div>
-          <div class="stat-value">{{ characterData.性斗系统?.实时性斗力 || 0 }}</div>
+          <div class="stat-value">{{ derivedStats.sexPower }}</div>
         </div>
       </div>
       <div class="stat-card endurance">
         <div class="stat-icon"><i class="fas fa-shield-halved"></i></div>
         <div class="stat-info">
           <div class="stat-label">忍耐力</div>
-          <div class="stat-value">{{ characterData.性斗系统?.实时忍耐力 || 0 }}</div>
+          <div class="stat-value">{{ derivedStats.endurance }}</div>
         </div>
       </div>
     </div>
@@ -256,11 +277,11 @@
       <div class="attribute-grid">
         <div class="attribute-item">
           <span class="attribute-label">闪避率</span>
-          <span class="attribute-value dodge">{{ characterData.核心状态?._闪避率 || 0 }}%</span>
+          <span class="attribute-value dodge">{{ derivedStats.evasion }}%</span>
         </div>
         <div class="attribute-item">
           <span class="attribute-label">暴击率</span>
-          <span class="attribute-value crit">{{ characterData.核心状态?._暴击率 || 0 }}%</span>
+          <span class="attribute-value crit">{{ derivedStats.crit }}%</span>
         </div>
         <div class="attribute-item">
           <span class="attribute-label">堕落度</span>
@@ -281,7 +302,7 @@
           <i class="fas fa-sparkles"></i> {{ state }}
         </span>
       </div>
-      <!-- 加成统计 -->
+      <!-- 加成汇总 -->
       <div v-if="hasPermanentBonuses" class="bonus-section">
         <div class="bonus-header">加成效果</div>
         <div class="bonus-grid">
@@ -299,12 +320,12 @@
     <div class="detail-card" v-if="hasTempStates">
       <h3 class="detail-title"><i class="fas fa-clock"></i> 临时状态</h3>
       <div class="states-list">
-        <span v-for="(turns, state) in tempStates" :key="state" class="state-tag temp">
-          <i class="fas fa-hourglass-half"></i> {{ state }}
-          <span class="turns-badge">{{ turns }}回合</span>
+        <span v-for="state in tempStates" :key="state.name" class="state-tag temp">
+          <i class="fas fa-hourglass-half"></i> {{ state.name }}
+          <span class="turns-badge">{{ state.turns }}回合</span>
         </span>
       </div>
-      <!-- 临时加成统计 -->
+      <!-- 临时加成汇总 -->
       <div v-if="hasTempBonuses" class="bonus-section">
         <div class="bonus-header">临时加成</div>
         <div class="bonus-grid">
@@ -322,6 +343,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { getStoredPlayerAvatar, saveStoredPlayerAvatar } from '../../../shared/localPreferences';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
+import { getPermanentBonus, getPlayerDerivedStats, getTemporaryBonus } from '../../../shared/statSelectors';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
 
 const props = defineProps<{
@@ -333,23 +357,28 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const avatarUrl = ref<string>('');
 const showHelp = ref(false);
 const isUpgrading = ref(false); // 防抖锁，防止快速点击
+const pointCostMultiplier = ref<1 | 10>(1);
 
-const AVATAR_STORAGE_KEY = 'xuedou_profile_avatar_url';
+const derivedStats = computed(() => getPlayerDerivedStats(props.characterData || {}));
 
 // 可用属性点
 const availablePoints = computed(() => {
   return props.characterData.核心状态?.$属性点 || 0;
 });
 
-// 可加点的属性列表（修改 $基础xxx 值，最终值 _xxx 会自动计算）
+// 可加点的属性列表（只修改事实字段，最终值由 selector 实时计算）
 const upgradeableAttributes = [
-  { key: '核心状态.$基础魅力', label: '魅力', icon: 'fa-heart', increment: 2, isPercent: false },
-  { key: '核心状态.$基础幸运', label: '幸运', icon: 'fa-clover', increment: 2, isPercent: false },
-  { key: '核心状态.$基础闪避率', label: '闪避率', icon: 'fa-running', increment: 1, isPercent: true },
-  { key: '核心状态.$基础暴击率', label: '暴击率', icon: 'fa-crosshairs', increment: 1, isPercent: true },
+  { key: '基础属性._魅力', label: '魅力', icon: 'fa-heart', increment: 2, isPercent: false },
+  { key: '基础属性._幸运', label: '幸运', icon: 'fa-clover', increment: 2, isPercent: false },
+  { key: '基础属性._闪避率', label: '闪避率', icon: 'fa-running', increment: 1, isPercent: true },
+  { key: '基础属性._暴击率', label: '暴击率', icon: 'fa-crosshairs', increment: 1, isPercent: true },
   { key: '核心状态.$最大耐力', label: '最大耐力', icon: 'fa-bolt', increment: 10, isPercent: false },
   { key: '核心状态.$最大快感', label: '最大快感', icon: 'fa-heart-pulse', increment: 10, isPercent: false },
 ];
+
+function setPointCostMultiplier(multiplier: 1 | 10) {
+  pointCostMultiplier.value = multiplier;
+}
 
 // 获取属性值
 function getAttributeValue(key: string): number {
@@ -362,30 +391,26 @@ function getAttributeValue(key: string): number {
 }
 
 // 升级属性
-async function upgradeAttribute(key: string, increment: number) {
+async function upgradeAttribute(key: string, increment: number, pointCost = 1) {
+  const cost = Math.max(1, Math.floor(Number(pointCost) || 1));
+
   // 防抖：如果正在升级中，直接返回
   if (isUpgrading.value) return;
-  if (availablePoints.value <= 0) return;
+  if (availablePoints.value < cost) return;
 
   // 设置防抖锁
   isUpgrading.value = true;
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) {
-      isUpgrading.value = false;
-      return;
-    }
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
-    if (!mvuData || !mvuData.stat_data) {
+    const mvuData = await getLatestMvuData();
+    if (!mvuData?.stat_data) {
       isUpgrading.value = false;
       return;
     }
 
     // 二次检查：从MVU数据中获取实际属性点数量
-    const actualPoints = mvuData.stat_data.核心状态?.$属性点 || 0;
-    if (actualPoints <= 0) {
+    const actualPoints = Number(mvuData.stat_data.核心状态?.$属性点 || 0);
+    if (!Number.isFinite(actualPoints) || actualPoints < cost) {
       isUpgrading.value = false;
       return;
     }
@@ -398,21 +423,22 @@ async function upgradeAttribute(key: string, increment: number) {
       currentValue = currentValue[part];
     }
     const lastKey = parts[parts.length - 1];
-    const oldValue = currentValue[lastKey] || 0;
+    const oldValue = Number(currentValue[lastKey] || 0);
+    const safeOldValue = Number.isFinite(oldValue) ? oldValue : 0;
 
     // 更新属性值
-    currentValue[lastKey] = oldValue + increment;
+    currentValue[lastKey] = safeOldValue + increment * cost;
 
     // 减少属性点（确保不会变成负数）
     if (!mvuData.stat_data.核心状态) mvuData.stat_data.核心状态 = {};
-    mvuData.stat_data.核心状态.$属性点 = Math.max(0, actualPoints - 1);
+    mvuData.stat_data.核心状态.$属性点 = Math.max(0, actualPoints - cost);
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     // 显示成功提示
     if (typeof toastr !== 'undefined') {
-      toastr.success(`属性提升成功！`, '成功', { timeOut: 1500 });
+      toastr.success(`已消耗 ${cost} 点属性点`, '属性提升成功', { timeOut: 1500 });
     }
   } catch (error) {
     console.error('[档案] 属性升级失败:', error);
@@ -429,11 +455,11 @@ async function upgradeAttribute(key: string, increment: number) {
 
 // 永久状态
 const permanentStates = computed(() => {
-  return props.characterData.永久状态?.状态列表 || [];
+  return Object.keys(props.characterData.永久状态?.状态列表 || {});
 });
 
 const permanentBonuses = computed(() => {
-  return props.characterData.永久状态?.加成统计 || {};
+  return getPermanentBonus(props.characterData || {});
 });
 
 const hasPermanentBonuses = computed(() => {
@@ -443,15 +469,18 @@ const hasPermanentBonuses = computed(() => {
 
 // 临时状态
 const tempStates = computed(() => {
-  return props.characterData.临时状态?.状态列表 || {};
+  return Object.entries(props.characterData.临时状态?.状态列表 || {}).map(([name, effect]: [string, any]) => ({
+    name,
+    turns: Math.max(0, Number(effect?.剩余回合 ?? 0) || 0),
+  }));
 });
 
 const hasTempStates = computed(() => {
-  return Object.keys(tempStates.value).length > 0;
+  return tempStates.value.length > 0;
 });
 
 const tempBonuses = computed(() => {
-  return props.characterData.临时状态?.加成统计 || {};
+  return getTemporaryBonus(props.characterData || {});
 });
 
 const hasTempBonuses = computed(() => {
@@ -459,37 +488,12 @@ const hasTempBonuses = computed(() => {
   return Object.values(bonuses).some((v: any) => v !== 0);
 });
 
-// 从 MVU 变量加载头像
+// 从本地偏好加载头像
 function loadAvatarUrl() {
   try {
-    const globalAny = window as any;
-
-    // 从MVU变量读取
-    if (globalAny.Mvu) {
-      const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
-      const saved = mvuData?.stat_data?.角色基础?.$头像URL;
-      if (saved && typeof saved === 'string' && saved.trim()) {
-        avatarUrl.value = saved;
-        return;
-      }
-    }
-
-    // MVU 中未找到：降级从 localStorage 恢复（避免换楼层后丢失）
-    const localSaved = localStorage.getItem(AVATAR_STORAGE_KEY);
+    const localSaved = getStoredPlayerAvatar();
     if (localSaved && localSaved.trim()) {
       avatarUrl.value = localSaved;
-
-      // 尝试把 localStorage 的头像回写到 MVU，后续同步逻辑就能继续工作
-      if (globalAny.Mvu) {
-        const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
-        if (mvuData && mvuData.stat_data) {
-          if (!mvuData.stat_data.角色基础) {
-            mvuData.stat_data.角色基础 = {};
-          }
-          mvuData.stat_data.角色基础.$头像URL = localSaved;
-          void globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
-        }
-      }
       return;
     }
   } catch (err) {
@@ -498,28 +502,10 @@ function loadAvatarUrl() {
   avatarUrl.value = '';
 }
 
-// 保存头像URL到MVU变量
+// 保存头像 URL 到本地偏好
 async function saveAvatarUrl(url: string) {
   try {
-    const globalAny = window as any;
-
-    try {
-      localStorage.setItem(AVATAR_STORAGE_KEY, url);
-    } catch (e) {
-      console.warn('[状态栏] 保存头像到 localStorage 失败:', e);
-    }
-
-    if (globalAny.Mvu) {
-      const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
-      if (mvuData && mvuData.stat_data) {
-        if (!mvuData.stat_data.角色基础) {
-          mvuData.stat_data.角色基础 = {};
-        }
-        mvuData.stat_data.角色基础.$头像URL = url;
-        await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
-      }
-    }
-
+    saveStoredPlayerAvatar(url);
     avatarUrl.value = url;
     toastr.success('头像上传成功', '成功', { timeOut: 2000 });
   } catch (err) {
@@ -576,7 +562,6 @@ function formatBonusLabel(key: string): string {
     基础忍耐力成算: '忍耐力%',
     闪避率加成: '闪避率',
     暴击率加成: '暴击率',
-    意志力加成: '意志力',
   };
   return labelMap[key] || key;
 }
@@ -970,10 +955,62 @@ onMounted(() => {
   gap: 10px;
 }
 
+.upgrade-card-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  .detail-title {
+    margin-bottom: 0;
+  }
+}
+
+.upgrade-mode-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+
+  button {
+    min-width: 42px;
+    height: 28px;
+    border: 0;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.6);
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
+    transition:
+      color 0.16s ease,
+      background 0.16s ease,
+      box-shadow 0.16s ease;
+
+    &.active {
+      color: #fff;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      box-shadow: 0 6px 14px rgba(102, 126, 234, 0.28);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+}
+
 .upgrade-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 10px;
@@ -981,6 +1018,8 @@ onMounted(() => {
 }
 
 .upgrade-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -995,6 +1034,7 @@ onMounted(() => {
   .upgrade-label {
     font-size: 13px;
     color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
   }
 
   .upgrade-value {
@@ -1008,8 +1048,10 @@ onMounted(() => {
 }
 
 .upgrade-btn {
+  min-width: 52px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   padding: 6px 12px;
   background: linear-gradient(135deg, #667eea, #764ba2);
@@ -1037,6 +1079,30 @@ onMounted(() => {
   font-weight: normal;
   color: #fbbf24;
   margin-left: 8px;
+}
+
+@media (max-width: 380px) {
+  .upgrade-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .upgrade-mode-toggle {
+    width: 100%;
+
+    button {
+      flex: 1;
+    }
+  }
+
+  .upgrade-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .upgrade-btn {
+    width: 100%;
+  }
 }
 
 .stats-grid {
@@ -1205,10 +1271,6 @@ onMounted(() => {
 
   &.lust {
     background: linear-gradient(90deg, #f472b6, #ec4899);
-  }
-
-  &.willpower {
-    background: linear-gradient(90deg, #60a5fa, #3b82f6);
   }
 
   &.exp {

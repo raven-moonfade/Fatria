@@ -1,123 +1,280 @@
 <template>
   <div v-if="isVisible" class="status-bar-overlay" @click.self="close">
     <div class="status-bar-container" @click.stop>
-      <!-- 手机边框 -->
-      <div class="phone-frame">
-        <!-- 动态背景 -->
-        <div class="phone-background">
-          <div class="bg-gradient-1"></div>
-          <div class="bg-gradient-2"></div>
-        </div>
-
-        <!-- 状态栏头部 -->
-        <div class="status-header">
-          <div class="header-left">
-            <button
-              v-if="currentPage !== 'dashboard'"
-              class="back-button"
-              title="返回主页"
-              @click="currentPage = 'dashboard'"
-            >
-              <i class="fas fa-home"></i>
-            </button>
-            <div class="header-time">{{ currentTime }}</div>
+      <div class="phone-device">
+        <div class="phone-frame" :class="phoneFrameClasses" :style="phoneStyle">
+          <div class="phone-wallpaper" :style="wallpaperLayerStyle">
+            <img v-if="customWallpaperSrc" class="phone-wallpaper-image" :src="customWallpaperSrc" alt="" />
           </div>
-          <div class="header-icons">
-            <i class="fas fa-signal"></i>
-            <span class="signal-text">5G</span>
-            <div class="battery-indicator">
-              <div class="battery-fill"></div>
-            </div>
-            <!-- 关闭按钮 -->
-            <button class="close-header-button" @click="close" title="关闭">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
+          <div class="phone-tint"></div>
 
-        <!-- 内容区域 -->
-        <div class="status-content">
-          <!-- Dashboard 主页（默认显示） -->
-          <DashboardPage v-if="currentPage === 'dashboard'" :character-data="characterData" />
-
-          <!-- Profile 档案页 -->
-          <ProfilePage v-if="currentPage === 'profile'" :character-data="characterData" :combat-data="combatData" />
-
-          <!-- Inventory 背包页 -->
-          <InventoryPage v-if="currentPage === 'inventory'" :character-data="characterData" />
-
-          <!-- Quest 任务页 -->
-          <QuestPage v-if="currentPage === 'quest'" :character-data="characterData" />
-
-          <!-- Relationship 关系页 -->
-          <RelationshipPage v-if="currentPage === 'relationship'" :character-data="characterData" />
-
-          <!-- Skills 技能页 -->
-          <SkillPage v-if="currentPage === 'skills'" :character-data="characterData" />
-
-          <!-- Map 地图页 -->
-          <MapPage v-if="currentPage === 'map'" :character-data="characterData" />
-
-          <!-- Shop 商店页 -->
-          <ShopPage v-if="currentPage === 'shop'" :character-data="characterData" />
-
-          <!-- CG 页面 -->
-          <CGPage v-if="currentPage === 'cg'" :character-data="characterData" />
-        </div>
-
-        <!-- 底部导航栏 -->
-        <div class="bottom-nav" ref="bottomNavRef" @wheel.prevent="handleBottomNavWheel">
-          <button class="nav-button" :class="{ active: currentPage === 'profile' }" @click="currentPage = 'profile'">
-            <i class="fas fa-user"></i>
-            <span>档案</span>
-          </button>
-          <button class="nav-button" :class="{ active: currentPage === 'skills' }" @click="currentPage = 'skills'">
-            <i class="fas fa-hand-fist"></i>
-            <span>技能</span>
-          </button>
           <button
-            class="nav-button"
-            :class="{ active: currentPage === 'inventory' }"
-            @click="currentPage = 'inventory'"
+            v-if="currentPage === 'home'"
+            class="phone-exit-button"
+            type="button"
+            title="退出"
+            aria-label="退出状态栏"
+            @click="close"
           >
-            <i class="fas fa-shopping-bag"></i>
-            <span>背包</span>
+            <i class="fas fa-power-off"></i>
           </button>
-          <button class="nav-button" :class="{ active: currentPage === 'quest' }" @click="currentPage = 'quest'">
-            <i class="fas fa-scroll"></i>
-            <span>任务</span>
-          </button>
-          <button
-            class="nav-button"
-            :class="{ active: currentPage === 'relationship' }"
-            @click="currentPage = 'relationship'"
-          >
-            <i class="fas fa-heart"></i>
-            <span>关系</span>
-          </button>
-          <button class="nav-button" :class="{ active: currentPage === 'shop' }" @click="currentPage = 'shop'">
-            <i class="fas fa-store"></i>
-            <span>商店</span>
-          </button>
-          <button class="nav-button" :class="{ active: currentPage === 'cg' }" @click="currentPage = 'cg'">
-            <i class="fas fa-images"></i>
-            <span>CG</span>
-          </button>
-          <button class="nav-button" :class="{ active: currentPage === 'map' }" @click="currentPage = 'map'">
-            <i class="fas fa-map"></i>
-            <span>地图</span>
-          </button>
-        </div>
 
-        <!-- 底部指示器 -->
-        <div class="home-indicator"></div>
+          <main class="phone-screen" :class="{ 'phone-screen-app': currentPage !== 'home' }">
+            <section v-if="currentPage === 'home'" class="home-screen">
+              <div class="home-widgets">
+                <button class="home-widget time-widget" type="button" @click="setPage('dashboard')">
+                  <span class="widget-main">{{ currentTime }}</span>
+                  <span class="widget-sub">{{ currentDate }}</span>
+                </button>
+                <button class="home-widget location-widget" type="button" @click="setPage('map')">
+                  <span class="widget-main">{{ currentLocation }}</span>
+                  <span class="widget-sub">{{ currentCoordinate }}</span>
+                </button>
+              </div>
+
+              <div class="app-grid">
+                <button
+                  v-for="app in homeApps"
+                  :key="app.page"
+                  class="phone-app"
+                  type="button"
+                  @click="setPage(app.page)"
+                >
+                  <span class="app-icon" :class="app.colorClass">
+                    <i :class="app.icon"></i>
+                  </span>
+                  <span class="app-label">{{ app.label }}</span>
+                </button>
+              </div>
+
+              <div class="dock">
+                <button
+                  v-for="app in dockApps"
+                  :key="app.page"
+                  class="dock-app"
+                  type="button"
+                  @click="setPage(app.page)"
+                >
+                  <span class="app-icon" :class="app.colorClass">
+                    <i :class="app.icon"></i>
+                  </span>
+                  <span class="app-label">{{ app.label }}</span>
+                </button>
+              </div>
+            </section>
+
+            <section v-else class="app-page-shell">
+              <header class="app-page-header">
+                <button class="back-button" type="button" title="返回桌面" @click="setPage('home')">
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="app-page-title">
+                  <span class="page-icon" :class="currentApp?.colorClass">
+                    <i :class="currentApp?.icon || 'fas fa-mobile-screen-button'"></i>
+                  </span>
+                  <span>{{ currentPageTitle }}</span>
+                </div>
+              </header>
+
+              <div class="status-content">
+                <DashboardPage v-if="currentPage === 'dashboard'" :character-data="characterData" />
+
+                <ProfilePage v-if="currentPage === 'profile'" :character-data="characterData" :combat-data="combatData" />
+
+                <InventoryPage v-if="currentPage === 'inventory'" :character-data="characterData" />
+
+                <QuestPage v-if="currentPage === 'quest'" :character-data="characterData" />
+
+                <RelationshipPage v-if="currentPage === 'relationship'" :character-data="characterData" />
+
+                <SkillPage v-if="currentPage === 'skills'" :character-data="characterData" />
+
+                <MapPage v-if="currentPage === 'map'" :character-data="characterData" />
+
+                <ShopPage v-if="currentPage === 'shop'" :character-data="characterData" />
+
+                <CGPage v-if="currentPage === 'cg'" :character-data="characterData" />
+
+                <div v-if="currentPage === 'settings'" class="settings-page">
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>手机屏幕背景</span>
+                      <small>桌面与应用底图</small>
+                    </div>
+
+                    <div class="wallpaper-preview-card" :style="wallpaperLayerStyle">
+                      <img v-if="customWallpaperSrc" class="wallpaper-preview-image" :src="customWallpaperSrc" alt="" />
+                      <div class="wallpaper-preview-status">
+                        <span>{{ currentTime }}</span>
+                        <span>{{ currentLocation }}</span>
+                      </div>
+                      <button
+                        class="wallpaper-camera-button"
+                        type="button"
+                        title="上传背景图"
+                        aria-label="上传背景图"
+                        @click="openWallpaperFilePicker"
+                      >
+                        <i class="fas fa-camera"></i>
+                      </button>
+                    </div>
+
+                    <div class="wallpaper-preset-grid">
+                      <button
+                        v-for="preset in WALLPAPER_PRESETS"
+                        :key="preset.value"
+                        class="wallpaper-preset-button"
+                        :class="{ active: phonePrefs.wallpaperPreset === preset.value && !phonePrefs.wallpaperUrl }"
+                        type="button"
+                        @click="selectWallpaperPreset(preset.value)"
+                      >
+                        <span class="wallpaper-preset-swatch" :style="{ backgroundImage: preset.background }"></span>
+                        <span>{{ preset.label }}</span>
+                      </button>
+                    </div>
+
+                    <label class="settings-text-field">
+                      <span>图片地址</span>
+                      <input v-model="phonePrefs.wallpaperUrl" type="text" placeholder="https://..." />
+                    </label>
+
+                    <div class="settings-actions">
+                      <button class="settings-action-primary" type="button" @click="openWallpaperFilePicker">
+                        <i class="fas fa-image"></i>
+                        上传图片
+                      </button>
+                      <button type="button" @click="clearWallpaper">
+                        <i class="fas fa-rotate-left"></i>
+                        恢复默认
+                      </button>
+                    </div>
+
+                    <input
+                      ref="wallpaperInputRef"
+                      class="wallpaper-file-input"
+                      type="file"
+                      accept="image/*"
+                      @change="handleWallpaperFileSelected"
+                    />
+                  </section>
+
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>界面显示</span>
+                      <small>字体与主题</small>
+                    </div>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-font"></i></span>
+                      <span class="settings-row-label">界面字体</span>
+                      <select v-model="phonePrefs.fontFamily">
+                        <option v-for="font in PHONE_FONT_OPTIONS" :key="font.value" :value="font.value">
+                          {{ font.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-palette"></i></span>
+                      <span class="settings-row-label">主题色</span>
+                      <select v-model="phonePrefs.theme">
+                        <option v-for="theme in PHONE_THEME_OPTIONS" :key="theme.value" :value="theme.value">
+                          {{ theme.label }}
+                        </option>
+                      </select>
+                    </label>
+                  </section>
+
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>图标美化</span>
+                      <small>桌面与入口</small>
+                    </div>
+
+                    <div class="icon-style-group">
+                      <div class="icon-style-label">桌面 App</div>
+                      <div class="icon-style-grid">
+                        <button
+                          v-for="style in APP_ICON_STYLE_OPTIONS"
+                          :key="style.value"
+                          class="icon-style-button"
+                          :class="{ active: phonePrefs.appIconStyle === style.value }"
+                          type="button"
+                          @click="phonePrefs.appIconStyle = style.value"
+                        >
+                          <span class="icon-style-preview" :class="`preview-app-${style.value}`">
+                            <i class="fas fa-id-card"></i>
+                          </span>
+                          <span>{{ style.label }}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="icon-style-group">
+                      <div class="icon-style-label">悬浮入口</div>
+                      <div class="icon-style-grid">
+                        <button
+                          v-for="style in LAUNCHER_STYLE_OPTIONS"
+                          :key="style.value"
+                          class="icon-style-button"
+                          :class="{ active: phonePrefs.launcherStyle === style.value }"
+                          type="button"
+                          @click="phonePrefs.launcherStyle = style.value"
+                        >
+                          <span class="icon-style-preview launcher-preview" :class="`preview-launcher-${style.value}`">
+                            <i class="fas fa-mobile-alt"></i>
+                          </span>
+                          <span>{{ style.label }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="settings-section settings-section-compact">
+                    <div class="settings-section-title">
+                      <span>背景细节</span>
+                      <small>透明度与质感</small>
+                    </div>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>壁纸强度</span>
+                        <strong>{{ phonePrefs.wallpaperOpacity }}%</strong>
+                      </span>
+                      <input v-model.number="phonePrefs.wallpaperOpacity" type="range" min="20" max="100" step="5" />
+                    </label>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>背景模糊</span>
+                        <strong>{{ phonePrefs.wallpaperBlur }}px</strong>
+                      </span>
+                      <input v-model.number="phonePrefs.wallpaperBlur" type="range" min="0" max="16" step="1" />
+                    </label>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>遮罩深度</span>
+                        <strong>{{ phonePrefs.tintStrength }}%</strong>
+                      </span>
+                      <input v-model.number="phonePrefs.tintStrength" type="range" min="0" max="70" step="5" />
+                    </label>
+                  </section>
+                </div>
+              </div>
+            </section>
+          </main>
+
+          <div class="home-indicator"></div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { getLatestMvuData, replaceLatestMvuData } from '../../shared/mvuStore';
 import { getDailyTalentEffect } from '../data/talentDatabase';
 import CGPage from './pages/CGPage.vue';
 import DashboardPage from './pages/DashboardPage.vue';
@@ -140,21 +297,343 @@ const emit = defineEmits<{
 const characterData = ref<any>({});
 const combatData = ref<any>({});
 const currentTime = ref('12:00');
-const currentPage = ref<
-  'dashboard' | 'profile' | 'skills' | 'inventory' | 'quest' | 'relationship' | 'shop' | 'cg' | 'map'
->('dashboard');
+const currentDate = ref('2025年1月1日');
+const currentLocation = ref('初始点');
+const currentCoordinate = ref('[1-1]');
 
-const bottomNavRef = ref<HTMLElement | null>(null);
+type PageKey =
+  | 'home'
+  | 'dashboard'
+  | 'profile'
+  | 'skills'
+  | 'inventory'
+  | 'quest'
+  | 'relationship'
+  | 'shop'
+  | 'cg'
+  | 'map'
+  | 'settings';
 
-function handleBottomNavWheel(event: WheelEvent) {
-  const el = bottomNavRef.value;
-  if (!el) return;
+const WALLPAPER_PRESETS = [
+  {
+    value: 'aqua',
+    label: '湖蓝',
+    background:
+      'radial-gradient(circle at 24% 18%, rgba(255, 255, 255, 0.75), transparent 24%), linear-gradient(145deg, #84e0df 0%, #6cb8d8 52%, #7bd3c6 100%)',
+  },
+  {
+    value: 'dawn',
+    label: '晨光',
+    background:
+      'radial-gradient(circle at 76% 16%, rgba(255, 251, 214, 0.78), transparent 22%), linear-gradient(145deg, #f5a88d 0%, #f4d77d 50%, #79c8b2 100%)',
+  },
+  {
+    value: 'garden',
+    label: '庭院',
+    background:
+      'radial-gradient(circle at 20% 75%, rgba(255, 255, 255, 0.62), transparent 24%), linear-gradient(145deg, #5fac7a 0%, #89c97f 42%, #d6d98a 100%)',
+  },
+  {
+    value: 'night',
+    label: '夜色',
+    background:
+      'radial-gradient(circle at 70% 20%, rgba(180, 214, 255, 0.62), transparent 20%), linear-gradient(145deg, #17213f 0%, #365a7d 54%, #3f8b91 100%)',
+  },
+] as const;
 
-  // 将鼠标滚轮的纵向滚动转换为横向滚动
-  const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-  if (delta === 0) return;
+const PHONE_THEME_OPTIONS = [
+  { value: 'aqua', label: '湖蓝' },
+  { value: 'midnight', label: '午夜' },
+  { value: 'rose', label: '暮粉' },
+  { value: 'glass', label: '玻璃' },
+] as const;
 
-  el.scrollLeft += delta;
+const PHONE_FONT_OPTIONS = [
+  { value: 'system', label: '系统默认' },
+  { value: 'rounded', label: '圆润黑体' },
+  { value: 'serif', label: '书籍宋体' },
+  { value: 'kaiti', label: '手写楷体' },
+  { value: 'mono', label: '等宽字体' },
+] as const;
+
+const APP_ICON_STYLE_OPTIONS = [
+  { value: 'glass-tile', label: '晶窗' },
+  { value: 'academy-badge', label: '徽章' },
+  { value: 'prism-card', label: '棱卡' },
+  { value: 'corner-chip', label: '芯片' },
+  { value: 'paper-sticker', label: '贴纸' },
+] as const;
+
+const LAUNCHER_STYLE_OPTIONS = [
+  { value: 'orb', label: '灵球' },
+  { value: 'pocket-phone', label: '袖珍' },
+  { value: 'academy-badge', label: '校徽' },
+  { value: 'noir-dial', label: '黑盘' },
+  { value: 'holo-chip', label: '全息' },
+] as const;
+
+type PhoneTheme = (typeof PHONE_THEME_OPTIONS)[number]['value'];
+type PhoneFont = (typeof PHONE_FONT_OPTIONS)[number]['value'];
+type AppIconStyle = (typeof APP_ICON_STYLE_OPTIONS)[number]['value'];
+type LauncherStyle = (typeof LAUNCHER_STYLE_OPTIONS)[number]['value'];
+type WallpaperPreset = (typeof WALLPAPER_PRESETS)[number]['value'];
+
+const PHONE_FONT_FAMILIES: Record<PhoneFont, string> = {
+  system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
+  rounded: '"PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
+  serif: '"Noto Serif SC", "Songti SC", "SimSun", serif',
+  kaiti: '"Kaiti SC", "KaiTi", "STKaiti", serif',
+  mono: '"Cascadia Mono", Consolas, "Microsoft YaHei", monospace',
+};
+
+interface PhonePreferences {
+  wallpaperUrl: string;
+  wallpaperPreset: WallpaperPreset;
+  theme: PhoneTheme;
+  fontFamily: PhoneFont;
+  appIconStyle: AppIconStyle;
+  launcherStyle: LauncherStyle;
+  wallpaperOpacity: number;
+  wallpaperBlur: number;
+  tintStrength: number;
+}
+
+interface PhoneApp {
+  page: Exclude<PageKey, 'home'>;
+  label: string;
+  icon: string;
+  colorClass: string;
+  dock?: boolean;
+}
+
+const PHONE_PREFS_STORAGE_KEY = 'fatria-status-phone-preferences-v1';
+const PHONE_PREFS_UPDATED_EVENT = 'fatria-status-phone-preferences-updated';
+
+const DEFAULT_PHONE_PREFS: PhonePreferences = {
+  wallpaperUrl: '',
+  wallpaperPreset: 'aqua',
+  theme: 'aqua',
+  fontFamily: 'system',
+  appIconStyle: 'glass-tile',
+  launcherStyle: 'orb',
+  wallpaperOpacity: 70,
+  wallpaperBlur: 0,
+  tintStrength: 15,
+};
+
+const phoneApps: PhoneApp[] = [
+  { page: 'dashboard', label: '状态', icon: 'fas fa-house-chimney', colorClass: 'app-cyan' },
+  { page: 'profile', label: '档案', icon: 'fas fa-id-card', colorClass: 'app-blue', dock: true },
+  { page: 'skills', label: '技能', icon: 'fas fa-wand-magic-sparkles', colorClass: 'app-violet', dock: true },
+  { page: 'inventory', label: '背包', icon: 'fas fa-briefcase', colorClass: 'app-amber', dock: true },
+  { page: 'quest', label: '任务', icon: 'fas fa-list-check', colorClass: 'app-green' },
+  { page: 'relationship', label: '关系', icon: 'fas fa-heart', colorClass: 'app-pink' },
+  { page: 'map', label: '地图', icon: 'fas fa-map-location-dot', colorClass: 'app-teal' },
+  { page: 'shop', label: '商店', icon: 'fas fa-store', colorClass: 'app-orange' },
+  { page: 'cg', label: '相册', icon: 'fas fa-images', colorClass: 'app-rose' },
+  { page: 'settings', label: '设置', icon: 'fas fa-gear', colorClass: 'app-slate', dock: true },
+];
+
+const currentPage = ref<PageKey>('home');
+const wallpaperInputRef = ref<HTMLInputElement | null>(null);
+const phonePrefs = ref<PhonePreferences>(loadPhonePreferences());
+
+const homeApps = computed(() => phoneApps.filter(app => !app.dock));
+const dockApps = computed(() => phoneApps.filter(app => app.dock));
+const currentApp = computed(() => phoneApps.find(app => app.page === currentPage.value));
+const currentPageTitle = computed(() => currentApp.value?.label || '性斗学园');
+const customWallpaperSrc = computed(() => phonePrefs.value.wallpaperUrl.trim());
+const phoneFrameClasses = computed(() => [
+  `theme-${phonePrefs.value.theme}`,
+  `icon-style-${phonePrefs.value.appIconStyle}`,
+]);
+const wallpaperLayerStyle = computed(() => ({
+  backgroundImage: getWallpaperPresetBackground(phonePrefs.value.wallpaperPreset),
+}));
+const phoneStyle = computed(() => {
+  return {
+    '--phone-wallpaper-opacity': `${clampNumber(phonePrefs.value.wallpaperOpacity, 20, 100) / 100}`,
+    '--phone-wallpaper-blur': `${clampNumber(phonePrefs.value.wallpaperBlur, 0, 16)}px`,
+    '--phone-tint-opacity': `${clampNumber(phonePrefs.value.tintStrength, 0, 70) / 100}`,
+    '--phone-font-family': PHONE_FONT_FAMILIES[phonePrefs.value.fontFamily] ?? PHONE_FONT_FAMILIES.system,
+  };
+});
+
+watch(
+  phonePrefs,
+  prefs => {
+    savePhonePreferences(prefs);
+  },
+  { deep: true },
+);
+
+function setPage(page: PageKey) {
+  currentPage.value = page;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return min;
+  return Math.min(max, Math.max(min, numericValue));
+}
+
+function isPhoneTheme(value: unknown): value is PhoneTheme {
+  return PHONE_THEME_OPTIONS.some(option => option.value === value);
+}
+
+function isPhoneFont(value: unknown): value is PhoneFont {
+  return PHONE_FONT_OPTIONS.some(option => option.value === value);
+}
+
+function isAppIconStyle(value: unknown): value is AppIconStyle {
+  return APP_ICON_STYLE_OPTIONS.some(option => option.value === value);
+}
+
+function isLauncherStyle(value: unknown): value is LauncherStyle {
+  return LAUNCHER_STYLE_OPTIONS.some(option => option.value === value);
+}
+
+function isWallpaperPreset(value: unknown): value is WallpaperPreset {
+  return WALLPAPER_PRESETS.some(option => option.value === value);
+}
+
+function getWallpaperPresetBackground(preset: WallpaperPreset): string {
+  return WALLPAPER_PRESETS.find(option => option.value === preset)?.background ?? WALLPAPER_PRESETS[0].background;
+}
+
+function loadPhonePreferences(): PhonePreferences {
+  try {
+    const raw = window.localStorage?.getItem(PHONE_PREFS_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_PHONE_PREFS };
+
+    const parsed = JSON.parse(raw) as Partial<PhonePreferences>;
+    const theme = isPhoneTheme(parsed.theme) ? parsed.theme : DEFAULT_PHONE_PREFS.theme;
+    const wallpaperPreset = isWallpaperPreset(parsed.wallpaperPreset)
+      ? parsed.wallpaperPreset
+      : DEFAULT_PHONE_PREFS.wallpaperPreset;
+    const fontFamily = isPhoneFont(parsed.fontFamily) ? parsed.fontFamily : DEFAULT_PHONE_PREFS.fontFamily;
+    const appIconStyle = isAppIconStyle(parsed.appIconStyle)
+      ? parsed.appIconStyle
+      : DEFAULT_PHONE_PREFS.appIconStyle;
+    const launcherStyle = isLauncherStyle(parsed.launcherStyle)
+      ? parsed.launcherStyle
+      : DEFAULT_PHONE_PREFS.launcherStyle;
+
+    return {
+      wallpaperUrl: typeof parsed.wallpaperUrl === 'string' ? parsed.wallpaperUrl : DEFAULT_PHONE_PREFS.wallpaperUrl,
+      wallpaperPreset,
+      theme,
+      fontFamily,
+      appIconStyle,
+      launcherStyle,
+      wallpaperOpacity: clampNumber(Number(parsed.wallpaperOpacity), 20, 100),
+      wallpaperBlur: clampNumber(Number(parsed.wallpaperBlur), 0, 16),
+      tintStrength: clampNumber(Number(parsed.tintStrength), 0, 70),
+    };
+  } catch {
+    return { ...DEFAULT_PHONE_PREFS };
+  }
+}
+
+function savePhonePreferences(prefs: PhonePreferences) {
+  try {
+    window.localStorage?.setItem(PHONE_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // 偏好保存失败时仍然保留当前运行态设置。
+  }
+
+  window.dispatchEvent(new CustomEvent(PHONE_PREFS_UPDATED_EVENT, { detail: { ...prefs } }));
+}
+
+function openWallpaperFilePicker() {
+  wallpaperInputRef.value?.click();
+}
+
+function selectWallpaperPreset(preset: WallpaperPreset) {
+  phonePrefs.value.wallpaperPreset = preset;
+  phonePrefs.value.wallpaperUrl = '';
+}
+
+function clearWallpaper() {
+  phonePrefs.value.wallpaperUrl = '';
+}
+
+function handleWallpaperFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  prepareWallpaperDataUrl(file)
+    .then(dataUrl => {
+      phonePrefs.value.wallpaperUrl = dataUrl;
+    })
+    .catch(error => {
+      console.error('[状态栏] 背景图加载失败:', error);
+      if (typeof toastr !== 'undefined') {
+        toastr.error('背景图加载失败，请换一张图片试试。', '状态栏');
+      }
+    })
+    .finally(() => {
+      input.value = '';
+    });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
+    reader.onload = e => {
+      const result = e.target?.result;
+      if (typeof result === 'string') {
+        resolve(result);
+      } else {
+        reject(new Error('读取图片结果无效'));
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('图片解码失败'));
+    image.src = url;
+  });
+}
+
+async function prepareWallpaperDataUrl(file: File): Promise<string> {
+  const fileType = file.type.toLowerCase();
+  if (!fileType.startsWith('image/')) {
+    throw new Error('请选择图片文件');
+  }
+
+  if (fileType === 'image/gif' || fileType === 'image/svg+xml') {
+    return readFileAsDataUrl(file);
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageFromUrl(objectUrl);
+    const maxSide = 1440;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return readFileAsDataUrl(file);
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', 0.86);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 /**
@@ -171,12 +650,7 @@ function normalizeName(name: string): string {
 // 从 MVU 获取数据
 async function loadMvuData() {
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) {
-      return;
-    }
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.warn('[状态栏] MVU数据为空');
       return;
@@ -241,7 +715,7 @@ async function loadMvuData() {
 
     // 如果有变更，写回 MVU
     if (needsUpdate) {
-      await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+      await replaceLatestMvuData(mvuData);
       console.info('[状态栏] 已更新规范化后的关系系统数据');
     }
 
@@ -258,7 +732,6 @@ async function loadMvuData() {
 // 自动升级检查
 async function checkAutoLevelUp(mvuData: any) {
   try {
-    const globalAny = window as any;
     const statData = mvuData.stat_data;
 
     // 获取当前经验值、等级和潜力
@@ -328,7 +801,7 @@ async function checkAutoLevelUp(mvuData: any) {
         // 升级不再自动增加属性，只增加属性点和技能点让用户自由分配
 
         // 写回 MVU
-        await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+        await replaceLatestMvuData(mvuData);
 
         // 更新本地数据
         characterData.value = statData;
@@ -353,34 +826,42 @@ async function checkAutoLevelUp(mvuData: any) {
   }
 }
 
-// 更新当前时间（从MVU变量读取游戏时间）
-function updateTime() {
+// 更新手机顶部状态（从 MVU 读取游戏时间与当前位置）
+async function updateTime() {
   try {
-    const globalAny = window as any;
-    if (globalAny.Mvu) {
-      const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
-      if (mvuData?.stat_data?.时间系统?.时间) {
-        const gameTime = mvuData.stat_data.时间系统.时间;
-        // 假设游戏时间格式为 "HH:MM" 或数字（分钟数）
-        if (typeof gameTime === 'string') {
-          currentTime.value = gameTime;
-        } else if (typeof gameTime === 'number') {
-          // 如果是数字，假设是分钟数，转换为 HH:MM
-          const hours = Math.floor(gameTime / 60);
-          const minutes = gameTime % 60;
-          currentTime.value = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-        } else {
-          // 如果无法读取，使用默认值
-          currentTime.value = '00:00';
-        }
-        return;
-      }
+    const mvuData = await getLatestMvuData();
+    const statData = mvuData?.stat_data;
+    const timeData = statData?.时间系统;
+    const locationData = statData?.位置系统;
+
+    const gameTime = timeData?.时间;
+    if (typeof gameTime === 'string' && gameTime.trim()) {
+      currentTime.value = gameTime.trim();
+    } else if (typeof gameTime === 'number') {
+      const hours = Math.floor(gameTime / 60);
+      const minutes = gameTime % 60;
+      currentTime.value = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    } else {
+      currentTime.value = '00:00';
     }
-    // 如果无法读取游戏时间，使用默认值
-    currentTime.value = '00:00';
+
+    currentDate.value = typeof timeData?.日期 === 'string' && timeData.日期 ? timeData.日期 : '2025年1月1日';
+    currentLocation.value =
+      typeof locationData?.地点名称 === 'string' && locationData.地点名称
+        ? locationData.地点名称
+        : typeof locationData?.坐标 === 'string' && locationData.坐标
+          ? locationData.坐标
+          : '初始点';
+    currentCoordinate.value =
+      typeof locationData?.坐标 === 'string' && locationData.坐标
+        ? locationData.坐标
+        : `F${Number(locationData?.楼层 || 1)}`;
   } catch (error) {
-    console.warn('[状态栏] 读取游戏时间失败:', error);
+    console.warn('[状态栏] 读取手机状态失败:', error);
     currentTime.value = '00:00';
+    currentDate.value = '2025年1月1日';
+    currentLocation.value = '初始点';
+    currentCoordinate.value = '[1-1]';
   }
 }
 
@@ -443,251 +924,638 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .status-bar-overlay {
   position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
+  inset: 0 !important;
   width: 100vw !important;
-  width: 100dvw !important; // 移动端视口单位
-  height: 100% !important;
+  width: 100dvw !important;
   height: 100vh !important;
-  height: 100dvh !important; // 移动端视口单位
-  background: rgba(0, 0, 0, 0.7) !important;
-  backdrop-filter: blur(4px);
+  height: 100dvh !important;
+  background: transparent !important;
   z-index: 99999 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 10px;
-  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
-    max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); // 安全区域适配
-  pointer-events: all !important; // 确保可以接收事件
-  overflow-y: auto;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  pointer-events: none !important;
+  overflow: hidden;
   box-sizing: border-box;
-  -webkit-overflow-scrolling: touch; // iOS 平滑滚动
-  margin: 0 !important;
-  transform: none !important;
 }
 
 .status-bar-container {
   position: relative;
+  width: min(404px, calc(100vw - 24px));
+  width: min(404px, calc(100dvw - 24px));
+  height: min(762px, calc(100vh - 24px));
+  height: min(762px, calc(100dvh - 24px));
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.phone-device {
+  position: relative;
   width: 100%;
-  max-width: 390px;
-  max-width: min(390px, calc(100vw - 20px)); // 手机端适配
-  max-height: calc(100vh - 20px);
-  max-height: calc(100dvh - 20px); // 移动端视口单位
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: auto;
-  flex-shrink: 0;
-  min-width: 0; // 防止 flex 子元素溢出
+  height: 100%;
+  filter: drop-shadow(0 26px 42px rgba(0, 0, 0, 0.42));
+  animation: phone-enter 0.22s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
 .phone-frame {
+  --screen-base: #75d7d8;
+  --screen-accent: #5aa7a8;
+  --screen-accent-strong: #3d7e82;
+  --glass-bg: rgba(68, 122, 125, 0.56);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --phone-wallpaper-opacity: 0;
+  --phone-wallpaper-blur: 0px;
+  --phone-tint-opacity: 0.15;
+  --phone-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+
   position: relative;
   width: 100%;
-  max-width: 390px;
-  max-width: min(390px, calc(100vw - 20px)); // 手机端适配
-  height: 722px;
-  min-height: 722px; // 固定最小高度，防止内容少时缩短
-  max-height: calc(100vh - 20px);
-  max-height: calc(100dvh - 20px); // 移动端视口单位
-  background: #0f172a;
-  border-radius: 40px;
+  height: 100%;
+  border: 10px solid #202126;
+  border-radius: 46px;
   overflow: hidden;
-  border: 8px solid #1e1e1e;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  min-width: 0; // 防止 flex 子元素溢出
-
-  // 手机端响应式处理 - 保持固定高度
-  @media (max-height: 900px) {
-    max-height: calc(100vh - 20px);
-    max-height: calc(100dvh - 20px);
-    height: 722px;
-    min-height: 722px; // 保持固定高度
-  }
-
-  @media (max-width: 420px) {
-    max-width: calc(100vw - 20px);
-    max-width: calc(100dvw - 20px);
-    border-radius: 30px;
-    border-width: 6px;
-  }
-
-  // 超小屏幕处理 - 如果屏幕太小，允许缩小但保持最小高度
-  @media (max-height: 700px) {
-    max-height: calc(100vh - 10px);
-    max-height: calc(100dvh - 10px);
-    height: 599px;
-    min-height: 599px; // 超小屏幕的最小高度
-    border-radius: 20px;
-    border-width: 4px;
-  }
-
-  // 移动端特殊处理 - 保持固定高度
-  @media (max-width: 768px) {
-    border-radius: 20px;
-    border-width: 4px;
-    max-width: calc(100vw - 10px);
-    max-width: calc(100dvw - 10px);
-    max-height: calc(100vh - 10px);
-    max-height: calc(100dvh - 10px);
-    height: 722px;
-    min-height: 722px; // 保持固定高度
-  }
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.22), transparent 30%),
+    linear-gradient(180deg, var(--screen-base), #77d7d3 64%, #82ddd7);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.18);
+  font-family: var(--phone-font-family);
 }
 
-.phone-background {
+.theme-midnight {
+  --screen-base: #202741;
+  --screen-accent: #5d6ac6;
+  --screen-accent-strong: #24305d;
+  --glass-bg: rgba(20, 27, 50, 0.64);
+}
+
+.theme-rose {
+  --screen-base: #e89ab6;
+  --screen-accent: #ba6689;
+  --screen-accent-strong: #7f415f;
+  --glass-bg: rgba(132, 63, 91, 0.56);
+}
+
+.theme-glass {
+  --screen-base: #b7c8d8;
+  --screen-accent: #65798b;
+  --screen-accent-strong: #3a4d5f;
+  --glass-bg: rgba(69, 86, 102, 0.5);
+}
+
+.phone-wallpaper {
   position: absolute;
   inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: var(--phone-wallpaper-opacity);
+  filter: blur(var(--phone-wallpaper-blur));
+  transform: scale(1.04);
+  z-index: 0;
+}
+
+.phone-wallpaper-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+.phone-tint {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 18, 28, var(--phone-tint-opacity));
   pointer-events: none;
-  overflow: hidden;
-
-  .bg-gradient-1 {
-    position: absolute;
-    top: -10%;
-    left: -20%;
-    width: 140%;
-    height: 70%;
-    background: rgba(99, 102, 241, 0.4);
-    filter: blur(80px);
-    border-radius: 50%;
-    opacity: 0.5;
-  }
-
-  .bg-gradient-2 {
-    position: absolute;
-    bottom: -10%;
-    right: -10%;
-    width: 100%;
-    height: 60%;
-    background: rgba(139, 92, 246, 0.3);
-    filter: blur(60px);
-    border-radius: 50%;
-    opacity: 0.5;
-  }
+  z-index: 1;
 }
 
-.status-header {
+.phone-screen {
   position: relative;
-  height: 40px;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 50;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  user-select: none;
+  z-index: 3;
+  height: 100%;
+  min-height: 0;
+  padding: 32px 28px 42px;
+  box-sizing: border-box;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.phone-screen-app {
+  padding: 0;
 }
 
-.back-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.phone-exit-button {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  z-index: 8;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(14, 30, 38, 0.28);
+  box-shadow:
+    0 10px 22px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   cursor: pointer;
-  transition: all 0.2s;
+  backdrop-filter: blur(12px);
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.1);
-  }
-
-  i {
-    font-size: 14px;
+    transform: translateY(-1px);
+    background: rgba(14, 30, 38, 0.42);
   }
 }
 
-.close-header-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
+.home-screen,
+.app-page-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.home-screen {
   display: flex;
+  flex-direction: column;
+}
+
+.home-widgets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 38px 0 38px;
+}
+
+.home-widget {
+  min-width: 0;
+  height: 90px;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  color: #fff;
+  background: var(--glass-bg);
+  box-shadow:
+    0 12px 18px rgba(30, 64, 72, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   cursor: pointer;
-  transition: all 0.2s;
-  margin-left: 8px;
+  backdrop-filter: blur(10px);
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.1);
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
+.widget-main {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.location-widget .widget-main {
+  font-size: 22px;
+}
+
+.widget-sub {
+  max-width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  row-gap: 26px;
+  column-gap: 20px;
+  justify-items: center;
+  align-content: start;
+}
+
+.phone-app,
+.dock-app {
+  width: 76px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  transition: transform 0.16s ease;
+
+  &:hover {
+    transform: translateY(-2px);
   }
 
   &:active {
-    transform: scale(0.95);
+    transform: scale(0.96);
+  }
+}
+
+.app-icon {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(80, 133, 136, 0.78);
+  box-shadow:
+    0 10px 18px rgba(28, 64, 74, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition:
+    border-radius 0.18s ease,
+    clip-path 0.18s ease,
+    filter 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.32), transparent 42%, rgba(0, 0, 0, 0.14));
+    pointer-events: none;
   }
 
   i {
-    font-size: 14px;
+    position: relative;
+    z-index: 1;
+    font-size: 25px;
   }
 }
 
-.header-time {
-  font-size: 12px;
+.app-label {
+  width: 76px;
+  min-height: 17px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
-.header-icons {
+.app-cyan {
+  background: linear-gradient(145deg, #31b8c9, #287c8e);
+}
+
+.app-blue {
+  background: linear-gradient(145deg, #4f8fd7, #315d9d);
+}
+
+.app-violet {
+  background: linear-gradient(145deg, #8b6de8, #5b45ad);
+}
+
+.app-amber {
+  background: linear-gradient(145deg, #d99535, #a35f1e);
+}
+
+.app-green {
+  background: linear-gradient(145deg, #4fac78, #2f7651);
+}
+
+.app-pink {
+  background: linear-gradient(145deg, #e6679a, #ad3d6c);
+}
+
+.app-teal {
+  background: linear-gradient(145deg, #48a99f, #2f716c);
+}
+
+.app-orange {
+  background: linear-gradient(145deg, #e17a42, #a84c28);
+}
+
+.app-rose {
+  background: linear-gradient(145deg, #c35f7d, #8b3a58);
+}
+
+.app-slate {
+  background: linear-gradient(145deg, #91a3ad, #566a74);
+}
+
+.icon-style-glass-tile .app-icon {
+  border-radius: 18px;
+  box-shadow:
+    0 12px 22px rgba(28, 64, 74, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.1);
+
+  &::after {
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.5), transparent 24%),
+      linear-gradient(145deg, rgba(255, 255, 255, 0.24), transparent 46%, rgba(0, 0, 0, 0.12));
+  }
+}
+
+.icon-style-academy-badge .app-icon {
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  box-shadow:
+    0 12px 20px rgba(20, 48, 58, 0.26),
+    0 0 0 5px rgba(255, 255, 255, 0.1) inset,
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+
+  &::before {
+    inset: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    border-radius: 999px;
+  }
+
+  &::after {
+    inset: auto 9px 9px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.24);
+  }
+}
+
+.icon-style-prism-card .app-icon {
+  border-color: rgba(255, 255, 255, 0.24);
+  border-radius: 9px 20px 9px 20px;
+  transform: rotate(-5deg);
+  box-shadow:
+    0 14px 22px rgba(15, 23, 42, 0.24),
+    -5px 5px 0 rgba(255, 255, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+
+  &::before {
+    right: auto;
+    width: 10px;
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  &::after {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.38), transparent 32%),
+      linear-gradient(315deg, rgba(255, 255, 255, 0.18), transparent 42%);
+  }
+
+  i {
+    transform: rotate(5deg);
+  }
+}
+
+.icon-style-corner-chip .app-icon {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-radius: 13px;
+  clip-path: polygon(14% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 14%);
+  filter: saturate(1.1) contrast(1.04);
+  box-shadow:
+    0 12px 20px rgba(15, 23, 42, 0.25),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+
+  &::before {
+    inset: 7px;
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+    clip-path: polygon(14% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 14%);
+  }
+
+  &::after {
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.26), transparent 38%),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 8px);
+  }
+}
+
+.icon-style-paper-sticker .app-icon {
+  border: 3px solid rgba(255, 255, 255, 0.88);
+  border-radius: 18px 25px 16px 24px;
+  transform: rotate(4deg);
+  filter: saturate(1.08) brightness(1.04);
+  box-shadow:
+    0 13px 18px rgba(15, 23, 42, 0.2),
+    0 0 0 1px rgba(44, 62, 74, 0.1);
+
+  &::before {
+    top: 7px;
+    right: 7px;
+    bottom: auto;
+    left: auto;
+    width: 12px;
+    height: 12px;
+    border-radius: 0 7px 0 10px;
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: -2px 2px 4px rgba(15, 23, 42, 0.14);
+  }
+
+  &::after {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 44%);
+  }
+
+  i {
+    transform: rotate(-4deg);
+  }
+}
+
+.dock {
+  margin-top: auto;
+  min-height: 94px;
+  padding: 12px 10px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 26px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-items: center;
+  align-items: center;
+  background: rgba(58, 109, 112, 0.56);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 14px 24px rgba(32, 74, 79, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.dock-app {
+  width: 64px;
+  gap: 5px;
+
+  .app-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+
+    i {
+      font-size: 22px;
+    }
+  }
+
+  .app-label {
+    width: 64px;
+    font-size: 11px;
+  }
+}
+
+.app-page-shell {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  overflow: hidden;
+}
+
+.app-page-header {
+  position: relative;
+  z-index: 30;
+  flex: 0 0 76px;
+  height: 76px;
+  padding: 18px 22px 10px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(18, 33, 45, 0.28), rgba(18, 33, 45, 0.08));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  box-sizing: border-box;
+}
+
+.app-page-header::after {
+  content: '';
+}
+
+.back-button {
+  position: relative;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
+.app-page-title {
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
+  justify-content: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 800;
+
+  > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.page-icon {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  box-shadow:
+    0 6px 12px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.24), transparent 48%);
+    pointer-events: none;
+  }
 
   i {
-    color: rgba(255, 255, 255, 0.6);
-  }
-
-  .signal-text {
-    font-family: monospace;
-    opacity: 0.6;
-  }
-
-  .battery-indicator {
-    width: 24px;
-    height: 12px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.4);
     position: relative;
-    margin-left: 4px;
+    z-index: 1;
+    font-size: 13px;
+  }
+}
 
-    .battery-fill {
-      position: absolute;
-      top: 2px;
-      bottom: 2px;
-      left: 2px;
-      right: 4px;
-      background: rgba(255, 255, 255, 0.9);
-      border-radius: 1px;
-    }
+.icon-style-academy-badge .page-icon {
+  border-radius: 999px;
+}
+
+.icon-style-prism-card .page-icon {
+  border-radius: 6px 12px 6px 12px;
+  transform: rotate(-5deg);
+
+  i {
+    transform: rotate(5deg);
+  }
+}
+
+.icon-style-corner-chip .page-icon {
+  border-radius: 7px;
+  clip-path: polygon(14% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 14%);
+}
+
+.icon-style-paper-sticker .page-icon {
+  border: 2px solid rgba(255, 255, 255, 0.84);
+  border-radius: 10px 14px 9px 13px;
+  transform: rotate(4deg);
+
+  i {
+    transform: rotate(-4deg);
   }
 }
 
 .status-content {
   position: relative;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  z-index: 10;
+  z-index: 2;
+  padding-bottom: 28px;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
 
   &::-webkit-scrollbar {
     width: 4px;
@@ -698,92 +1566,612 @@ onUnmounted(() => {
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.22);
     border-radius: 2px;
   }
 }
 
-.bottom-nav {
-  position: relative;
+.settings-page {
+  min-height: 100%;
+  padding: 14px 14px 30px;
   display: flex;
-  align-items: center;
-  padding: 10px 8px;
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 50;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 6px;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+  gap: 14px;
+  color: #21313b;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.86), transparent 24%),
+    linear-gradient(180deg, rgba(247, 251, 255, 0.96), rgba(226, 239, 245, 0.88));
+  box-sizing: border-box;
+}
 
-  &::-webkit-scrollbar {
-    height: 3px;
+.settings-section {
+  padding: 14px;
+  border: 1px solid rgba(137, 160, 172, 0.2);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow:
+    0 16px 30px rgba(31, 73, 88, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(12px);
+}
+
+.settings-section-compact {
+  padding-bottom: 10px;
+}
+
+.settings-section-title {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+
+  span {
+    min-width: 0;
+    color: #1f2e38;
+    font-size: 15px;
+    font-weight: 900;
   }
 
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 2px;
+  small {
+    flex: 0 0 auto;
+    color: #7c8b95;
+    font-size: 11px;
+    font-weight: 700;
   }
 }
 
-.nav-button {
+.icon-style-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  & + & {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(133, 154, 164, 0.14);
+  }
+}
+
+.icon-style-label {
+  color: #526672;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.icon-style-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.icon-style-button {
+  min-width: 0;
+  border: 1px solid rgba(124, 142, 153, 0.18);
+  border-radius: 14px;
+  padding: 7px 4px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.5);
+  gap: 6px;
+  color: #4d5f69;
+  background: rgba(248, 251, 252, 0.92);
   cursor: pointer;
-  transition: all 0.2s;
-  border-radius: 10px;
-  flex: 0 0 auto;
-  min-width: 56px;
-  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 900;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
 
-  i {
-    font-size: 16px;
-  }
-
-  span {
-    font-size: 10px;
-    font-weight: 500;
+  &.active {
+    border-color: rgba(44, 139, 158, 0.72);
+    box-shadow: 0 0 0 2px rgba(86, 188, 205, 0.18);
+    color: #1d7180;
+    background: #fff;
   }
 
   &:hover {
-    color: rgba(255, 255, 255, 0.8);
-    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
   }
 
-  &.active {
-    color: white;
-    background: linear-gradient(135deg, rgba(129, 140, 248, 0.3), rgba(139, 92, 246, 0.3));
-    border-color: rgba(129, 140, 248, 0.4);
+  > span:last-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 
-    i {
-      color: #a5b4fc;
+.icon-style-preview {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow:
+    0 8px 14px rgba(31, 73, 88, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+
+  i {
+    position: relative;
+    z-index: 1;
+    font-size: 15px;
+  }
+}
+
+.launcher-preview {
+  border-radius: 999px;
+}
+
+.preview-app-glass-tile {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.28), transparent 42%),
+    linear-gradient(145deg, #31b8c9, #315d9d);
+}
+
+.preview-app-academy-badge {
+  border: 2px solid rgba(255, 255, 255, 0.68);
+  border-radius: 999px;
+  background: linear-gradient(145deg, #4f8fd7, #315d9d);
+  box-shadow:
+    0 0 0 4px rgba(255, 255, 255, 0.18) inset,
+    0 8px 14px rgba(31, 73, 88, 0.16);
+}
+
+.preview-app-prism-card {
+  border-radius: 7px 15px 7px 15px;
+  transform: rotate(-5deg);
+  background: linear-gradient(145deg, #8b6de8, #5b45ad);
+  box-shadow:
+    -3px 3px 0 rgba(84, 108, 140, 0.24),
+    0 8px 14px rgba(31, 73, 88, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+
+  i {
+    transform: rotate(5deg);
+  }
+}
+
+.preview-app-corner-chip {
+  border-radius: 8px;
+  clip-path: polygon(14% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 14%);
+  background: linear-gradient(145deg, #48a99f, #2f716c);
+}
+
+.preview-app-paper-sticker {
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 13px 17px 12px 16px;
+  transform: rotate(4deg);
+  background: linear-gradient(145deg, #e6679a, #ad3d6c);
+
+  i {
+    transform: rotate(-4deg);
+  }
+}
+
+.preview-launcher-orb {
+  background: linear-gradient(145deg, #22d3ee, #6366f1 54%, #ec4899);
+}
+
+.preview-launcher-pocket-phone {
+  border-radius: 10px;
+  background: linear-gradient(145deg, #f7fdff, #8ed4cc);
+  color: #244a55;
+}
+
+.preview-launcher-academy-badge {
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  background: linear-gradient(145deg, #4f8fd7, #315d9d);
+}
+
+.preview-launcher-noir-dial {
+  background: linear-gradient(145deg, #2b3039, #080b10);
+}
+
+.preview-launcher-holo-chip {
+  border-radius: 9px;
+  clip-path: polygon(14% 0, 100% 0, 100% 76%, 76% 100%, 0 100%, 0 14%);
+  background: linear-gradient(145deg, #8ee8ff, #c084fc 48%, #8bffcf);
+}
+
+.wallpaper-preview-card {
+  position: relative;
+  height: 168px;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 24px;
+  overflow: hidden;
+  background-color: #8fd3d4;
+  background-size: cover;
+  background-position: center;
+  box-shadow:
+    0 18px 28px rgba(47, 96, 108, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.wallpaper-preview-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+.wallpaper-preview-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(10, 31, 43, 0.3), transparent 38%),
+    linear-gradient(0deg, rgba(10, 31, 43, 0.2), transparent 42%);
+  pointer-events: none;
+}
+
+.wallpaper-preview-status {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  text-shadow: 0 2px 8px rgba(9, 25, 34, 0.36);
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.wallpaper-camera-button {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 1;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #25333c;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 20px rgba(14, 39, 51, 0.22);
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    background: #fff;
+  }
+}
+
+.wallpaper-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.wallpaper-preset-button {
+  min-width: 0;
+  border: 1px solid rgba(124, 142, 153, 0.18);
+  border-radius: 14px;
+  padding: 7px 5px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #4d5f69;
+  background: rgba(248, 251, 252, 0.9);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+
+  &.active {
+    border-color: rgba(44, 139, 158, 0.72);
+    box-shadow: 0 0 0 2px rgba(86, 188, 205, 0.18);
+    color: #1d7180;
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.wallpaper-preset-swatch {
+  width: 100%;
+  aspect-ratio: 1.35;
+  border-radius: 10px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+}
+
+.settings-text-field {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #5c6f7b;
+  font-size: 12px;
+  font-weight: 800;
+
+  input {
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    border: 1px solid rgba(124, 142, 153, 0.22) !important;
+    border-radius: 13px;
+    padding: 0 12px;
+    color: #25333c !important;
+    background-color: rgba(247, 250, 252, 0.94) !important;
+    box-sizing: border-box;
+    box-shadow: none !important;
+    outline: none;
+
+    &::placeholder {
+      color: #8797a1;
+      opacity: 1;
     }
   }
 }
 
+.settings-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+
+  button {
+    min-width: 0;
+    height: 40px;
+    border: 1px solid rgba(118, 139, 151, 0.2);
+    border-radius: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    color: #42525c;
+    background: rgba(247, 250, 252, 0.96);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+
+    &:hover {
+      background: #fff;
+    }
+  }
+
+  .settings-action-primary {
+    border-color: rgba(45, 151, 169, 0.36);
+    color: #fff;
+    background: linear-gradient(145deg, #38aebc, #247b8c);
+
+    &:hover {
+      background: linear-gradient(145deg, #45bdca, #2d8799);
+    }
+  }
+}
+
+.settings-row {
+  min-height: 50px;
+  border-bottom: 1px solid rgba(133, 154, 164, 0.16);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(112px, 42%);
+  align-items: center;
+  gap: 10px;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  select {
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    border: 1px solid rgba(124, 142, 153, 0.22) !important;
+    border-radius: 12px;
+    padding: 0 9px;
+    color: #273640 !important;
+    background-color: rgba(247, 250, 252, 0.96) !important;
+    box-shadow: none !important;
+    outline: none;
+    font-weight: 800;
+  }
+}
+
+.settings-row-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(145deg, #5bb8c2, #397d91);
+  box-shadow: 0 8px 16px rgba(43, 120, 140, 0.18);
+}
+
+.settings-row-label {
+  min-width: 0;
+  overflow: hidden;
+  color: #263640;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.settings-slider-row {
+  padding: 6px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #42525c;
+  font-size: 12px;
+  font-weight: 900;
+
+  > span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  strong {
+    color: #1e7c8b;
+    font-size: 12px;
+  }
+
+  input[type='range'] {
+    width: 100%;
+    min-width: 0;
+    height: 24px;
+    padding: 0;
+    accent-color: #2ca4b5;
+  }
+}
+
+.wallpaper-file-input {
+  display: none;
+}
+
 .home-indicator {
   position: absolute;
-  bottom: 4px;
+  bottom: 12px;
   left: 50%;
+  width: 126px;
+  height: 5px;
   transform: translateX(-50%);
-  width: 128px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-  z-index: 50;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  z-index: 8;
   pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .status-bar-container {
+    width: calc(100vw - 16px);
+    width: calc(100dvw - 16px);
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+  }
+
+  .phone-frame {
+    border-width: 6px;
+    border-radius: 36px;
+  }
+
+  .phone-screen {
+    padding: 26px 18px 38px;
+  }
+
+  .phone-screen-app {
+    padding: 0;
+  }
+
+  .app-page-header {
+    flex-basis: 68px;
+    height: 68px;
+    padding: 14px 16px 8px;
+  }
+
+  .phone-exit-button {
+    top: 14px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .home-widgets {
+    gap: 12px;
+    margin: 34px 0 28px;
+  }
+
+  .home-widget {
+    height: 78px;
+    border-radius: 18px;
+  }
+
+  .widget-main {
+    font-size: 24px;
+  }
+
+  .location-widget .widget-main {
+    font-size: 18px;
+  }
+
+  .app-grid {
+    column-gap: 10px;
+    row-gap: 20px;
+  }
+
+  .phone-app {
+    width: 68px;
+  }
+
+  .app-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  .app-label {
+    width: 68px;
+    font-size: 12px;
+  }
+}
+
+@media (max-height: 690px) {
+  .home-widgets {
+    margin: 28px 0 18px;
+  }
+
+  .home-widget {
+    height: 68px;
+  }
+
+  .app-grid {
+    row-gap: 16px;
+  }
+
+  .app-icon {
+    width: 50px;
+    height: 50px;
+  }
+
+  .dock {
+    min-height: 80px;
+    padding-top: 9px;
+  }
+}
+
+@keyframes phone-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 </style>

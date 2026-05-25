@@ -143,6 +143,24 @@
 
             <div class="setting-item">
               <label>
+                <i class="fas fa-palette"></i>
+                字体颜色
+                <span class="help-tooltip" title="控制正文、并行事件、选项与变量更新的文字颜色">
+                  <i class="fas fa-question-circle"></i>
+                </span>
+              </label>
+              <div class="color-input-row">
+                <input v-model="localConfig.字体颜色" type="color" />
+                <input v-model="localConfig.字体颜色" type="text" placeholder="例如: #f3f4f6" />
+              </div>
+              <div class="setting-hint">
+                <i class="fas fa-lightbulb"></i>
+                该颜色会保存到角色变量，并同步到正文、并行事件、选项与变量更新 UI。
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <label>
                 <i class="fas fa-align-justify"></i>
                 行高
                 <span class="help-tooltip" title="控制行与行之间的间距，影响阅读舒适度">
@@ -186,6 +204,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { getLatestMvuData } from '../shared/mvuStore';
+import { DEFAULT_TEXT_COLOR, getTextAppearanceConfig, saveTextAppearanceConfig } from '../shared/textAppearance';
 
 // 原生实现的 get 函数
 function get<T = any>(obj: any, path: string, defaultValue?: T): T {
@@ -229,20 +249,7 @@ const formatWeekday = (weekday: number): string => {
 // 加载MVU变量信息
 const loadMvuInfo = async () => {
   try {
-    const globalAny = window as any;
-
-    // 等待MVU初始化
-    if (globalAny.waitGlobalInitialized) {
-      await globalAny.waitGlobalInitialized('Mvu');
-    }
-
-    if (!globalAny.Mvu) {
-      console.warn('[正文美化] MVU 变量框架未初始化');
-      return;
-    }
-
-    // 获取MVU数据
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.warn('[正文美化] 无法获取 MVU 数据');
       return;
@@ -269,6 +276,7 @@ interface ContentBeautifierConfig {
   正文框宽度?: string;
   字间距?: string;
   字体选择?: string;
+  字体颜色?: string;
   行高?: string;
   内边距?: string;
 }
@@ -278,6 +286,7 @@ const defaultConfig: ContentBeautifierConfig = {
   正文框宽度: '100%',
   字间距: '0.05em',
   字体选择: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  字体颜色: DEFAULT_TEXT_COLOR,
   行高: '1.8',
   内边距: '2rem',
 };
@@ -288,14 +297,14 @@ const localConfig = ref<ContentBeautifierConfig>({ ...defaultConfig });
 // 加载配置
 const loadConfig = () => {
   try {
-    const variables = getAllVariables();
-    const beautifierConfig = variables['正文美化配置'] || {};
+    const beautifierConfig = getTextAppearanceConfig();
 
     config.value = {
       字体大小: beautifierConfig['字体大小'] || defaultConfig.字体大小,
       正文框宽度: beautifierConfig['正文框宽度'] || defaultConfig.正文框宽度,
       字间距: beautifierConfig['字间距'] || defaultConfig.字间距,
       字体选择: beautifierConfig['字体选择'] || defaultConfig.字体选择,
+      字体颜色: beautifierConfig['字体颜色'] || defaultConfig.字体颜色,
       行高: beautifierConfig['行高'] || defaultConfig.行高,
       内边距: beautifierConfig['内边距'] || defaultConfig.内边距,
     };
@@ -316,8 +325,8 @@ const saveConfig = () => {
     // 更新当前配置
     config.value = { ...localConfig.value };
 
-    // 保存到酒馆变量（聊天变量）
-    insertOrAssignVariables({ 正文美化配置: localConfig.value }, { type: 'chat' });
+    // 保存到角色变量，供正文、并行事件、选项与变量更新 UI 共同读取
+    saveTextAppearanceConfig(localConfig.value);
 
     console.info('[正文美化] 配置已保存:', config.value);
 
@@ -370,6 +379,7 @@ const contentStyle = computed(() => {
     fontSize: config.value.字体大小,
     letterSpacing: config.value.字间距,
     fontFamily: config.value.字体选择,
+    color: config.value.字体颜色 || DEFAULT_TEXT_COLOR,
     lineHeight: config.value.行高,
     padding: paddingValue,
     paddingTop: hasDateInfo.value ? '1.5rem' : paddingValue, // 如果有信息栏，增加顶部内边距以与分隔线保持距离
@@ -388,6 +398,49 @@ const infoBarStyle = computed(() => {
   };
 });
 
+const escapeHtml = (text: string): string => {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
+const formatPlainTextSegment = (text: string, className?: string): string => {
+  const escaped = escapeHtml(text).replace(/\n/g, '<br>');
+  if (!className) return escaped;
+  return `<span class="${className}">${escaped}</span>`;
+};
+
+const applySpecialTextFormatting = (text: string): string => {
+  const parts: string[] = [];
+  const pattern = /\*\*([\s\S]+?)\*\*|\*([^*\n]+?)\*|“([\s\S]+?)”|"([^"\n]+?)"/g;
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(pattern)) {
+    const matchIndex = match.index ?? 0;
+    if (matchIndex > lastIndex) {
+      parts.push(formatPlainTextSegment(text.slice(lastIndex, matchIndex)));
+    }
+
+    const innerMonologue = match[1] ?? match[2];
+    if (innerMonologue !== undefined) {
+      parts.push(formatPlainTextSegment(innerMonologue, 'xuedou-inner-monologue'));
+    } else {
+      parts.push(formatPlainTextSegment(match[0], 'xuedou-dialogue-text'));
+    }
+
+    lastIndex = matchIndex + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(formatPlainTextSegment(text.slice(lastIndex)));
+  }
+
+  return parts.join('');
+};
+
 // 格式化内容，保留换行
 const formattedContent = computed(() => {
   if (!content.value) return '';
@@ -400,18 +453,8 @@ const formattedContent = computed(() => {
     // 使用更简单的方法：在非HTML标签的换行处插入 <br>
     return content.value.replace(/\n(?!\s*<)/g, '<br>');
   } else {
-    // 如果是纯文本，转义HTML特殊字符，然后将换行转换为 <br>
-    let formatted = content.value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-
-    // 将换行符转换为 <br>
-    formatted = formatted.replace(/\n/g, '<br>');
-
-    return formatted;
+    // 如果是纯文本，转义HTML特殊字符，并识别对话/内心戏标记
+    return applySpecialTextFormatting(content.value);
   }
 });
 
@@ -674,12 +717,12 @@ onMounted(() => {
 .beautified-content {
   position: relative;
   z-index: 2;
-  color: #f3f4f6;
+  color: inherit;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 
   :deep(p) {
     margin: 1rem 0;
-    color: #e5e7eb;
+    color: inherit;
     text-align: justify;
     word-wrap: break-word;
     word-break: break-word;
@@ -766,6 +809,19 @@ onMounted(() => {
     font-style: italic;
   }
 
+  :deep(.xuedou-dialogue-text) {
+    color: #8ea2ff;
+    font-weight: 600;
+    text-shadow: 0 1px 4px rgba(99, 102, 241, 0.35);
+  }
+
+  :deep(.xuedou-inner-monologue) {
+    color: #a8a8ad;
+    font-style: italic;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
   :deep(a) {
     color: #6366f1;
     text-decoration: none;
@@ -782,7 +838,7 @@ onMounted(() => {
   :deep(ol) {
     margin: 0.75rem 0;
     padding-left: 1.5rem;
-    color: #d1d5db;
+    color: inherit;
   }
 
   :deep(li) {
@@ -1158,6 +1214,20 @@ onMounted(() => {
     option {
       background: #1e293b;
       color: #f3f4f6;
+    }
+  }
+
+  .color-input-row {
+    display: grid;
+    grid-template-columns: 3.25rem 1fr;
+    gap: 0.75rem;
+    align-items: center;
+
+    input[type='color'] {
+      min-width: 3.25rem;
+      height: 2.75rem;
+      padding: 0.25rem;
+      cursor: pointer;
     }
   }
 

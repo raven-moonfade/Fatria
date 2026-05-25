@@ -1,6 +1,48 @@
 <template>
   <div class="space-y-6 animate-slide-up">
     <div class="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 class="text-xl font-bold text-white">环境监测</h3>
+          <p class="mt-1 text-xs text-gray-400">开局前自动确认酒馆助手、提示词模板与 MVU 变量环境。</p>
+        </div>
+        <button
+          class="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-gray-100 transition hover:border-white/20 hover:bg-white/15"
+          type="button"
+          :disabled="isChecking"
+          @click="runEnvironmentCheck"
+        >
+          <i :class="['fas', isChecking ? 'fa-spinner animate-spin' : 'fa-rotate-right', 'mr-2']"></i>
+          重新检测
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div
+          v-for="item in environmentChecks"
+          :key="item.id"
+          class="flex gap-3 rounded-xl border p-3"
+          :class="statusClass(item.status)"
+        >
+          <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/20">
+            <i :class="['fas', statusIcon(item.status)]"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-semibold text-white">{{ item.label }}</span>
+              <span class="text-xs" :class="statusTextClass(item.status)">{{ statusText(item.status) }}</span>
+            </div>
+            <div class="mt-1 text-xs leading-relaxed text-gray-300">{{ item.detail }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="environmentSummary" class="mt-4 rounded-xl border border-yellow-400/20 bg-yellow-500/10 p-3 text-xs text-yellow-100">
+        {{ environmentSummary }}
+      </div>
+    </div>
+
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
       <h3 class="mb-3 text-xl font-bold text-white">温馨提示</h3>
       <div class="space-y-4 text-sm leading-relaxed text-gray-200">
         <p>你好，这里是前端作者“𝒱𝒾𝓃 ”，本卡为“芙芙可爱捏”与“𝒱𝒾𝓃”共同创作，仅在类脑与旅程免费发布/更新。</p>
@@ -58,7 +100,7 @@
 
         <div>
           <div class="font-semibold text-white">Q: 我为什么找不到状态栏？</div>
-          <div>A: 状态栏通过输入框上方的“打开状态栏”按钮开启，如果看不到，上下划动两下确保按钮没有被隐藏。</div>
+          <div>A: 状态栏现在通过屏幕上的小手机悬浮球开启，拖到顺手的位置后会记住。</div>
         </div>
 
         <div>
@@ -107,4 +149,209 @@
   </div>
 </template>
 
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { compare } from 'compare-versions';
+import { computed, onMounted, ref } from 'vue';
+
+type CheckStatus = 'checking' | 'pass' | 'fail' | 'warn';
+
+type EnvironmentCheck = {
+  id: string;
+  label: string;
+  status: CheckStatus;
+  detail: string;
+};
+
+const REQUIRED_TAVERN_HELPER_VERSION = '4.8.4';
+const isChecking = ref(false);
+const environmentChecks = ref<EnvironmentCheck[]>([
+  {
+    id: 'tavern-helper',
+    label: '酒馆助手版本',
+    status: 'checking',
+    detail: `需要酒馆助手版本大于 ${REQUIRED_TAVERN_HELPER_VERSION}。`,
+  },
+  {
+    id: 'prompt-template',
+    label: '提示词模板',
+    status: 'checking',
+    detail: '正在检测提示词模板插件是否安装并开启渲染。',
+  },
+  {
+    id: 'mvu',
+    label: 'MVU 脚本',
+    status: 'checking',
+    detail: '正在检测 MVU 脚本是否开启，并确认已读取性斗学园初始变量。',
+  },
+]);
+
+const environmentSummary = computed(() => {
+  if (isChecking.value) {
+    return '';
+  }
+  const failed = environmentChecks.value.filter(item => item.status === 'fail');
+  if (failed.length === 0) {
+    return '';
+  }
+  return `检测到 ${failed.length} 项环境异常，请先修正后再继续开局。`;
+});
+
+function updateCheck(id: string, patch: Partial<EnvironmentCheck>) {
+  environmentChecks.value = environmentChecks.value.map(item => (item.id === id ? { ...item, ...patch } : item));
+}
+
+function statusIcon(status: CheckStatus): string {
+  if (status === 'pass') return 'fa-check';
+  if (status === 'fail') return 'fa-xmark';
+  if (status === 'warn') return 'fa-triangle-exclamation';
+  return 'fa-spinner animate-spin';
+}
+
+function statusText(status: CheckStatus): string {
+  if (status === 'pass') return '通过';
+  if (status === 'fail') return '未通过';
+  if (status === 'warn') return '需确认';
+  return '检测中';
+}
+
+function statusClass(status: CheckStatus): string {
+  if (status === 'pass') return 'border-green-400/25 bg-green-500/10';
+  if (status === 'fail') return 'border-red-400/25 bg-red-500/10';
+  if (status === 'warn') return 'border-yellow-400/25 bg-yellow-500/10';
+  return 'border-white/10 bg-black/10';
+}
+
+function statusTextClass(status: CheckStatus): string {
+  if (status === 'pass') return 'text-green-300';
+  if (status === 'fail') return 'text-red-300';
+  if (status === 'warn') return 'text-yellow-300';
+  return 'text-gray-300';
+}
+
+async function runEnvironmentCheck() {
+  isChecking.value = true;
+  environmentChecks.value = environmentChecks.value.map(item => ({ ...item, status: 'checking' }));
+
+  await Promise.all([checkTavernHelperVersion(), checkPromptTemplate(), checkMvu()]);
+  isChecking.value = false;
+}
+
+async function checkTavernHelperVersion() {
+  try {
+    const globalAny = window as any;
+    const versionGetter = globalAny.getTavernHelperVersion;
+    if (typeof versionGetter !== 'function') {
+      updateCheck('tavern-helper', {
+        status: 'fail',
+        detail: '未检测到 getTavernHelperVersion，请确认酒馆助手已安装并启用。',
+      });
+      return;
+    }
+
+    const version = String(await versionGetter());
+    const isCompatible = compare(version, REQUIRED_TAVERN_HELPER_VERSION, '>');
+    updateCheck('tavern-helper', {
+      status: isCompatible ? 'pass' : 'fail',
+      detail: isCompatible
+        ? `当前版本 ${version}，满足 > ${REQUIRED_TAVERN_HELPER_VERSION}。`
+        : `当前版本 ${version}，需要升级到大于 ${REQUIRED_TAVERN_HELPER_VERSION}。`,
+    });
+  } catch (error) {
+    updateCheck('tavern-helper', {
+      status: 'fail',
+      detail: `酒馆助手版本读取失败：${formatError(error)}`,
+    });
+  }
+}
+
+async function checkPromptTemplate() {
+  try {
+    const globalAny = window as any;
+    await waitGlobal(globalAny, 'EjsTemplate');
+
+    const template = globalAny.EjsTemplate;
+    if (!template || typeof template.getFeatures !== 'function') {
+      updateCheck('prompt-template', {
+        status: 'fail',
+        detail: '未检测到提示词模板插件 EjsTemplate，请确认插件已安装。',
+      });
+      return;
+    }
+
+    const features = template.getFeatures();
+    const enabled = Boolean(features?.enabled);
+    const renderEnabled = Boolean(features?.render_enabled);
+    updateCheck('prompt-template', {
+      status: enabled && renderEnabled ? 'pass' : 'fail',
+      detail:
+        enabled && renderEnabled
+          ? '提示词模板已安装，插件与楼层渲染均已开启。'
+          : `提示词模板已安装，但${enabled ? '' : '插件未开启'}${!enabled && !renderEnabled ? '，且' : ''}${
+              renderEnabled ? '' : '楼层渲染未开启'
+            }。`,
+    });
+  } catch (error) {
+    updateCheck('prompt-template', {
+      status: 'fail',
+      detail: `提示词模板检测失败：${formatError(error)}`,
+    });
+  }
+}
+
+async function checkMvu() {
+  try {
+    const globalAny = window as any;
+    await waitGlobal(globalAny, 'Mvu');
+
+    const mvu = globalAny.Mvu;
+    if (!mvu || typeof mvu.getMvuData !== 'function') {
+      updateCheck('mvu', {
+        status: 'fail',
+        detail: '未检测到 MVU 全局对象，请确认 MVU 脚本已安装并开启。',
+      });
+      return;
+    }
+
+    const mvuData = mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const initializedLorebooks = Object.keys(mvuData?.initialized_lorebooks ?? {});
+    const statData = mvuData?.stat_data ?? {};
+    const hasSexBattleVars =
+      initializedLorebooks.includes('性斗学园') || Boolean(statData?.角色基础 || statData?.核心状态 || statData?.性斗系统);
+
+    updateCheck('mvu', {
+      status: hasSexBattleVars ? 'pass' : 'warn',
+      detail: hasSexBattleVars
+        ? 'MVU 脚本已开启，并已检测到性斗学园变量数据。'
+        : 'MVU 脚本已开启，但未检测到性斗学园初始变量；请重新读取初始变量或确认“变量结构”脚本已启用。',
+    });
+  } catch (error) {
+    updateCheck('mvu', {
+      status: 'fail',
+      detail: `MVU 检测失败：${formatError(error)}`,
+    });
+  }
+}
+
+async function waitGlobal(globalAny: any, key: string) {
+  if (typeof globalAny.waitGlobalInitialized === 'function') {
+    try {
+      await Promise.race([
+        globalAny.waitGlobalInitialized(key),
+        new Promise(resolve => {
+          setTimeout(resolve, 3000);
+        }),
+      ]);
+    } catch (error) {
+      console.warn(`[开局环境监测] 等待 ${key} 初始化时出现异常:`, error);
+    }
+  }
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+onMounted(() => {
+  void runEnvironmentCheck();
+});
+</script>

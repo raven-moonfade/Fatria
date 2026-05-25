@@ -87,7 +87,7 @@ export const COMMON_SKILLS: SkillData[] = [
     id: 's_dirtytalk',
     name: '污言秽语',
     description: '用下流的言语刺激对方',
-    effectDescription: '造成500%魅力伤害,降低意志力5%',
+    effectDescription: '造成500%魅力伤害,提高目标敏感度',
     icon: 'Comment',
     type: SkillType.MENTAL,
     staminaCost: 5,

@@ -540,6 +540,9 @@
 import { getEnemyPortraitUrl, savePlayerCustomAvatar } from '@/性斗学园/战斗界面/constants';
 import { ENEMY_DATABASE } from '@/性斗学园/战斗界面/enemyDatabase';
 import { ENEMY_SKILL_MAP, ENEMY_SKILLS } from '@/性斗学园/战斗界面/enemySkillDatabase';
+import { syncInitialSetupFromMvu as syncFromMvu } from '@/性斗学园/shared/initialSetupSync';
+import { getActivatedCheatCodes, saveActivatedCheatCodes } from '@/性斗学园/shared/localPreferences';
+import { getLatestMvuData as getMvuData, updateLatestStatData as updateMvuVariables } from '@/性斗学园/shared/mvuStore';
 import { computed, onMounted, ref } from 'vue';
 import FloatingShapes from './components/FloatingShapes.vue';
 import Step0_Welcome from './components/Step0_Welcome.vue';
@@ -550,8 +553,14 @@ import Step4_Skills from './components/Step4_Skills.vue';
 import { ARCHETYPES } from './constants';
 import { getConstitutionById } from './data/constitutions';
 import { STARTER_SKILLS } from './data/skills';
-import { CharacterData, Difficulty, Gender, INITIAL_ATTRIBUTES, INITIAL_CHARACTER_DATA, MainlineTimeline } from './types';
-import { getMvuData, syncFromMvu, updateMvuVariables } from './utils/mvu-helper';
+import {
+  CharacterData,
+  Difficulty,
+  Gender,
+  INITIAL_ATTRIBUTES,
+  INITIAL_CHARACTER_DATA,
+  MainlineTimeline,
+} from './types';
 import { convertSkillsToMvu } from './utils/skill-converter';
 
 const step = ref(1);
@@ -598,17 +607,14 @@ const confirmLifeSimMode = () => {
 
 // 从 MVU 变量同步初始数据
 onMounted(async () => {
+  activatedCheatCodes.value = getActivatedCheatCodes();
+
   try {
     const mvuData = await getMvuData();
     if (mvuData) {
       const syncedAttributes = syncFromMvu(mvuData);
       if (syncedAttributes) {
         characterData.value.attributes = syncedAttributes;
-      }
-      // 同步已激活的作弊码
-      const activatedCodes = mvuData?.stat_data?.物品系统?.已激活作弊码 || [];
-      if (Array.isArray(activatedCodes)) {
-        activatedCheatCodes.value = new Set(activatedCodes);
       }
     }
   } catch (error) {
@@ -619,10 +625,7 @@ onMounted(async () => {
 // 记录已激活的作弊码
 const recordActivatedCheatCode = async (code: string) => {
   activatedCheatCodes.value.add(code);
-  const activatedCodesArray = Array.from(activatedCheatCodes.value);
-  await updateMvuVariables({
-    '物品系统.已激活作弊码': activatedCodesArray,
-  });
+  saveActivatedCheatCodes(activatedCheatCodes.value);
 };
 
 // 作弊码验证
@@ -669,7 +672,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 999,
             暴击率加成: 999,
-            意志力加成: 999,
           },
           部位: '特殊装备',
           数量: 1,
@@ -707,7 +709,6 @@ const applyCheatCode = async () => {
               基础忍耐力成算: 0,
               闪避率加成: 0,
               暴击率加成: 10,
-              意志力加成: 0,
             },
           },
           '物品系统._装备栏.副装备': {
@@ -723,7 +724,6 @@ const applyCheatCode = async () => {
               基础忍耐力成算: 0,
               闪避率加成: 10,
               暴击率加成: 0,
-              意志力加成: 0,
             },
           },
           '物品系统._装备栏.饰品1': {
@@ -739,7 +739,6 @@ const applyCheatCode = async () => {
               基础忍耐力成算: 0,
               闪避率加成: 0,
               暴击率加成: 0,
-              意志力加成: 0,
             },
           },
           '物品系统._装备栏.饰品2': {
@@ -755,7 +754,6 @@ const applyCheatCode = async () => {
               基础忍耐力成算: 0,
               闪避率加成: 0,
               暴击率加成: 0,
-              意志力加成: 0,
             },
           },
           '物品系统._装备栏.特殊装备': {
@@ -771,7 +769,6 @@ const applyCheatCode = async () => {
               基础忍耐力成算: 0,
               闪避率加成: 0,
               暴击率加成: 0,
-              意志力加成: 0,
               最大快感加成: 50,
             },
           },
@@ -805,7 +802,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 10,
             暴击率加成: 0,
-            意志力加成: 0,
           },
           部位: '饰品',
           数量: 1,
@@ -841,7 +837,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: 0,
           },
           部位: '副装备',
           数量: 1,
@@ -877,7 +872,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 10,
-            意志力加成: 0,
           },
           部位: '饰品',
           数量: 1,
@@ -913,7 +907,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 15,
             暴击率加成: 0,
-            意志力加成: 0,
           },
           部位: '饰品',
           数量: 1,
@@ -949,7 +942,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: 0,
           },
           部位: '饰品',
           数量: 1,
@@ -990,7 +982,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 1,
             暴击率加成: 1,
-            意志力加成: 1,
           },
           部位: '特殊装备',
           数量: 1,
@@ -1026,7 +1017,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 5,
-            意志力加成: 0,
           },
           部位: '饰品',
           数量: 1,
@@ -1062,7 +1052,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: -20,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: 0,
           },
           部位: '主装备',
           数量: 1,
@@ -1098,7 +1087,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 8,
-            意志力加成: 5,
           },
           部位: '饰品',
           数量: 1,
@@ -1134,7 +1122,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: -5,
           },
           部位: '饰品',
           数量: 1,
@@ -1170,7 +1157,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: -10,
           },
           部位: '饰品',
           数量: 1,
@@ -1206,7 +1192,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: -15,
             闪避率加成: 0,
             暴击率加成: 5,
-            意志力加成: -10,
           },
           部位: '特殊装备',
           数量: 1,
@@ -1242,7 +1227,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 15,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: 10,
           },
           部位: '特殊装备',
           数量: 1,
@@ -1278,7 +1262,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 20,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: -15,
           },
           部位: '副装备',
           数量: 1,
@@ -1314,7 +1297,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 5,
             闪避率加成: 15,
             暴击率加成: 0,
-            意志力加成: -8,
           },
           部位: '饰品',
           数量: 1,
@@ -1350,7 +1332,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 20,
             闪避率加成: 0,
             暴击率加成: 10,
-            意志力加成: 10,
           },
           部位: '主装备',
           数量: 1,
@@ -1386,7 +1367,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: 0,
           },
           部位: '副装备',
           数量: 1,
@@ -1422,7 +1402,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 5,
             闪避率加成: 0,
             暴击率加成: 0,
-            意志力加成: 5,
           },
           部位: '饰品',
           数量: 1,
@@ -1458,7 +1437,6 @@ const applyCheatCode = async () => {
             基础忍耐力成算: 0,
             闪避率加成: 10,
             暴击率加成: 0,
-            意志力加成: -3,
           },
           部位: '饰品',
           数量: 1,
@@ -1607,7 +1585,6 @@ const resetAttributes = () => {
       经验值: INITIAL_ATTRIBUTES.角色基础.经验值,
       声望: INITIAL_ATTRIBUTES.角色基础.声望,
       _段位: INITIAL_ATTRIBUTES.角色基础._段位,
-      段位积分: INITIAL_ATTRIBUTES.角色基础.段位积分,
     },
     核心状态: {
       $属性点: INITIAL_ATTRIBUTES.核心状态.$属性点,
@@ -1618,17 +1595,12 @@ const resetAttributes = () => {
       $快感: INITIAL_ATTRIBUTES.核心状态.$快感,
       堕落度: INITIAL_ATTRIBUTES.核心状态.堕落度,
       _潜力: INITIAL_ATTRIBUTES.核心状态._潜力,
-      _魅力: INITIAL_ATTRIBUTES.核心状态._魅力,
-      $基础魅力: INITIAL_ATTRIBUTES.核心状态.$基础魅力,
-      _幸运: INITIAL_ATTRIBUTES.核心状态._幸运,
-      $基础幸运: INITIAL_ATTRIBUTES.核心状态.$基础幸运,
-      $基础性斗力: INITIAL_ATTRIBUTES.核心状态.$基础性斗力,
-      $基础忍耐力: INITIAL_ATTRIBUTES.核心状态.$基础忍耐力,
-      _闪避率: INITIAL_ATTRIBUTES.核心状态._闪避率,
-      $基础闪避率: INITIAL_ATTRIBUTES.核心状态.$基础闪避率,
-      _暴击率: INITIAL_ATTRIBUTES.核心状态._暴击率,
-      $基础暴击率: INITIAL_ATTRIBUTES.核心状态.$基础暴击率,
-      // 已移除意志力相关字段
+    },
+    基础属性: {
+      _魅力: INITIAL_ATTRIBUTES.基础属性._魅力,
+      _幸运: INITIAL_ATTRIBUTES.基础属性._幸运,
+      _闪避率: INITIAL_ATTRIBUTES.基础属性._闪避率,
+      _暴击率: INITIAL_ATTRIBUTES.基础属性._暴击率,
     },
   };
 };
@@ -1650,6 +1622,39 @@ const buildMainlineTimelineUpdates = (timeline: MainlineTimeline): Record<string
     '时间系统.星期': selectedStart.weekday,
   };
 };
+
+const BONUS_KEYS = [
+  '魅力加成',
+  '幸运加成',
+  '基础性斗力加成',
+  '基础性斗力成算',
+  '基础忍耐力加成',
+  '基础忍耐力成算',
+  '闪避率加成',
+  '暴击率加成',
+] as const;
+
+type BonusKey = (typeof BONUS_KEYS)[number];
+
+const createEmptyBonusStats = (): Record<BonusKey, number> =>
+  Object.fromEntries(BONUS_KEYS.map(key => [key, 0])) as Record<BonusKey, number>;
+
+const normalizeBonusStats = (input: Record<string, any> | undefined | null): Partial<Record<BonusKey, number>> => {
+  const bonus: Partial<Record<BonusKey, number>> = {};
+  for (const key of BONUS_KEYS) {
+    const value = Number(input?.[key] ?? 0);
+    if (Number.isFinite(value) && value !== 0) bonus[key] = value;
+  }
+  return bonus;
+};
+
+const createPermanentStatusEntry = (bonus: Record<string, any> = {}, description = '') => ({
+  加成: {
+    ...createEmptyBonusStats(),
+    ...normalizeBonusStats(bonus),
+  },
+  描述: description,
+});
 
 const handleStartGame = async () => {
   loading.value = true;
@@ -1790,30 +1795,23 @@ const handleStartGame = async () => {
         }
       }
 
-      // 构建永久状态列表（只有特殊体质）
-      const permanentStateList: string[] = [];
-      const permanentBonusStats: Record<string, number> = {
-        魅力加成: 0,
-        幸运加成: 0,
-        基础性斗力加成: 0,
-        基础性斗力成算: 0,
-        基础忍耐力加成: 0,
-        基础忍耐力成算: 0,
-        闪避率加成: 0,
-        暴击率加成: 0,
-        意志力加成: 0,
-      };
+      // 构建永久状态列表（状态自身携带加成）
+      const permanentStatusList: Record<string, any> = {};
 
       // 添加选中的体质到永久状态
       for (const constitutionId of characterData.value.initialPassiveSkills) {
         const constitution = getConstitutionById(constitutionId);
         if (constitution) {
-          permanentStateList.push(constitution.name);
+          const bonus = createEmptyBonusStats();
           for (const mod of constitution.permanentModifiers) {
-            if (permanentBonusStats[mod.stat] !== undefined) {
-              permanentBonusStats[mod.stat] += mod.value;
+            if (BONUS_KEYS.includes(mod.stat as BonusKey)) {
+              bonus[mod.stat as BonusKey] += mod.value;
             }
           }
+          permanentStatusList[constitution.name] = createPermanentStatusEntry(
+            bonus,
+            constitution.effectDescription || '',
+          );
         }
       }
 
@@ -1829,16 +1827,14 @@ const handleStartGame = async () => {
         '核心状态.$耐力': npcData.对手耐力,
         '核心状态.$最大快感': npcData.对手最大快感,
         '核心状态._潜力': 10, // 默认潜力
-        '核心状态.$基础魅力': npcData.对手魅力,
-        '核心状态.$基础幸运': npcData.对手幸运,
-        // 性斗力与忍耐力由脚本自动计算，不需要手动写入
-        '核心状态.$基础闪避率': npcData.对手闪避率,
-        '核心状态.$基础暴击率': npcData.对手暴击率,
+        '基础属性._魅力': npcData.对手魅力,
+        '基础属性._幸运': npcData.对手幸运,
+        '基础属性._闪避率': npcData.对手闪避率,
+        '基础属性._暴击率': npcData.对手暴击率,
         // 技能系统
         '技能系统.主动技能': npcActiveSkills,
         // 永久状态
-        '永久状态.状态列表': permanentStateList,
-        '永久状态.加成统计': permanentBonusStats,
+        '永久状态.状态列表': permanentStatusList,
         ...mainlineTimelineUpdates,
       });
 
@@ -1889,40 +1885,31 @@ const handleStartGame = async () => {
     const currentArchetypes = ARCHETYPES[characterData.value.gender] || ARCHETYPES[Gender.OTHER];
     const selectedArchetype = currentArchetypes.find(a => a.id === characterData.value.archetypeId);
 
-    // 构建永久状态列表和加成统计
-    const permanentStateList: string[] = [];
-    const permanentBonusStats: Record<string, number> = {
-      魅力加成: 0,
-      幸运加成: 0,
-      基础性斗力加成: 0,
-      基础性斗力成算: 0,
-      基础忍耐力加成: 0,
-      基础忍耐力成算: 0,
-      闪避率加成: 0,
-      暴击率加成: 0,
-      意志力加成: 0,
-    };
+    // 构建永久状态列表（状态自身携带加成）
+    const permanentStatusList: Record<string, any> = {};
 
     // 添加角色类型的永久状态
     if (selectedArchetype?.permanentState) {
-      permanentStateList.push(selectedArchetype.passiveSkill.name);
-      for (const [key, value] of Object.entries(selectedArchetype.permanentState.bonus)) {
-        if (permanentBonusStats[key] !== undefined) {
-          permanentBonusStats[key] += value as number;
-        }
-      }
+      permanentStatusList[selectedArchetype.passiveSkill.name] = createPermanentStatusEntry(
+        selectedArchetype.permanentState.bonus,
+        selectedArchetype.passiveSkill.effectDescription || selectedArchetype.passiveSkill.description,
+      );
     }
 
     // 添加选中的体质到永久状态
     for (const constitutionId of characterData.value.initialPassiveSkills) {
       const constitution = getConstitutionById(constitutionId);
       if (constitution) {
-        permanentStateList.push(constitution.name);
+        const bonus = createEmptyBonusStats();
         for (const mod of constitution.permanentModifiers) {
-          if (permanentBonusStats[mod.stat] !== undefined) {
-            permanentBonusStats[mod.stat] += mod.value;
+          if (BONUS_KEYS.includes(mod.stat as BonusKey)) {
+            bonus[mod.stat as BonusKey] += mod.value;
           }
         }
+        permanentStatusList[constitution.name] = createPermanentStatusEntry(
+          bonus,
+          constitution.effectDescription || '',
+        );
       }
     }
 
@@ -1946,8 +1933,7 @@ const handleStartGame = async () => {
 
     await updateMvuVariables({
       '技能系统.主动技能': activeSkillsRecord,
-      '永久状态.状态列表': permanentStateList,
-      '永久状态.加成统计': permanentBonusStats,
+      '永久状态.状态列表': permanentStatusList,
       '角色基础._姓名': characterData.value.name,
       '角色基础.难度': mvuDifficulty, // 新增：写入难度
       '角色基础.性别': mvuGender, // 新增：写入性别
@@ -1956,8 +1942,7 @@ const handleStartGame = async () => {
 
     console.info('[开局] 数据已保存到 MVU');
     console.info('[开局] 难度:', mvuDifficulty, '性别:', mvuGender);
-    console.info('[开局] 永久状态:', permanentStateList);
-    console.info('[开局] 永久加成:', permanentBonusStats);
+    console.info('[开局] 永久状态:', permanentStatusList);
 
     // 发送角色基础数据到酒馆
     sendCharacterDataToTavern();
@@ -2261,7 +2246,9 @@ const sendCharacterDataToTavern = async () => {
 
         if (!worldbookUpdated) {
           console.warn('[开局] 无法自动更新世界书，请手动执行以下命令:');
-          console.warn(`[开局] 请先确认存在 name=user 的条目，再执行 /setentryfield file=性斗学园 uid=<该条目uid> field=content ...`);
+          console.warn(
+            `[开局] 请先确认存在 name=user 的条目，再执行 /setentryfield file=性斗学园 uid=<该条目uid> field=content ...`,
+          );
         }
       } catch (worldbookError) {
         console.warn('[开局] 更新世界书失败:', worldbookError);

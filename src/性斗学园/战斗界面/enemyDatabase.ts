@@ -1,15 +1,14 @@
 /**
- * 敌人数据库 - 从世界书文件中提取的MVU变量数据
+ * 敌人数据库 - 从世界书文件中提取的静态基础数据
  * 此文件由脚本自动生成，请勿手动编辑
  */
 
-export interface EnemyMvuData {
+export interface EnemyBaseData {
   对手等级: number; // 新增：敌人等级
   对手魅力: number;
   对手幸运: number;
   对手闪避率: number;
   对手暴击率: number;
-  // 已移除：对手意志力
   对手耐力: number;
   对手最大耐力: number;
   对手快感: number;
@@ -17,8 +16,6 @@ export interface EnemyMvuData {
   对手高潮次数: number;
   对手性斗力: number;
   对手忍耐力: number;
-  对手临时状态: Record<string, any>;
-  对手技能冷却: Record<string, number>;
 }
 
 /**
@@ -34,37 +31,6 @@ export const DIFFICULTY_COEFFICIENTS: Record<string, number> = {
 };
 
 /**
- * 计算闪避率（带递减收益）
- * - 0-60%: 1:1比例
- * - 60%-70%: 5:1比例（超过60的部分除以5）
- * - 上限: 70%
- *
- * 例如：原始闪避率100 -> 60 + (100-60)/5 = 60 + 8 = 68
- * 达到70%上限需要原始闪避率110（60 + 50/5 = 70）
- */
-function calcEvasionWithDiminishingReturns(rawEvasion: number): number {
-  const normalCap = 60; // 正常比例的上限
-  const hardCap = 70; // 闪避率绝对上限
-  const diminishingRatio = 5; // 超过60后的递减比例
-
-  // 确保不为负数
-  const safeRaw = Math.max(0, rawEvasion);
-
-  if (safeRaw <= normalCap) {
-    // 60以内，1:1比例
-    return safeRaw;
-  }
-
-  // 超过60的部分按5:1递减
-  const excessEvasion = safeRaw - normalCap;
-  const diminishedBonus = excessEvasion / diminishingRatio;
-  const finalEvasion = normalCap + diminishedBonus;
-
-  // 最终上限为70
-  return Math.min(hardCap, finalEvasion);
-}
-
-/**
  * 根据用户等级调整NPC等级下限
  * NPC最低等级 = max(原等级, 用户等级 - 8)
  * 每提升1级：魅力/幸运/闪避率/暴击率+1，最大耐力/最大快感+5，性斗力/忍耐力+10
@@ -72,7 +38,7 @@ function calcEvasionWithDiminishingReturns(rawEvasion: number): number {
  * @param userLevel 用户等级
  * @returns 调整后的敌人数据（等级提升后的基础数据）
  */
-export function applyLevelScaling(baseData: EnemyMvuData, userLevel: number): EnemyMvuData {
+export function applyLevelScaling(baseData: EnemyBaseData, userLevel: number): EnemyBaseData {
   const minLevel = userLevel - 8;
   const originalLevel = baseData.对手等级;
 
@@ -97,8 +63,6 @@ export function applyLevelScaling(baseData: EnemyMvuData, userLevel: number): En
     对手高潮次数: baseData.对手高潮次数,
     对手性斗力: baseData.对手性斗力 + levelDiff * 10,
     对手忍耐力: baseData.对手忍耐力 + levelDiff * 10,
-    对手临时状态: { ...baseData.对手临时状态 },
-    对手技能冷却: { ...baseData.对手技能冷却 },
   };
 }
 
@@ -108,7 +72,7 @@ export function applyLevelScaling(baseData: EnemyMvuData, userLevel: number): En
  * @param difficulty 难度名称
  * @returns 调整后的敌人数据
  */
-export function applyDifficultyCoefficient(baseData: EnemyMvuData, difficulty: string): EnemyMvuData {
+export function applyDifficultyCoefficient(baseData: EnemyBaseData, difficulty: string): EnemyBaseData {
   const coefficient = DIFFICULTY_COEFFICIENTS[difficulty] || 1.0;
 
   if (coefficient === 1.0) {
@@ -128,16 +92,14 @@ export function applyDifficultyCoefficient(baseData: EnemyMvuData, difficulty: s
     对手高潮次数: baseData.对手高潮次数, // 高潮次数不变
     对手性斗力: Math.round(baseData.对手性斗力 * coefficient),
     对手忍耐力: Math.round(baseData.对手忍耐力 * coefficient),
-    对手临时状态: { ...baseData.对手临时状态 },
-    对手技能冷却: { ...baseData.对手技能冷却 },
   };
 }
 
 /**
- * 敌人数据库 - 根据姓名查找MVU变量数据
+ * 敌人数据库 - 根据姓名查找静态基础数据
  * 数据来源：世界书\性斗学园 目录中的人物条目
  */
-export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
+export const ENEMY_DATABASE: Record<string, EnemyBaseData> = {
   爱丽丝温特: {
     对手魅力: 220,
     对手幸运: 110,
@@ -151,8 +113,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 990,
     对手忍耐力: 990,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   上杉亚衣: {
     对手魅力: 20,
@@ -167,8 +127,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 272,
     对手忍耐力: 320,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   九条凛音: {
     对手魅力: 50,
@@ -183,8 +141,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 427,
     对手忍耐力: 450,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   白石响子: {
     对手魅力: 180,
@@ -199,8 +155,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 807,
     对手忍耐力: 850,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   神崎凛: {
     对手魅力: 80,
@@ -215,8 +169,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 648,
     对手忍耐力: 720,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   月下香: {
     对手魅力: 90,
@@ -231,8 +183,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 540,
     对手忍耐力: 600,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   天宫院抚子: {
     对手魅力: 56,
@@ -247,8 +197,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 475,
     对手忍耐力: 480,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   维多利亚戈德温: {
     对手魅力: 124,
@@ -263,8 +211,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 700,
     对手忍耐力: 730,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   艾丽卡施耐德: {
     对手魅力: 94,
@@ -279,8 +225,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 572,
     对手忍耐力: 650,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   艾琳海德: {
     对手魅力: 200,
@@ -295,8 +239,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 950,
     对手忍耐力: 950,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   莎拉斯通: {
     对手魅力: 133,
@@ -311,8 +253,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 712,
     对手忍耐力: 750,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   明日香: {
     对手魅力: 113,
@@ -327,8 +267,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 827,
     对手忍耐力: 880,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   绫濑川: {
     对手魅力: 191,
@@ -343,8 +281,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 882,
     对手忍耐力: 900,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   维纳斯: {
     对手魅力: 115,
@@ -359,8 +295,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 756,
     对手忍耐力: 780,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   索菲亚: {
     对手魅力: 124,
@@ -375,8 +309,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 693,
     对手忍耐力: 700,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   中岛诗织: {
     对手魅力: 102,
@@ -391,8 +323,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 609,
     对手忍耐力: 700,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   蝶: {
     对手魅力: 82,
@@ -407,8 +337,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 640,
     对手忍耐力: 700,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   雪: {
     对手魅力: 80,
@@ -423,8 +351,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 540,
     对手忍耐力: 600,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   风: {
     对手魅力: 34,
@@ -439,8 +365,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 425,
     对手忍耐力: 500,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   如月诗乃: {
     对手魅力: 72,
@@ -455,8 +379,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 522,
     对手忍耐力: 550,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   森莉花: {
     对手魅力: 63,
@@ -471,8 +393,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 499,
     对手忍耐力: 520,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   阿米莉亚安斯华斯: {
     对手魅力: 24,
@@ -487,8 +407,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 279,
     对手忍耐力: 300,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   樱井结衣: {
     对手魅力: 34,
@@ -503,8 +421,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 246,
     对手忍耐力: 280,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   安琪: {
     对手魅力: 86,
@@ -519,8 +435,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 635,
     对手忍耐力: 690,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   美咲绫: {
     对手魅力: 119,
@@ -535,8 +449,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 666,
     对手忍耐力: 680,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   角楯花凛: {
     对手魅力: 118,
@@ -551,8 +463,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 682,
     对手忍耐力: 750,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   索亚伊万诺娃: {
     对手魅力: 18,
@@ -567,8 +477,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 446,
     对手忍耐力: 460,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   凰天羽: {
     对手魅力: 12,
@@ -583,8 +491,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 432,
     对手忍耐力: 450,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   赤城朱音: {
     对手魅力: 20,
@@ -599,8 +505,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 364,
     对手忍耐力: 400,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   蓝原结衣: {
     对手魅力: 40,
@@ -615,8 +519,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 349,
     对手忍耐力: 380,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   橘美玲: {
     对手魅力: 47,
@@ -631,8 +533,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 368,
     对手忍耐力: 400,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   克里奥佩特拉七世: {
     对手魅力: 51,
@@ -647,8 +547,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 344,
     对手忍耐力: 370,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   星野光: {
     对手魅力: 33,
@@ -663,8 +561,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 267,
     对手忍耐力: 300,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   望月静: {
     对手魅力: 45,
@@ -679,8 +575,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 342,
     对手忍耐力: 380,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   早坂蕾娜: {
     对手魅力: 33,
@@ -695,8 +589,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 327,
     对手忍耐力: 360,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   伊尼亚德瓦卢瓦: {
     对手魅力: 16,
@@ -711,8 +603,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 310,
     对手忍耐力: 330,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   娜拉: {
     对手魅力: 70,
@@ -727,8 +617,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 245,
     对手忍耐力: 270,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   小鸟游雏子: {
     对手魅力: 25,
@@ -743,8 +631,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 211,
     对手忍耐力: 220,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   猫宫宁宁: {
     对手魅力: 28,
@@ -759,8 +645,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 196,
     对手忍耐力: 200,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   犬饲真子: {
     对手魅力: 8,
@@ -775,8 +659,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 153,
     对手忍耐力: 180,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   娜塔莎斯迈尔: {
     对手魅力: 15,
@@ -791,8 +673,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 220,
     对手忍耐力: 240,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   铃木惠美: {
     对手魅力: 5,
@@ -807,8 +687,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 82,
     对手忍耐力: 150,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   雪莉克里姆希尔德: {
     对手魅力: 50,
@@ -823,8 +701,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 445,
     对手忍耐力: 500,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   白川千夏: {
     对手魅力: 30,
@@ -839,8 +715,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 352,
     对手忍耐力: 400,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   黑塔小姐: {
     对手魅力: 42,
@@ -855,8 +729,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 369,
     对手忍耐力: 450,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   月城遥: {
     对手魅力: 59,
@@ -871,8 +743,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 469,
     对手忍耐力: 550,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   零: {
     对手魅力: 61,
@@ -887,8 +757,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 492,
     对手忍耐力: 600,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   桃乃爱: {
     对手魅力: 27,
@@ -903,8 +771,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 370,
     对手忍耐力: 400,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   加藤鹰: {
     对手魅力: 137,
@@ -919,8 +785,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 990,
     对手忍耐力: 990,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   佐藤健: {
     对手魅力: 89,
@@ -935,8 +799,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 552,
     对手忍耐力: 650,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   田中勇: {
     对手魅力: 9,
@@ -951,8 +813,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 227,
     对手忍耐力: 350,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   李强: {
     对手魅力: 4,
@@ -967,8 +827,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 180,
     对手忍耐力: 300,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   风音: {
     对手魅力: 93,
@@ -983,8 +841,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 712,
     对手忍耐力: 750,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   铃音: {
     对手魅力: 86,
@@ -999,8 +855,20 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 662,
     对手忍耐力: 720,
-    对手临时状态: {},
-    对手技能冷却: {},
+  },
+  山田花子_伪装: {
+    对手魅力: 18,
+    对手幸运: 28,
+    对手闪避率: 18,
+    对手暴击率: 12,
+    对手等级: 12,
+    对手耐力: 60,
+    对手最大耐力: 60,
+    对手快感: 0,
+    对手最大快感: 85,
+    对手高潮次数: 0,
+    对手性斗力: 115,
+    对手忍耐力: 120,
   },
   山田花子: {
     对手魅力: 81,
@@ -1015,8 +883,20 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 699,
     对手忍耐力: 750,
-    对手临时状态: {},
-    对手技能冷却: {},
+  },
+  络新妇: {
+    对手魅力: 78,
+    对手幸运: 58,
+    对手闪避率: 34,
+    对手暴击率: 24,
+    对手等级: 32,
+    对手耐力: 160,
+    对手最大耐力: 160,
+    对手快感: 0,
+    对手最大快感: 220,
+    对手高潮次数: 0,
+    对手性斗力: 310,
+    对手忍耐力: 320,
   },
   佐藤幸子: {
     对手魅力: 5,
@@ -1031,8 +911,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 75,
     对手忍耐力: 100,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   莉莉安: {
     对手魅力: 165,
@@ -1047,8 +925,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 612,
     对手忍耐力: 612,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   伊丽莎白夜羽: {
     对手魅力: 152,
@@ -1063,8 +939,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 752,
     对手忍耐力: 752,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   克劳迪娅威斯特: {
     对手魅力: 165,
@@ -1079,8 +953,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 825,
     对手忍耐力: 820,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   安娜科兹洛娃: {
     对手魅力: 178,
@@ -1095,8 +967,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 632,
     对手忍耐力: 632,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   弗洛拉梅斯梅尔: {
     对手魅力: 167,
@@ -1111,8 +981,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 735,
     对手忍耐力: 735,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   布伦希尔德: {
     对手魅力: 160,
@@ -1127,8 +995,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 780,
     对手忍耐力: 800,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   伊甸阿斯莫德: {
     对手魅力: 999,
@@ -1143,8 +1009,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 2000,
     对手忍耐力: 2000,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   李小云: {
     对手魅力: 148,
@@ -1159,8 +1023,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 564,
     对手忍耐力: 564,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   樱岛麻衣: {
     对手魅力: 167,
@@ -1175,8 +1037,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 697,
     对手忍耐力: 697,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   潘多拉小姐: {
     对手魅力: 168,
@@ -1191,8 +1051,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 772,
     对手忍耐力: 772,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   艾米丽威廉姆斯: {
     对手魅力: 165,
@@ -1207,8 +1065,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 644,
     对手忍耐力: 644,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   '赤城 朱音': {
     对手魅力: 160,
@@ -1223,8 +1079,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 364,
     对手忍耐力: 364,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   赵婷婷: {
     对手魅力: 180,
@@ -1239,8 +1093,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 585,
     对手忍耐力: 585,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   辣妹子阳菜: {
     对手魅力: 162,
@@ -1255,8 +1107,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 311,
     对手忍耐力: 311,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   露娜拉克缇丝: {
     对手魅力: 175,
@@ -1271,8 +1121,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 824,
     对手忍耐力: 824,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 沐芯兰 BOSS 三阶段 ====================
   // 第一阶段：代行机体·茉莉（伪装形态）- 嚣张的雌小鬼傀儡
@@ -1289,8 +1137,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0, // 初始为0，记录已高潮次数
     对手性斗力: 380,
     对手忍耐力: 350,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // 第二阶段：完全同步·祸星茉莉（暴力女王形态）
   沐芯兰_2: {
@@ -1306,8 +1152,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0, // 初始为0，记录已高潮次数
     对手性斗力: 880,
     对手忍耐力: 800,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // 第三阶段：真身露出·沐芯兰（羸弱的傲娇女王）
   沐芯兰_3: {
@@ -1323,8 +1167,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 88,
     对手忍耐力: 66,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 伊甸芙宁（学院长之女）====================
   伊甸芙宁: {
@@ -1340,8 +1182,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 999, // 取决于她想不想玩
     对手忍耐力: 999,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 克莉丝汀 BOSS 双阶段 ====================
   // 第一阶段：表人格（常态/弱气防守）- 柔弱社恐，极力避免战斗
@@ -1358,8 +1198,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 544,
     对手忍耐力: 500,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // 第二阶段：里人格（女王觉醒）- 绝对理性的秩序维护者，抖S女王
   克莉丝汀_2: {
@@ -1375,8 +1213,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 871,
     对手忍耐力: 850,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 艾格妮丝（鼠族公主）====================
   艾格妮丝: {
@@ -1392,8 +1228,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 403,
     对手忍耐力: 480,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 米莉（啦啦队元气少女）====================
   米莉: {
@@ -1409,8 +1243,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 170, // 等级20 x 潜力8.5
     对手忍耐力: 180,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 伽拉娜（艺术社-雕塑部部长）====================
   伽拉娜: {
@@ -1426,8 +1258,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 540,
     对手忍耐力: 580,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 露美（艺术社-摄影部部长）====================
   露美: {
@@ -1443,8 +1273,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 370,
     对手忍耐力: 420,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 墨柒（艺术社-书法部部长）====================
   墨柒: {
@@ -1460,8 +1288,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 570,
     对手忍耐力: 620,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 缪斯（艺术社-声乐部部长）====================
   缪斯: {
@@ -1477,8 +1303,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 570,
     对手忍耐力: 600,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 响木天音（学生会干事 / 堕落魔法少女）====================
   响木天音: {
@@ -1494,8 +1318,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 900,
     对手忍耐力: 900,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 维斯伊尔（艺术社社长）====================
   维斯伊尔: {
@@ -1511,8 +1333,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 440,
     对手忍耐力: 500,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 芙莲（高等精灵·雌堕会秘密创始人）====================
   // 普通技能池（针对女性/非二元玩家）
@@ -1529,8 +1349,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 665, // 等级70 x 潜力9.5
     对手忍耐力: 630,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 薇丝佩菈（鬼族·七宗罪色欲）====================
   薇丝佩菈: {
@@ -1546,8 +1364,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 48,
     对手忍耐力: 400,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 黑崎晴雯（龙魔女·七宗罪贪婪）====================
   黑崎晴雯: {
@@ -1563,8 +1379,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 900,
     对手忍耐力: 1000,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 梅朵（外校角色）====================
   梅朵: {
@@ -1580,8 +1394,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 585,
     对手忍耐力: 670,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 柳烟霞（外校角色）====================
   柳烟霞: {
@@ -1597,8 +1409,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 684,
     对手忍耐力: 760,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 夏洛特（外校角色）====================
   夏洛特: {
@@ -1614,8 +1424,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 625,
     对手忍耐力: 720,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 莉莉丝（外校角色）====================
   莉莉丝: {
@@ -1631,8 +1439,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 784,
     对手忍耐力: 860,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 莉莉娜（外校角色）====================
   莉莉娜: {
@@ -1648,8 +1454,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 576,
     对手忍耐力: 660,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 安洁莉卡（外校角色）====================
   安洁莉卡: {
@@ -1665,8 +1469,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 604,
     对手忍耐力: 690,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 云溪（外校角色）====================
   云溪: {
@@ -1682,8 +1484,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 218,
     对手忍耐力: 280,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 青鸾（外校角色）====================
   青鸾: {
@@ -1699,8 +1499,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 357,
     对手忍耐力: 430,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 玄霜（外校角色）====================
   玄霜: {
@@ -1716,8 +1514,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 495,
     对手忍耐力: 560,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 菲奥娜（外校角色）====================
   菲奥娜: {
@@ -1733,8 +1529,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 256,
     对手忍耐力: 320,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 玛德琳（外校角色）====================
   玛德琳: {
@@ -1750,8 +1544,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 504,
     对手忍耐力: 600,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 伊莎贝拉（外校角色）====================
   伊莎贝拉: {
@@ -1767,8 +1559,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 558,
     对手忍耐力: 650,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 阿黛尔（外校角色）====================
   阿黛尔: {
@@ -1784,8 +1574,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 484,
     对手忍耐力: 570,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 梅菲丝（外校角色）====================
   梅菲丝: {
@@ -1801,8 +1589,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 187,
     对手忍耐力: 250,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 赛莲（外校角色）====================
   赛莲: {
@@ -1818,8 +1604,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 315,
     对手忍耐力: 390,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 贝尔芬格（外校角色）====================
   贝尔芬格: {
@@ -1835,8 +1619,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 727,
     对手忍耐力: 820,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 玛利亚（外校角色）====================
   玛利亚: {
@@ -1852,8 +1634,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 205,
     对手忍耐力: 260,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 特蕾莎（外校角色）====================
   特蕾莎: {
@@ -1869,8 +1649,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 361,
     对手忍耐力: 430,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
   // ==================== 贝阿特丽切（外校角色）====================
   贝阿特丽切: {
@@ -1886,10 +1664,7 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
     对手高潮次数: 0,
     对手性斗力: 500,
     对手忍耐力: 570,
-    对手临时状态: {},
-    对手技能冷却: {},
   },
-
 
   // 注意：如需添加更多人物，请按照以下格式添加：
   // '人物姓名': {
@@ -1897,7 +1672,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
   //   对手幸运: 数值,
   //   对手闪避率: 数值,
   //   对手暴击率: 数值,
-  //   对手意志力: 数值,
   //   对手耐力: 数值,
   //   对手最大耐力: 数值,
   //   对手快感: 0,
@@ -1905,8 +1679,6 @@ export const ENEMY_DATABASE: Record<string, EnemyMvuData> = {
   //   对手高潮次数: 0,
   //   对手性斗力: 数值,
   //   对手忍耐力: 数值,
-  //   对手临时状态: {},
-  //   对手技能冷却: {},
   // },
 };
 
@@ -2047,7 +1819,13 @@ export const NAME_ALIASES: Record<string, string> = {
   蔷薇: '艾格妮丝',
   暴食: '艾格妮丝',
   山田花子: '山田花子',
+  山田花子伪装: '山田花子_伪装',
+  花子伪装: '山田花子_伪装',
   西园寺辉夜: '山田花子',
+  络新妇: '络新妇',
+  蛛娘: '络新妇',
+  Jorogumo: '络新妇',
+  Jorōgumo: '络新妇',
   // 米莉别名
   米莉: '米莉',
   啦啦队: '米莉',
@@ -2145,7 +1923,6 @@ export const NAME_ALIASES: Record<string, string> = {
   苦乐共鸣: '特蕾莎',
   贝阿特丽切: '贝阿特丽切',
   修道院审判官: '贝阿特丽切',
-
 };
 
 /**
@@ -2160,11 +1937,11 @@ export function normalizeEnemyName(name: string): string {
 }
 
 /**
- * 根据对手名称获取MVU变量数据（支持包含匹配）
+ * 根据对手名称获取静态基础数据（支持包含匹配）
  * @param enemyName 对手名称（可以是全名、部分名称或包含多个角色的复合名称）
- * @returns MVU变量数据，如果不存在则返回null
+ * @returns 敌人静态基础数据，如果不存在则返回null
  */
-export function getEnemyMvuData(enemyName: string): EnemyMvuData | null {
+export function getEnemyBaseDataByName(enemyName: string): EnemyBaseData | null {
   // 预处理：去除名字中的中间点
   const normalizedName = normalizeEnemyName(enemyName);
 
@@ -2265,6 +2042,475 @@ export function resolveEnemyName(enemyName: string): string {
  * @returns 是否存在
  */
 export function hasEnemyData(enemyName: string): boolean {
-  return getEnemyMvuData(enemyName) !== null;
+  return getEnemyBaseDataByName(enemyName) !== null;
 }
 
+function exorcismEnemyData(params: {
+  level: number;
+  sexPower: number;
+  charm: number;
+  luck: number;
+  evasion: number;
+  crit: number;
+  endurance: number;
+  maxPleasure: number;
+  baseEndurance?: number;
+}): EnemyBaseData {
+  return {
+    对手魅力: params.charm,
+    对手幸运: params.luck,
+    对手闪避率: params.evasion,
+    对手暴击率: params.crit,
+    对手等级: params.level,
+    对手耐力: params.endurance,
+    对手最大耐力: params.endurance,
+    对手快感: 0,
+    对手最大快感: params.maxPleasure,
+    对手高潮次数: 0,
+    对手性斗力: params.sexPower,
+    对手忍耐力: params.baseEndurance ?? params.level * 10,
+  };
+}
+
+Object.assign(ENEMY_DATABASE, {
+  // 驱魔 B1 小怪
+  淫蛇女妖: exorcismEnemyData({
+    level: 23,
+    sexPower: 205,
+    charm: 56,
+    luck: 42,
+    evasion: 30,
+    crit: 18,
+    endurance: 115,
+    maxPleasure: 150,
+  }),
+  淫虎娘: exorcismEnemyData({
+    level: 25,
+    sexPower: 225,
+    charm: 48,
+    luck: 46,
+    evasion: 42,
+    crit: 28,
+    endurance: 130,
+    maxPleasure: 160,
+  }),
+  女吊: exorcismEnemyData({
+    level: 23,
+    sexPower: 195,
+    charm: 64,
+    luck: 38,
+    evasion: 44,
+    crit: 20,
+    endurance: 105,
+    maxPleasure: 145,
+  }),
+  夜叉娘: exorcismEnemyData({
+    level: 26,
+    sexPower: 245,
+    charm: 42,
+    luck: 40,
+    evasion: 24,
+    crit: 30,
+    endurance: 155,
+    maxPleasure: 170,
+  }),
+
+  // 驱魔 B2 小怪
+  恶灵娘: exorcismEnemyData({
+    level: 31,
+    sexPower: 265,
+    charm: 74,
+    luck: 52,
+    evasion: 46,
+    crit: 22,
+    endurance: 140,
+    maxPleasure: 190,
+  }),
+  南瓜头娘: exorcismEnemyData({
+    level: 29,
+    sexPower: 245,
+    charm: 66,
+    luck: 60,
+    evasion: 34,
+    crit: 20,
+    endurance: 135,
+    maxPleasure: 175,
+  }),
+  堕落人偶: exorcismEnemyData({
+    level: 33,
+    sexPower: 285,
+    charm: 72,
+    luck: 45,
+    evasion: 28,
+    crit: 24,
+    endurance: 170,
+    maxPleasure: 205,
+  }),
+  狼娘: exorcismEnemyData({
+    level: 30,
+    sexPower: 255,
+    charm: 58,
+    luck: 48,
+    evasion: 48,
+    crit: 32,
+    endurance: 150,
+    maxPleasure: 185,
+  }),
+
+  // 驱魔 B3 小怪与分支Boss
+  雪女: exorcismEnemyData({
+    level: 31,
+    sexPower: 290,
+    charm: 80,
+    luck: 55,
+    evasion: 38,
+    crit: 22,
+    endurance: 155,
+    maxPleasure: 210,
+  }),
+  猫又: exorcismEnemyData({
+    level: 29,
+    sexPower: 280,
+    charm: 76,
+    luck: 70,
+    evasion: 50,
+    crit: 28,
+    endurance: 145,
+    maxPleasure: 205,
+  }),
+  天狗: exorcismEnemyData({
+    level: 33,
+    sexPower: 325,
+    charm: 68,
+    luck: 58,
+    evasion: 58,
+    crit: 34,
+    endurance: 165,
+    maxPleasure: 230,
+  }),
+  鬼巫女椿_一阶段: exorcismEnemyData({
+    level: 55,
+    sexPower: 495,
+    charm: 92,
+    luck: 65,
+    evasion: 38,
+    crit: 30,
+    endurance: 285,
+    maxPleasure: 345,
+  }),
+  鬼巫女椿_二阶段: exorcismEnemyData({
+    level: 55,
+    sexPower: 522,
+    charm: 98,
+    luck: 70,
+    evasion: 42,
+    crit: 34,
+    endurance: 310,
+    maxPleasure: 365,
+  }),
+  鬼樱: exorcismEnemyData({
+    level: 50,
+    sexPower: 460,
+    charm: 88,
+    luck: 64,
+    evasion: 44,
+    crit: 32,
+    endurance: 265,
+    maxPleasure: 330,
+  }),
+  鬼樱_铃音连锁: exorcismEnemyData({
+    level: 52,
+    sexPower: 620,
+    charm: 104,
+    luck: 72,
+    evasion: 48,
+    crit: 38,
+    endurance: 340,
+    maxPleasure: 430,
+    baseEndurance: 560,
+  }),
+  玉藻前_一阶段: exorcismEnemyData({
+    level: 45,
+    sexPower: 382,
+    charm: 92,
+    luck: 78,
+    evasion: 48,
+    crit: 35,
+    endurance: 220,
+    maxPleasure: 280,
+  }),
+  玉藻前_二阶段: exorcismEnemyData({
+    level: 70,
+    sexPower: 693,
+    charm: 132,
+    luck: 96,
+    evasion: 54,
+    crit: 48,
+    endurance: 385,
+    maxPleasure: 460,
+  }),
+
+  // 驱魔 B4 小怪与Boss
+  阿娜温: exorcismEnemyData({
+    level: 41,
+    sexPower: 365,
+    charm: 86,
+    luck: 54,
+    evasion: 28,
+    crit: 20,
+    endurance: 245,
+    maxPleasure: 290,
+  }),
+  石像鬼娘: exorcismEnemyData({
+    level: 42,
+    sexPower: 385,
+    charm: 78,
+    luck: 48,
+    evasion: 24,
+    crit: 26,
+    endurance: 290,
+    maxPleasure: 300,
+  }),
+  黑暗史莱姆: exorcismEnemyData({
+    level: 43,
+    sexPower: 395,
+    charm: 80,
+    luck: 50,
+    evasion: 22,
+    crit: 22,
+    endurance: 310,
+    maxPleasure: 315,
+  }),
+  暗精灵娘: exorcismEnemyData({
+    level: 44,
+    sexPower: 410,
+    charm: 102,
+    luck: 62,
+    evasion: 44,
+    crit: 32,
+    endurance: 240,
+    maxPleasure: 330,
+  }),
+  克洛伊_魔化面: exorcismEnemyData({
+    level: 52,
+    sexPower: 483,
+    charm: 94,
+    luck: 58,
+    evasion: 42,
+    crit: 34,
+    endurance: 285,
+    maxPleasure: 350,
+  }),
+  克洛伊_神化面: exorcismEnemyData({
+    level: 52,
+    sexPower: 483,
+    charm: 96,
+    luck: 62,
+    evasion: 40,
+    crit: 30,
+    endurance: 300,
+    maxPleasure: 350,
+  }),
+  八尺夫人_慈母: exorcismEnemyData({
+    level: 58,
+    sexPower: 551,
+    charm: 112,
+    luck: 68,
+    evasion: 28,
+    crit: 28,
+    endurance: 360,
+    maxPleasure: 390,
+  }),
+  八尺夫人_真母: exorcismEnemyData({
+    level: 65,
+    sexPower: 637,
+    charm: 126,
+    luck: 74,
+    evasion: 30,
+    crit: 34,
+    endurance: 430,
+    maxPleasure: 455,
+  }),
+
+  // 驱魔 B1/B2 Boss 与事件Boss
+  霜凝: exorcismEnemyData({
+    level: 40,
+    sexPower: 372,
+    charm: 82,
+    luck: 52,
+    evasion: 30,
+    crit: 24,
+    endurance: 235,
+    maxPleasure: 285,
+  }),
+  无常_小黑: exorcismEnemyData({
+    level: 48,
+    sexPower: 456,
+    charm: 86,
+    luck: 62,
+    evasion: 40,
+    crit: 34,
+    endurance: 265,
+    maxPleasure: 330,
+  }),
+  无常_小白: exorcismEnemyData({
+    level: 46,
+    sexPower: 442,
+    charm: 92,
+    luck: 66,
+    evasion: 44,
+    crit: 30,
+    endurance: 250,
+    maxPleasure: 325,
+  }),
+  无常_双人: exorcismEnemyData({
+    level: 49,
+    sexPower: 898,
+    charm: 112,
+    luck: 74,
+    evasion: 46,
+    crit: 42,
+    endurance: 420,
+    maxPleasure: 520,
+    baseEndurance: 520,
+  }),
+  僵尸天羽: exorcismEnemyData({
+    level: 52,
+    sexPower: 520,
+    charm: 84,
+    luck: 70,
+    evasion: 46,
+    crit: 42,
+    endurance: 300,
+    maxPleasure: 360,
+  }),
+  阿曼达_一阶段: exorcismEnemyData({
+    level: 38,
+    sexPower: 342,
+    charm: 96,
+    luck: 58,
+    evasion: 30,
+    crit: 24,
+    endurance: 220,
+    maxPleasure: 265,
+  }),
+  阿曼达_二阶段: exorcismEnemyData({
+    level: 42,
+    sexPower: 445,
+    charm: 118,
+    luck: 64,
+    evasion: 36,
+    crit: 30,
+    endurance: 270,
+    maxPleasure: 330,
+  }),
+  希思_一阶段: exorcismEnemyData({
+    level: 48,
+    sexPower: 455,
+    charm: 102,
+    luck: 70,
+    evasion: 46,
+    crit: 38,
+    endurance: 270,
+    maxPleasure: 335,
+  }),
+  希思_二阶段: exorcismEnemyData({
+    level: 54,
+    sexPower: 535,
+    charm: 116,
+    luck: 76,
+    evasion: 50,
+    crit: 44,
+    endurance: 330,
+    maxPleasure: 390,
+  }),
+  希思_三阶段: exorcismEnemyData({
+    level: 60,
+    sexPower: 610,
+    charm: 128,
+    luck: 82,
+    evasion: 52,
+    crit: 50,
+    endurance: 380,
+    maxPleasure: 450,
+  }),
+  薇尔: exorcismEnemyData({
+    level: 55,
+    sexPower: 545,
+    charm: 122,
+    luck: 78,
+    evasion: 58,
+    crit: 42,
+    endurance: 320,
+    maxPleasure: 395,
+  }),
+
+  // 驱魔 B5
+  灵樱: exorcismEnemyData({
+    level: 65,
+    sexPower: 617,
+    charm: 128,
+    luck: 82,
+    evasion: 50,
+    crit: 44,
+    endurance: 370,
+    maxPleasure: 455,
+  }),
+  万魔之母_一阶段: exorcismEnemyData({
+    level: 70,
+    sexPower: 693,
+    charm: 138,
+    luck: 86,
+    evasion: 42,
+    crit: 44,
+    endurance: 430,
+    maxPleasure: 500,
+  }),
+  万魔之母_二阶段: exorcismEnemyData({
+    level: 80,
+    sexPower: 792,
+    charm: 158,
+    luck: 92,
+    evasion: 46,
+    crit: 52,
+    endurance: 520,
+    maxPleasure: 585,
+  }),
+  万魔之母_三阶段: exorcismEnemyData({
+    level: 90,
+    sexPower: 900,
+    charm: 180,
+    luck: 100,
+    evasion: 50,
+    crit: 60,
+    endurance: 640,
+    maxPleasure: 680,
+  }),
+});
+
+Object.assign(NAME_ALIASES, {
+  鬼童子: '夜叉娘',
+  天狗娘: '天狗',
+  椿: '鬼巫女椿_一阶段',
+  鬼巫女椿: '鬼巫女椿_一阶段',
+  鬼樱: '鬼樱',
+  黑暗史莱姆娘: '黑暗史莱姆',
+  黑暗史莱姆: '黑暗史莱姆',
+  阿曼达: '阿曼达_一阶段',
+  Amanda: '阿曼达_一阶段',
+  希思: '希思_一阶段',
+  Heath: '希思_一阶段',
+  无常: '无常_小黑',
+  黑无常: '无常_小黑',
+  白无常: '无常_小白',
+  黑白无常: '无常_双人',
+  八尺夫人: '八尺夫人_慈母',
+  八尺大人: '八尺夫人_慈母',
+  克洛伊: '克洛伊_魔化面',
+  Chloe: '克洛伊_魔化面',
+  玉藻前: '玉藻前_一阶段',
+  玉藻: '玉藻前_一阶段',
+  Tamamo: '玉藻前_一阶段',
+  万魔之母: '万魔之母_一阶段',
+  万魔母: '万魔之母_一阶段',
+});

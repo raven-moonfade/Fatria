@@ -382,7 +382,7 @@ import { computed, ref } from 'vue';
 import { CharacterData, Gender, Archetype } from '../types';
 import { ARCHETYPES, CUP_SIZES, GENITAL_TYPES } from '../constants';
 import { getIconClass } from '../icon-helper';
-import { updateMvuVariables } from '../utils/mvu-helper';
+import { updateLatestStatData } from '../../shared/mvuStore';
 
 const props = defineProps<{
   data: CharacterData;
@@ -406,7 +406,7 @@ const showPenis = computed(() => isMale.value || (isOther.value && props.data.co
 const selectedArchetype = computed(() => currentArchetypes.value.find(a => a.id === props.data.archetypeId));
 
 const getStatLabel = (path: string): string => {
-  // 处理路径字符串，如 "角色基础._等级" 或 "核心状态.$基础性斗力"
+  // 处理路径字符串，如 "角色基础._等级" 或 "基础属性._魅力"
   const parts = path.split('.');
   const key = parts[parts.length - 1];
   const map: Record<string, string> = {
@@ -414,12 +414,14 @@ const getStatLabel = (path: string): string => {
     _潜力: '潜力',
     _魅力: '魅力',
     _幸运: '幸运',
-    $最大耐力: '最大耐力',
-    $最大快感: '最大快感',
-    $基础性斗力: '基础性斗力',
-    $基础忍耐力: '基础忍耐力',
     _闪避率: '闪避率',
     _暴击率: '暴击率',
+    魅力: '魅力',
+    幸运: '幸运',
+    $最大耐力: '最大耐力',
+    $最大快感: '最大快感',
+    闪避率: '闪避率',
+    暴击率: '暴击率',
   };
   return map[key] || key;
 };
@@ -434,7 +436,6 @@ const getBonusLabel = (key: string): string => {
     基础忍耐力成算: '基础忍耐力成算',
     闪避率加成: '闪避率加成',
     暴击率加成: '暴击率加成',
-    意志力加成: '意志力加成',
   };
   return map[key] || key;
 };
@@ -468,10 +469,14 @@ const handleArchetypeSelect = async (archetypeId: string) => {
 
       // 只设置永久状态（永久状态是持续生效的加成）
       // 使用被动技能的名字作为永久状态名字，与UI显示一致
-      updates['永久状态.状态列表'] = [archetype.passiveSkill.name];
-      updates['永久状态.加成统计'] = archetype.permanentState.bonus;
+      updates['永久状态.状态列表'] = {
+        [archetype.passiveSkill.name]: {
+          加成: archetype.permanentState.bonus,
+          描述: archetype.passiveSkill.effectDescription || archetype.passiveSkill.description,
+        },
+      };
 
-      await updateMvuVariables(updates);
+      await updateLatestStatData(updates);
     } catch (error) {
       console.error('更新角色类型到 MVU 失败:', error);
     } finally {

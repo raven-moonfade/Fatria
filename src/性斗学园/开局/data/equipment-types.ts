@@ -87,8 +87,6 @@ export interface EquipmentBonus {
   闪避率加成?: number;
   /** 暴击率加成 */
   暴击率加成?: number;
-  /** 意志力加成 */
-  意志力加成?: number;
   /** 最大耐力加成 */
   最大耐力加成?: number;
   /** 最大快感加成 */

@@ -735,7 +735,7 @@ export const ACTIVE_SKILLS: Skill[] = [
     id: 's_dirtytalk',
     name: '污言秽语',
     description: '【精神】用言语侮辱对方',
-    effectDescription: '降低对方意志力',
+    effectDescription: '降低对方忍耐力',
     type: 'active',
     icon: 'Comment',
   },
@@ -831,7 +831,7 @@ export const ACTIVE_SKILLS: Skill[] = [
     id: 's_worship',
     name: '崇拜',
     description: '【精神】奉对方为主人',
-    effectDescription: '回复对方意志，降低自身意志',
+    effectDescription: '缓和对方攻势，降低自身压迫感',
     type: 'active',
     icon: 'Crown',
   },
@@ -847,7 +847,7 @@ export const ACTIVE_SKILLS: Skill[] = [
     id: 's_charm_kiss',
     name: '魅惑之吻',
     description: '【攻击】用魅惑的吻技攻击',
-    effectDescription: '造成50%魅力伤害，降低目标意志力',
+    effectDescription: '造成50%魅力伤害，降低目标忍耐力',
     type: 'active',
     icon: 'Heart',
   },
@@ -996,7 +996,7 @@ export const PASSIVE_SKILLS: Record<Gender, Skill[]> = {
       id: 'c_scent',
       name: '体香',
       description: '天生自带香气',
-      effectDescription: '对手每回合意志力-2',
+      effectDescription: '对手每回合快感+2',
       type: 'constitution',
       icon: 'Seedling',
     },
@@ -1031,7 +1031,7 @@ export const PASSIVE_SKILLS: Record<Gender, Skill[]> = {
       id: 'c_scent',
       name: '体香',
       description: '天生自带香气',
-      effectDescription: '对手每回合意志力-2',
+      effectDescription: '对手每回合快感+2',
       type: 'constitution',
       icon: 'Seedling',
     },
@@ -1050,28 +1050,24 @@ export const PASSIVE_SKILLS: Record<Gender, Skill[]> = {
 export const MAX_STATS = {
   '角色基础._等级': 20,
   '核心状态._潜力': 10.0,
-  '核心状态._魅力': 100,
-  '核心状态._幸运': 100,
+  '基础属性._魅力': 100,
+  '基础属性._幸运': 100,
   '核心状态.$最大耐力': 500,
   '核心状态.$最大快感': 500,
-  '核心状态.$基础性斗力': 999, // 注意：性斗力由公式计算，此值仅用于显示
-  '核心状态.$基础忍耐力': 999, // 注意：忍耐力由公式计算，此值仅用于显示
-  '核心状态._闪避率': 60,
-  '核心状态._暴击率': 100,
+  '基础属性._闪避率': 60,
+  '基础属性._暴击率': 100,
 };
 
 // 属性最小值（用于角色创建时的限制）
 export const MIN_STATS = {
   '角色基础._等级': 1,
   '核心状态._潜力': 5.0,
-  '核心状态._魅力': 0,
-  '核心状态._幸运': 0,
+  '基础属性._魅力': 0,
+  '基础属性._幸运': 0,
   '核心状态.$最大耐力': 1,
   '核心状态.$最大快感': 1,
-  '核心状态.$基础性斗力': 0,
-  '核心状态.$基础忍耐力': 0,
-  '核心状态._闪避率': 0,
-  '核心状态._暴击率': 0,
+  '基础属性._闪避率': 0,
+  '基础属性._暴击率': 0,
 };
 
 export const DIFFICULTY_POINTS = {

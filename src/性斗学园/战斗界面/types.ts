@@ -5,26 +5,26 @@
 
 export type StatType = 'sexPower' | 'endurance' | 'evasion' | 'crit' | 'charm' | 'luck';
 
-/** 战斗属性 - 对应MVU变量（已移除意志力相关字段） */
+/** 战斗属性：资源来自 MVU/运行态，派生属性由 selector 或战斗运行态实时计算。 */
 export interface CombatStats {
-  maxEndurance: number; // 核心状态._最大耐力
-  currentEndurance: number; // 核心状态._耐力
-  maxPleasure: number; // 核心状态._最大快感
-  currentPleasure: number; // 核心状态._快感
-  climaxCount: number; // 性斗系统.$高潮次数
+  maxEndurance: number; // 核心状态.$最大耐力
+  currentEndurance: number; // 核心状态.$耐力
+  maxPleasure: number; // 核心状态.$最大快感
+  currentPleasure: number; // 核心状态.$快感
+  climaxCount: number; // 本次战斗运行态
   maxClimaxCount: number; // 性斗系统.胜负规则.高潮次数上限
 
-  // 核心属性
-  sexPower: number; // 性斗系统.$实时性斗力
-  baseEndurance: number; // 性斗系统.$实时忍耐力
-  evasion: number; // 核心状态.$闪避率
-  crit: number; // 核心状态.$暴击率
-  charm: number; // 核心状态._魅力
-  luck: number; // 核心状态._幸运
+  // 派生属性
+  sexPower: number;
+  baseEndurance: number;
+  evasion: number;
+  crit: number;
+  charm: number;
+  luck: number;
   level: number; // 角色基础._等级 / 对手等级
 }
 
-/** 技能伤害来源（已移除意志力） */
+/** 技能伤害来源 */
 export enum DamageSource {
   SEX_POWER = 'sex_power',
   CHARM = 'charm',
@@ -47,7 +47,7 @@ export enum SkillType {
   DEBUFF = 'debuff',
 }
 
-/** Buff类型（已移除意志力下降） */
+/** Buff类型 */
 export enum BuffType {
   ATK_UP = 'atk_up',
   DEF_UP = 'def_up',
@@ -110,6 +110,7 @@ export interface SkillData {
   buffs: BuffEffect[];
   canBeReflected: boolean;
   hitCount: number;
+  tags?: string[];
   voiceLine?: string;
 }
 
@@ -183,10 +184,12 @@ export interface TurnState {
 export interface MvuStatData {
   角色基础: {
     _等级: number;
+    _姓名: string;
     经验值: number;
     声望: number;
     _段位: string;
-    段位积分: number;
+    难度: '简单' | '普通' | '困难' | '抖M' | '作弊';
+    性别: '男' | '女' | '非二元';
   };
   核心状态: {
     $属性点: number;
@@ -197,25 +200,18 @@ export interface MvuStatData {
     $快感: number;
     堕落度: number;
     _潜力: number;
+  };
+  基础属性: {
     _魅力: number;
-    $基础魅力: number;
     _幸运: number;
-    $基础幸运: number;
-    $基础性斗力: number;
-    $基础忍耐力: number;
     _闪避率: number;
-    $基础闪避率: number;
     _暴击率: number;
-    $基础暴击率: number;
-    // 已移除意志力相关字段
   };
   临时状态: {
-    状态列表: Record<string, number>;
-    加成统计: BonusStats;
+    状态列表: Record<string, { 加成: BonusStats; 剩余回合: number; 描述?: string }>;
   };
   永久状态: {
-    状态列表: string[];
-    加成统计: BonusStats;
+    状态列表: Record<string, { 加成: BonusStats; 描述?: string }>;
   };
   性斗系统: {
     对手名称: string;
@@ -224,31 +220,6 @@ export interface MvuStatData {
       高潮次数上限: number;
       允许认输: boolean;
     };
-    当前回合: number;
-    行动日志: Record<string, string>;
-    高潮次数: number;
-    实时性斗力: number;
-    实时忍耐力: number;
-    // 对手属性
-    对手魅力: number;
-    对手幸运: number;
-    对手闪避率: number;
-    对手暴击率: number;
-    对手等级: number; // 新增
-    对手耐力: number;
-    对手最大耐力: number;
-    对手快感: number;
-    对手最大快感: number;
-    对手高潮次数: number;
-    对手性斗力: number;
-    对手忍耐力: number;
-    对手临时状态: {
-      状态列表: Record<string, number>;
-      加成统计: BonusStats;
-    };
-    对手技能冷却: Record<string, number>;
-    对手可用技能: Record<string, any>;
-    战斗物品: Record<string, number>;
   };
   物品系统: {
     学园金币: number;
@@ -260,10 +231,10 @@ export interface MvuStatData {
       饰品2: { 名称: string; 等级: string; 加成属性: BonusStats; 描述: string };
       特殊装备: { 名称: string; 等级: string; 加成属性: BonusStats; 描述: string };
     };
-    装备总加成: BonusStats;
   };
   技能系统: {
     主动技能: Record<string, any>;
+    $天赋: Record<string, any>;
   };
   关系系统: {
     在场人物: string[];
@@ -303,7 +274,7 @@ export interface MvuStatData {
   };
 }
 
-/** 加成统计（已移除意志力加成） */
+/** 加成属性 */
 export interface BonusStats {
   魅力加成: number;
   幸运加成: number;

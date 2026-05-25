@@ -1,5 +1,5 @@
 <template>
-  <div class="option-beautifier">
+  <div class="option-beautifier" :style="textColorStyle">
     <div v-if="options.length > 0" class="options-container">
       <div
         v-for="(option, index) in options"
@@ -37,13 +37,16 @@
       </div>
     </div>
     <div v-else class="no-options">
-      <p>未找到选项内容</p>
+      <p>{{ emptyState.title }}</p>
+      <small v-if="emptyState.detail">{{ emptyState.detail }}</small>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { getLatestMvuData } from '../shared/mvuStore';
+import { getSharedTextColor } from '../shared/textAppearance';
 
 // 原生实现的 get 函数
 function get<T = any>(obj: any, path: string, defaultValue?: T): T {
@@ -68,18 +71,44 @@ interface OptionItem {
 
 const options = ref<OptionItem[]>([]);
 const enemyName = ref('');
+const textColor = ref(getSharedTextColor());
+const emptyReason = ref<'none' | 'no-options-pattern' | 'missing-enemy-name' | 'no-option-tag' | 'no-message'>('none');
+const textColorStyle = computed(() => ({
+  '--shared-text-color': textColor.value,
+}));
+const emptyState = computed(() => {
+  switch (emptyReason.value) {
+    case 'missing-enemy-name':
+      return {
+        title: '未读取到性斗对手',
+        detail: '已匹配到“发起性斗”选项，但缺少变量：性斗系统.对手名称。',
+      };
+    case 'no-options-pattern':
+      return {
+        title: '未匹配到 A/B/C/D 选项',
+        detail: '请确认 <option> 内使用了 A.、A、A) 或 (A) 这类选项格式。',
+      };
+    case 'no-option-tag':
+      return {
+        title: '未找到 <option> 标签',
+        detail: '当前消息中没有可供选项 UI 解析的 <option>...</option> 内容。',
+      };
+    case 'no-message':
+      return {
+        title: '未找到当前消息',
+        detail: '选项 UI 暂时无法读取当前楼层内容。',
+      };
+    default:
+      return {
+        title: '未找到选项内容',
+        detail: '',
+      };
+  }
+});
 
 const loadEnemyNameFromMvu = async () => {
   try {
-    const globalAny = window as any;
-    if (globalAny.waitGlobalInitialized) {
-      await globalAny.waitGlobalInitialized('Mvu');
-    }
-    if (!globalAny.Mvu) {
-      enemyName.value = '';
-      return;
-    }
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     const name = get(mvuData, 'stat_data.性斗系统.对手名称', '');
     enemyName.value = typeof name === 'string' ? name.trim() : '';
   } catch (error) {
@@ -91,9 +120,10 @@ const loadEnemyNameFromMvu = async () => {
 // 解析选项文本
 const parseOptions = (text: string): OptionItem[] => {
   const items: OptionItem[] = [];
+  const optionText = text.replace(/<option_analysis\b[^>]*>[\s\S]*?<\/option_analysis>/gi, '');
 
   // 按行分割
-  const lines = text
+  const lines = optionText
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.length > 0);
@@ -194,6 +224,8 @@ const getChatMessages = (messageId: string | null): any[] => {
 // 提取并显示选项
 const extractOptions = () => {
   try {
+    emptyReason.value = 'none';
+
     // 获取当前消息ID
     const messageId = getCurrentMessageId();
 
@@ -201,6 +233,8 @@ const extractOptions = () => {
     const messages = getChatMessages(messageId);
     if (messages.length === 0) {
       console.warn('[选项美化] 未找到当前消息');
+      options.value = [];
+      emptyReason.value = 'no-message';
       return;
     }
 
@@ -213,13 +247,21 @@ const extractOptions = () => {
 
     if (match && match[1]) {
       const optionText = match[1].trim();
-      options.value = parseOptions(optionText);
+      const parsedOptions = parseOptions(optionText);
+      const hasFightOption = parsedOptions.some(option => option.isFight);
+      options.value = parsedOptions;
       if (!enemyName.value) {
         options.value = options.value.filter(o => !o.isFight);
+      }
+      if (options.value.length === 0) {
+        emptyReason.value = hasFightOption && !enemyName.value ? 'missing-enemy-name' : 'no-options-pattern';
+        console.warn('[选项美化] 无可显示选项:', emptyReason.value);
       }
       console.info('[选项美化] 已提取选项，数量:', options.value.length);
     } else {
       console.info('[选项美化] 未找到 <option> 标签');
+      options.value = [];
+      emptyReason.value = 'no-option-tag';
     }
   } catch (error) {
     console.error('[选项美化] 提取选项时出错:', error);
@@ -453,6 +495,7 @@ const waitForGlobalFunctions = async (maxRetries = 30, interval = 200): Promise<
 
 onMounted(async () => {
   console.info('[选项美化] 组件已加载');
+  textColor.value = getSharedTextColor();
 
   // 等待全局函数初始化
   const functionsReady = await waitForGlobalFunctions();
@@ -665,7 +708,7 @@ onMounted(async () => {
     }
 
     .option-content {
-      color: #f3f4f6;
+      color: var(--shared-text-color, #f3f4f6);
     }
 
     .option-hint {
@@ -704,7 +747,7 @@ onMounted(async () => {
 
 .option-content {
   flex: 1;
-  color: #e5e7eb;
+  color: var(--shared-text-color, #e5e7eb);
   font-size: 0.95rem;
   line-height: 1.6;
   text-align: left;
@@ -738,6 +781,14 @@ onMounted(async () => {
 
   p {
     margin: 0;
+  }
+
+  small {
+    display: block;
+    margin-top: 0.5rem;
+    color: rgba(156, 163, 175, 0.78);
+    font-size: 0.85rem;
+    line-height: 1.5;
   }
 }
 

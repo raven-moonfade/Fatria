@@ -171,6 +171,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
 
 const props = defineProps<{
@@ -264,14 +265,8 @@ async function forgetRelationship(name: string) {
   const ok = confirm(`确认遗忘与「${name}」的关系吗？`);
   if (!ok) return;
 
-  const globalAny = window as any;
-  if (!globalAny.Mvu) {
-    console.error('[关系界面] MVU 未初始化');
-    return;
-  }
-
   try {
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       console.error('[关系界面] 无法获取 MVU 数据');
       return;
@@ -284,7 +279,7 @@ async function forgetRelationship(name: string) {
 
     delete statData.关系系统[name];
 
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`已遗忘与 ${name} 的关系`);

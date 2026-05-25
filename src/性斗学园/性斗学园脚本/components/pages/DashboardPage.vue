@@ -48,11 +48,11 @@
         <div class="combat-stats">
           <div class="stat-item">
             <i class="fas fa-fire"></i>
-            <span>{{ characterData.性斗系统?.实时性斗力 || 0 }}</span>
+            <span>{{ derivedStats.sexPower }}</span>
           </div>
           <div class="stat-item">
             <i class="fas fa-shield-halved"></i>
-            <span>{{ characterData.性斗系统?.实时忍耐力 || 0 }}</span>
+            <span>{{ derivedStats.endurance }}</span>
           </div>
         </div>
       </div>
@@ -101,19 +101,19 @@
     <div class="quick-stats">
       <div class="quick-stat">
         <span class="qs-label">魅力</span>
-        <span class="qs-value charm">{{ characterData.核心状态?._魅力 || 10 }}</span>
+        <span class="qs-value charm">{{ derivedStats.charm }}</span>
       </div>
       <div class="quick-stat">
         <span class="qs-label">幸运</span>
-        <span class="qs-value luck">{{ characterData.核心状态?._幸运 || 10 }}</span>
+        <span class="qs-value luck">{{ derivedStats.luck }}</span>
       </div>
       <div class="quick-stat">
         <span class="qs-label">闪避</span>
-        <span class="qs-value dodge">{{ characterData.核心状态?._闪避率 || 0 }}%</span>
+        <span class="qs-value dodge">{{ derivedStats.evasion }}%</span>
       </div>
       <div class="quick-stat">
         <span class="qs-label">暴击</span>
-        <span class="qs-value crit">{{ characterData.核心状态?._暴击率 || 0 }}%</span>
+        <span class="qs-value crit">{{ derivedStats.crit }}%</span>
       </div>
     </div>
 
@@ -195,6 +195,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
+import { getPlayerDerivedStats } from '../../../shared/statSelectors';
 
 const props = defineProps<{
   characterData: any;
@@ -211,6 +213,8 @@ const timeData = computed(() => {
 const mainQuest = computed(() => {
   return props.characterData.任务系统?.主线任务 || {};
 });
+
+const derivedStats = computed(() => getPlayerDerivedStats(props.characterData || {}));
 
 // 难度选项定义
 const difficultyOptions = [
@@ -262,13 +266,7 @@ async function confirmDifficultyChange() {
   if (!pendingDifficulty.value) return;
 
   try {
-    // 检查 Mvu 是否存在
-    if (typeof Mvu === 'undefined' || !Mvu) {
-      toastr.error('MVU 未初始化，无法更改难度');
-      return;
-    }
-
-    const mvuData = Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) {
       toastr.error('无法获取角色数据');
       return;
@@ -280,7 +278,7 @@ async function confirmDifficultyChange() {
     }
     mvuData.stat_data.角色基础.难度 = pendingDifficulty.value;
 
-    await Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     toastr.success(`难度已提升至 ${pendingDifficulty.value}`, '难度调整');
   } catch (error) {
@@ -520,10 +518,6 @@ function formatNumber(num: number): string {
   .lust-icon {
     color: #f472b6;
   }
-  .willpower-icon {
-    color: #60a5fa;
-  }
-
   .bar-label {
     color: rgba(255, 255, 255, 0.7);
   }
@@ -554,10 +548,6 @@ function formatNumber(num: number): string {
 
   &.lust {
     background: linear-gradient(90deg, #f472b6, #ec4899);
-  }
-
-  &.willpower {
-    background: linear-gradient(90deg, #60a5fa, #3b82f6);
   }
 }
 
@@ -1007,4 +997,3 @@ function formatNumber(num: number): string {
   margin-top: 4px;
 }
 </style>
- 

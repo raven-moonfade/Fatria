@@ -215,8 +215,9 @@ export function executeAttack(
   const logs: string[] = [];
   const hits: { damage: number; isCritical: boolean; isDodged: boolean }[] = [];
 
-  // 获取连击次数，默认为1，加上天赋额外连击
-  const baseHitCount = skill.hitCount || 1;
+  // 获取连击次数，默认为1。hitCount=0 是纯支援/控制技能，不能被 || 误判为1段攻击。
+  const normalizedHitCount = Number(skill.hitCount ?? 1);
+  const baseHitCount = Number.isFinite(normalizedHitCount) ? Math.max(0, Math.floor(normalizedHitCount)) : 1;
   const extraHits = talentModifiers?.extraHitCount || 0;
   const hitCount = baseHitCount + extraHits;
 
@@ -226,6 +227,20 @@ export function executeAttack(
   let totalActualDamage = 0;
   let anyHit = false;
   let anyCrit = false;
+
+  if (hitCount <= 0 || skill.damageFormula.length === 0) {
+    logs.push('技能无直接伤害');
+    return {
+      damage: 0,
+      isCritical: false,
+      isDodged: false,
+      actualDamage: 0,
+      logs,
+      hitCount: 0,
+      totalDamage: 0,
+      hits,
+    };
+  }
 
   // 1. 计算基础伤害（每次攻击相同）
   const baseDamage = calculateBaseDamage(attacker, skill);
@@ -281,10 +296,14 @@ export function executeAttack(
       hitLog.push(`普通命中`);
     }
 
-    // 应用天赋伤害倍率（如先发制人）
-    if (talentModifiers?.damageMultiplier && talentModifiers.damageMultiplier > 1) {
+    // 应用外部伤害倍率（天赋、Boss机制等）
+    if (
+      talentModifiers?.damageMultiplier &&
+      talentModifiers.damageMultiplier > 0 &&
+      talentModifiers.damageMultiplier !== 1
+    ) {
       finalDamage = Math.floor(finalDamage * talentModifiers.damageMultiplier);
-      hitLog.push(`天赋伤害倍率: x${talentModifiers.damageMultiplier}`);
+      hitLog.push(`伤害倍率: x${talentModifiers.damageMultiplier}`);
     }
 
     // 4. 应用防御减伤（玩家攻击时应用等级压制）
@@ -453,6 +472,7 @@ function getBuffName(type: BuffType): string {
     [BuffType.DODGE_UP]: '闪避提升',
     [BuffType.DODGE_DOWN]: '闪避下降',
     [BuffType.CRIT_UP]: '暴击提升',
+    [BuffType.CRIT_DOWN]: '暴击下降',
     [BuffType.LUCK_DOWN]: '幸运下降',
     [BuffType.CHARM_DOWN]: '魅力下降',
     [BuffType.FOCUS]: '集中',
@@ -476,6 +496,7 @@ function isDebuff(type: BuffType): boolean {
     BuffType.SILENCE,
     BuffType.BIND,
     BuffType.DODGE_DOWN,
+    BuffType.CRIT_DOWN,
     BuffType.LUCK_DOWN,
     BuffType.CHARM_DOWN,
     BuffType.SHAME,

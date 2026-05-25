@@ -115,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { ENEMY_DATABASE, EnemyMvuData } from '@/性斗学园/战斗界面/enemyDatabase';
+import { ENEMY_DATABASE, EnemyBaseData } from '@/性斗学园/战斗界面/enemyDatabase';
 import { computed, ref } from 'vue';
 import { getNpcPortraitUrl, getNpcsByCategory, NPC_CHARACTERS, NpcCategory, NpcCharacter } from '../data/npcCharacters';
 
@@ -138,7 +138,7 @@ const filteredNpcs = computed(() => {
 });
 
 // 获取选中NPC的属性
-const npcStats = computed<EnemyMvuData | null>(() => {
+const npcStats = computed<EnemyBaseData | null>(() => {
   if (!selectedNpc.value) return null;
   return ENEMY_DATABASE[selectedNpc.value.dbKey] || null;
 });

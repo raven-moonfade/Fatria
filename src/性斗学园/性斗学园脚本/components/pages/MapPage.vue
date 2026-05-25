@@ -11,42 +11,54 @@
         </select>
       </div>
       <div class="control-item">
-        <button class="zoom-btn" @click="zoomOut" :disabled="zoomLevel <= 0.5">
+        <button class="zoom-btn" :disabled="zoomLevel <= 0.5" @click="zoomOut">
           <i class="fas fa-search-minus"></i>
         </button>
         <span class="zoom-level">{{ Math.round(zoomLevel * 100) }}%</span>
-        <button class="zoom-btn" @click="zoomIn" :disabled="zoomLevel >= 2">
+        <button class="zoom-btn" :disabled="zoomLevel >= 2" @click="zoomIn">
           <i class="fas fa-search-plus"></i>
         </button>
       </div>
     </div>
 
     <!-- 地图容器 -->
-    <div class="map-container" ref="mapContainerRef">
-      <div class="map-grid" :style="{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }">
-        <!-- 绘制地图网格 -->
-        <div v-for="(row, y) in gridRows" :key="`row-${y}`" class="map-row">
-          <div
-            v-for="(cell, x) in row"
-            :key="`cell-${cell.x}-${cell.y}`"
-            class="map-cell"
-            :class="getCellClass(cell)"
-            @click="selectLocation(cell.x, cell.y)"
-          >
-            <!-- 显示地点 -->
+    <div
+      ref="mapContainerRef"
+      class="map-container"
+      :class="{ 'is-dragging': isDraggingMap }"
+      @pointerdown="startMapDrag"
+      @pointermove="dragMap"
+      @pointerup="finishMapDrag"
+      @pointercancel="finishMapDrag"
+    >
+      <div class="map-zoom-space" :style="mapZoomSpaceStyle">
+        <div class="map-grid" :style="{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }">
+          <!-- 绘制地图网格 -->
+          <div v-for="(row, y) in gridRows" :key="`row-${y}`" class="map-row">
             <div
-              v-if="cell.location && !cell.isEmpty"
-              class="location-marker"
-              :class="getLocationClass(cell.location)"
-              :title="getLocationTooltip(cell.location)"
+              v-for="cell in row"
+              :key="`cell-${cell.x}-${cell.y}`"
+              class="map-cell"
+              :class="getCellClass(cell)"
+              :data-x="cell.x"
+              :data-y="cell.y"
+              @click="selectLocation(cell.x, cell.y)"
             >
-              <i :class="getLocationIcon(cell.location)"></i>
-              <div class="location-label">{{ cell.location.伪装 || cell.location.真实 }}</div>
-            </div>
+              <!-- 显示地点 -->
+              <div
+                v-if="cell.location && !cell.isEmpty"
+                class="location-marker"
+                :class="getLocationClass(cell.location)"
+                :title="getLocationTooltip(cell.location)"
+              >
+                <i :class="getLocationIcon(cell.location)"></i>
+                <div class="location-label">{{ cell.location.伪装 || cell.location.真实 }}</div>
+              </div>
 
-            <!-- 显示坐标（仅当是玩家位置但没有地点时） -->
-            <div class="cell-coord" v-if="!cell.location && cell.isPlayerPosition && !cell.isEmpty">
-              [{{ cell.x }}-{{ cell.y }}]
+              <!-- 显示坐标（仅当是玩家位置但没有地点时） -->
+              <div v-if="!cell.location && cell.isPlayerPosition && !cell.isEmpty" class="cell-coord">
+                [{{ cell.x }}-{{ cell.y }}]
+              </div>
             </div>
           </div>
         </div>
@@ -54,7 +66,7 @@
     </div>
 
     <!-- 地点详情面板 -->
-    <div class="location-detail" v-if="selectedLocation">
+    <div v-if="selectedLocation" class="location-detail">
       <div class="detail-header">
         <h3>{{ selectedLocation.伪装 || selectedLocation.真实 }}</h3>
         <button class="close-detail" @click="selectedLocation = null">
@@ -62,23 +74,31 @@
         </button>
       </div>
       <div class="detail-content">
-        <div class="detail-item" v-if="selectedLocation.真实">
-          <span class="detail-label">真实名称:</span>
-          <span class="detail-value">{{ selectedLocation.真实 }}</span>
+        <div class="detail-item">
+          <span class="detail-label">地点名称:</span>
+          <span class="detail-value">{{ selectedLocation.真实 || selectedLocation.伪装 }}</span>
+        </div>
+        <div v-if="selectedLocation.伪装 && selectedLocation.真实" class="detail-item">
+          <span class="detail-label">伪装名称:</span>
+          <span class="detail-value">{{ selectedLocation.伪装 }}</span>
         </div>
         <div class="detail-item">
-          <span class="detail-label">坐标:</span>
-          <span class="detail-value">{{ selectedLocation.坐标 }}</span>
+          <span class="detail-label">位置:</span>
+          <span class="detail-value">{{ formatLocationPosition(selectedLocation) }}</span>
         </div>
-        <div class="detail-item" v-if="selectedLocation.所属势力">
+        <div v-if="selectedLocation.所属势力" class="detail-item">
           <span class="detail-label">所属势力:</span>
           <span class="detail-value">{{ selectedLocation.所属势力 }}</span>
+        </div>
+        <div class="detail-item detail-description">
+          <span class="detail-label">介绍:</span>
+          <span class="detail-value">{{ getLocationDescription(selectedLocation) }}</span>
         </div>
       </div>
     </div>
 
     <!-- 当前位置标记 -->
-    <div class="current-location" v-if="currentLocation">
+    <div v-if="currentLocation" class="current-location">
       <i class="fas fa-map-marker-alt"></i>
       <span>当前位置: {{ currentLocation.地点名称 || '未知' }} {{ currentLocation.坐标 || '' }}</span>
     </div>
@@ -140,7 +160,211 @@ const mapLocations = [
   { 坐标: '[5-4]', 伪装: '停车场', 真实: '地下黑市-跳蚤市场', 所属势力: '学园公共' },
   { 坐标: '[5-5]', 伪装: '空置社团活动室', 真实: '未分配的社团房间', 所属势力: '无' },
   { 坐标: '[-1-2]', 真实: '后山入口', 所属势力: '学园公共' },
-  { 坐标: '[-1-3]', 伪装: '废弃神社', 真实: '风音与铃音的神社', 所属势力: '独立势力' },
+  {
+    坐标: '[-1-3]',
+    伪装: '废弃神社',
+    真实: '风音与铃音的神社',
+    所属势力: '独立势力',
+    介绍: '位于后山深处的旧神社，是风音与铃音守护封印回廊的地上据点。这里似乎散发着不详的气息...',
+  },
+  {
+    坐标: '[-1-3](-1F)',
+    真实: '驱魔迷宫B1层·中式妖域',
+    所属势力: '独立势力(霜凝/无常)',
+    介绍: '神社本殿后方石阶通往的黄泉墓道。这里阴冷潮湿，石壁刻满褪色符咒，铜铃与纸钱灰烬指向更深处的石棺回廊和无常殿。',
+  },
+  {
+    坐标: '[-2-5](-1F)',
+    真实: 'B1·黄泉入口',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '从废弃神社本殿后方石阶进入的封印回廊入口。符咒残光与铜铃声标记着第一层的起点，也是阴气最浅、最适合整队的位置。',
+  },
+  {
+    坐标: '[-1-4](-1F)',
+    真实: 'B1·石棺回廊',
+    所属势力: '独立势力(霜凝)',
+    介绍: '石棺嵌入两侧墙壁的墓道回廊，棺盖与符纸都已松动。这里容易触发石棺异动，也藏着霜凝记忆碎片与镇魂类奖励线索。',
+  },
+  {
+    坐标: '[0-3](-1F)',
+    真实: 'B1·祭坛',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '残存道教法阵与供台所在的中继区域，仍保留少量封印残响。适合进行短暂净化、检查封印碎片，并判断后续墓道阴气走向。',
+  },
+  {
+    坐标: '[0-2](-1F)',
+    真实: 'B1·黄泉甬道',
+    所属势力: '独立势力(无常)',
+    介绍: '阴气最浓的狭长甬道，铜铃声会在深处反复回响。跟随铃声可能避开小怪，也可能被引向更危险的无常殿。',
+  },
+  {
+    坐标: '[1-2](-1F)',
+    真实: 'B1·无常殿',
+    所属势力: '独立势力(无常)',
+    介绍: '黑白石像与阴阳法阵构成的第一层核心战斗区。完成无常战后，风音需要在此保护窗口内维持净化仪式。',
+  },
+  {
+    坐标: '[1-1](-1F)',
+    真实: 'B1·净化点',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '第一层的临时安全区，风音结界能暂时抵消阴气侵体。适合整理战利品、恢复状态，并记录B1净化进度。',
+  },
+  {
+    坐标: '[-1-3](-2F)',
+    真实: '驱魔迷宫B2层·西式魔域',
+    所属势力: '独立势力(希思)',
+    介绍: '由黑色大理石、尖拱穹顶和彩窗回廊构成的地下教堂群落。暗紫烛火、管风琴声与实体黑暗共同构成暗夜诅咒区域。',
+  },
+  {
+    坐标: '[-2-5](-2F)',
+    真实: 'B2·哥特门厅',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '黑色大理石和尖拱穹顶构成的地下教堂入口。管风琴共鸣与倒五芒星法阵都可能指向隐藏暗室。',
+  },
+  {
+    坐标: '[-1-4](-2F)',
+    真实: 'B2·彩窗回廊',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '被篡改的彩色玻璃窗沿墙延伸，圣人面孔变成魔物剪影。彩窗偶尔会恢复原貌，提供后续楼层或Boss弱点的预兆。',
+  },
+  {
+    坐标: '[0-3](-2F)',
+    真实: 'B2·地下墓穴',
+    所属势力: '独立势力(希思)',
+    介绍: '墓穴区的黑暗更厚，狼嚎与血蔷薇气味会引导遭遇。这里适合安置墓穴系小怪与暗夜诅咒相关陷阱。',
+  },
+  {
+    坐标: '[0-2](-2F)',
+    真实: 'B2·告解室',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '第二层少数可短暂停靠的房间，隔间另一侧会传来询问罪名的低语。回答方式会影响意志、魅力或本次净化效果。',
+  },
+  {
+    坐标: '[1-2](-2F)',
+    真实: 'B2·血月大教堂',
+    所属势力: '独立势力(希思)',
+    介绍: '第二层核心大Boss区域，血月光影、祭坛和高背椅构成最终战场。击败希思后可在此搜索收藏与净化仪式线索。',
+  },
+  {
+    坐标: '[1-1](-2F)',
+    真实: 'B2·净化点',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '大教堂净化仪式的防守节点。风音需要稳定吟唱，队伍则负责挡住残余魔物与暗夜诅咒的干扰。',
+  },
+  {
+    坐标: '[-1-3](-3F)',
+    真实: '驱魔迷宫B3层·日式神域',
+    所属势力: '独立势力(玉藻前)',
+    介绍: '地下深处展开的不真实妖樱幽谷。永恒盛开的樱花、朱红鸟居、石灯笼与雾气构成幻境，玉藻前的影响笼罩此层。',
+  },
+  {
+    坐标: '[-2-5](-3F)',
+    真实: 'B3·红叶神社',
+    所属势力: '独立势力(鬼巫女椿)',
+    介绍: '妖樱幽谷中的日式神社安全节点，红叶、注连绳与结界共同隔开妖气。这里承载椿的过往信件与风音相关剧情。',
+  },
+  {
+    坐标: '[-1-4](-3F)',
+    真实: 'B3·樱花参道',
+    所属势力: '独立势力(玉藻前)',
+    介绍: '粉色花雾覆盖的参道路段，美景本身就是诱导陷阱。雪女伪装、沉醉花瓣与狐火引路事件常在此发生。',
+  },
+  {
+    坐标: '[0-3](-3F)',
+    真实: 'B3·竹林迷宫',
+    所属势力: '独立势力(络新妇)',
+    介绍: '黑竹与蛛丝交错的迷宫区域，视野会被竹影切碎，路线也会随妖力改变。铃音灵视可追踪歌声并定位络新妇巢穴。',
+  },
+  {
+    坐标: '[0-2](-3F)',
+    真实: 'B3·狐火温泉',
+    所属势力: '独立势力(玉藻前)',
+    介绍: '水面映出九尾狐倒影的温泉区域，能提供短暂休整，也可能赋予「九尾的注视」这类有利有弊的临时状态。',
+  },
+  {
+    坐标: '[1-2](-3F)',
+    真实: 'B3·九尾殿',
+    所属势力: '独立势力(玉藻前)',
+    介绍: '妖樱幽谷最深处的宫殿，金色榻榻米、狐火与香气组成玉藻前的主场。这里是第三层大Boss战与宝库线索所在地。',
+  },
+  {
+    坐标: '[1-1](-3F)',
+    真实: 'B3·净化点',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '第三层净化与整队节点，可暂时压低催情花粉的影响。适合处理B3持续敏感、幻境与同化类残留状态。',
+  },
+  {
+    坐标: '[-1-3](-4F)',
+    真实: '驱魔迷宫B4层·堕落妖精',
+    所属势力: '独立势力(八尺夫人)',
+    介绍: '被堕落之力侵蚀的腐蚀花园，石像回廊、暗精灵森林、堕落圣堂与母胎深渊彼此相连，是封印核心前的最后防线。',
+  },
+  {
+    坐标: '[-2-5](-4F)',
+    真实: 'B4·腐蚀花门',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '进入腐蚀花园的黑暗花门，藤蔓与花瓣已经被堕落之力侵染。入口处最容易触发藤蔓缠绕与堕落侵蚀判定。',
+  },
+  {
+    坐标: '[-1-4](-4F)',
+    真实: 'B4·石像回廊',
+    所属势力: '独立势力(石像鬼娘)',
+    介绍: '两侧排列着姿态异常逼真的石像，其中部分会在凝视或触碰时苏醒。石像邀请与欲望幻象陷阱集中在此处。',
+  },
+  {
+    坐标: '[0-3](-4F)',
+    真实: 'B4·暗精灵森林',
+    所属势力: '独立势力(暗精灵娘)',
+    介绍: '被污染果实与黑暗枝叶覆盖的森林区域。发光果实可能恢复状态，也可能带来敏感与堕落相关代价。',
+  },
+  {
+    坐标: '[0-2](-4F)',
+    真实: 'B4·堕落圣堂',
+    所属势力: '独立势力(克洛伊)',
+    介绍: '描绘克洛伊堕落过程的壁画圣堂，也是第四层小Boss线的重要区域。观看壁画可获得战斗情报，但会付出精神污染代价。',
+  },
+  {
+    坐标: '[1-2](-4F)',
+    真实: 'B4·母胎深渊',
+    所属势力: '独立势力(八尺夫人)',
+    介绍: '万魔之母气息最浓的深渊入口，母性呼唤会强制牵引意志薄弱者。这里是八尺夫人的主战场，也是通往B5前的最后压迫区。',
+  },
+  {
+    坐标: '[1-1](-4F)',
+    真实: 'B4·堕落喷泉',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '水面倒影会显露异常的喷泉节点。完成第四层净化后，这里既是奖励与整备点，也会成为坠入封印核心前的路线标记。',
+  },
+  {
+    坐标: '[2-1](-4F)',
+    真实: 'B4·净化点',
+    所属势力: '独立势力(风音与铃音管辖)',
+    介绍: '腐蚀花园的净化法阵中心。完成仪式可压制本层堕落侵蚀，并解锁进入封印核心前的最终准备窗口。',
+  },
+  {
+    坐标: '[-1-3](-5F)',
+    真实: '驱魔迷宫B5层·封印核心',
+    所属势力: '独立势力(万魔之母)',
+    介绍: '封印回廊最深处的混沌神殿，也是五层封印结界的核心。空间法则异常，所有路线最终都会收束到这处核心区域。',
+  },
+  {
+    坐标: '[-2-4](-5F)',
+    真实: 'B5·胎膜入口',
+    所属势力: '独立势力(万魔之母)',
+    介绍: '从B4深处坠落后抵达的封印核心入口，地面像半透明胎膜般起伏。进入这里会立刻面对混沌侵蚀与铃音相关强制事件。',
+  },
+  {
+    坐标: '[0-3](-5F)',
+    真实: 'B5·蜕变回廊',
+    所属势力: '独立势力(万魔之母)',
+    介绍: '连接入口与核心的生物甬道，脉动墙壁、腔室与残魂构成最终战前的精神压力区。灵樱相关战斗与唤醒机制在此展开。',
+  },
+  {
+    坐标: '[1-2](-5F)',
+    真实: 'B5·万魔子宫',
+    所属势力: '独立势力(万魔之母)',
+    介绍: '混沌神殿最深处的最终Boss场地，万魔之母沉睡于巨大肉茧中。击败后需要保护风音完成最终净化仪式。',
+  },
   { 坐标: '[-2-1]', 真实: '后山温泉', 所属势力: '体育联盟' },
   { 坐标: '[-2-4]', 伪装: '秘密训练场', 真实: '地下联盟的野外交易点', 所属势力: '地下联盟' },
   { 坐标: '[6-3]', 伪装: '海滩入口', 真实: '私人海滩', 所属势力: '学园公共' },
@@ -174,10 +398,32 @@ const maxX = 6;
 const minY = -1;
 const maxY = 5;
 
+const CELL_SIZE = 80;
+const MAP_DRAG_THRESHOLD = 4;
 const currentFloor = ref(1);
-const zoomLevel = ref(1);
+const zoomLevel = ref(0.8);
 const selectedLocation = ref<any>(null);
 const mapContainerRef = ref<HTMLElement | null>(null);
+const isDraggingMap = ref(false);
+const suppressNextMapClick = ref(false);
+
+type MapDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startCellX: number | null;
+  startCellY: number | null;
+  originScrollLeft: number;
+  originScrollTop: number;
+  moved: boolean;
+} | null;
+
+const mapDragState = ref<MapDragState>(null);
+
+const mapZoomSpaceStyle = computed(() => ({
+  width: `${(maxX - minX + 1) * CELL_SIZE * zoomLevel.value}px`,
+  height: `${(maxY - minY + 1) * CELL_SIZE * zoomLevel.value}px`,
+}));
 
 // 当前玩家位置
 const currentLocation = computed(() => {
@@ -196,16 +442,37 @@ const availableFloors = computed(() => {
     }
   });
 
-  return Array.from(floors).sort((a, b) => a - b);
+  return Array.from(floors).sort((a, b) => {
+    const aIsAboveGround = a > 0;
+    const bIsAboveGround = b > 0;
+    if (aIsAboveGround && bIsAboveGround) return b - a;
+    if (aIsAboveGround) return -1;
+    if (bIsAboveGround) return 1;
+    return b - a;
+  });
 });
 
 // 格式化楼层显示
 function formatFloor(floor: number): string {
   if (floor === 1) return '1F';
   if (floor > 1) return `${floor}F`;
-  if (floor === -1) return 'B1F';
-  if (floor === -2) return 'B2F';
-  return `${floor}F`;
+  return `B${Math.abs(floor)}F`;
+}
+
+function formatLocationPosition(location: any): string {
+  const parsed = parseCoordinate(location.坐标 || '');
+  if (!parsed) return location.坐标 || '未知';
+  return `${formatFloor(parsed.floor)} · [${parsed.x}-${parsed.y}]`;
+}
+
+function getLocationDescription(location: any): string {
+  if (location.介绍) return location.介绍;
+
+  const displayName = location.真实 || location.伪装 || '该地点';
+  const faction = location.所属势力 && location.所属势力 !== '无' ? `，当前归属${location.所属势力}` : '';
+  const disguise =
+    location.伪装 && location.真实 ? `表面上是「${location.伪装}」，真实用途为「${location.真实}」。` : '';
+  return `${disguise || `「${displayName}」是学园地图中的可访问地点。`}可在此查看位置与势力信息${faction}。`;
 }
 
 // 获取当前楼层的地点
@@ -292,8 +559,13 @@ function getCellClass(cell: any): string {
 }
 
 // 获取地点图标
+function normalizeFaction(faction: string): string {
+  if (faction.startsWith('独立势力')) return '独立势力';
+  return faction;
+}
+
 function getLocationIcon(location: any): string {
-  const faction = location.所属势力 || '';
+  const faction = normalizeFaction(location.所属势力 || '');
   const iconMap: Record<string, string> = {
     学生会: 'fas fa-crown',
     女权协会: 'fas fa-venus',
@@ -313,7 +585,7 @@ function getLocationIcon(location: any): string {
 
 // 获取地点样式类
 function getLocationClass(location: any): string {
-  const faction = location.所属势力 || '';
+  const faction = normalizeFaction(location.所属势力 || '');
   const classMap: Record<string, string> = {
     学生会: 'faction-student-council',
     女权协会: 'faction-feminist',
@@ -342,12 +614,93 @@ function getLocationTooltip(location: any): string {
 
 // 选择地点
 function selectLocation(x: number, y: number) {
+  if (suppressNextMapClick.value) {
+    suppressNextMapClick.value = false;
+    return;
+  }
+
   const location = currentFloorLocations.value.find(loc => {
     const parsed = parseCoordinate(loc.坐标);
     return parsed && parsed.x === x && parsed.y === y;
   });
 
   selectedLocation.value = location || null;
+}
+
+function startMapDrag(event: PointerEvent) {
+  if (event.button !== 0) return;
+
+  const container = mapContainerRef.value;
+  if (!container) return;
+
+  const targetCell = (event.target as HTMLElement | null)?.closest<HTMLElement>('.map-cell');
+
+  mapDragState.value = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startCellX: targetCell?.dataset.x ? Number(targetCell.dataset.x) : null,
+    startCellY: targetCell?.dataset.y ? Number(targetCell.dataset.y) : null,
+    originScrollLeft: container.scrollLeft,
+    originScrollTop: container.scrollTop,
+    moved: false,
+  };
+  isDraggingMap.value = false;
+
+  try {
+    container.setPointerCapture(event.pointerId);
+  } catch {
+    // 内嵌 WebView 可能不完整支持 pointer capture，容器内拖动仍可工作。
+  }
+}
+
+function dragMap(event: PointerEvent) {
+  const state = mapDragState.value;
+  const container = mapContainerRef.value;
+  if (!state || !container || state.pointerId !== event.pointerId) return;
+
+  const dx = event.clientX - state.startX;
+  const dy = event.clientY - state.startY;
+  if (!state.moved && Math.abs(dx) + Math.abs(dy) > MAP_DRAG_THRESHOLD) {
+    state.moved = true;
+    isDraggingMap.value = true;
+  }
+
+  if (!state.moved) return;
+
+  event.preventDefault();
+  container.scrollLeft = state.originScrollLeft - dx;
+  container.scrollTop = state.originScrollTop - dy;
+}
+
+function finishMapDrag(event: PointerEvent) {
+  const state = mapDragState.value;
+  const container = mapContainerRef.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  try {
+    if (container?.hasPointerCapture(event.pointerId)) {
+      container.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // 忽略部分 WebView 的释放失败。
+  }
+
+  const didMove = state.moved;
+  mapDragState.value = null;
+  isDraggingMap.value = false;
+
+  if (!didMove && state.startCellX !== null && state.startCellY !== null) {
+    selectLocation(state.startCellX, state.startCellY);
+    return;
+  }
+
+  if (didMove) {
+    suppressNextMapClick.value = true;
+    window.setTimeout(() => {
+      suppressNextMapClick.value = false;
+    }, 0);
+  }
 }
 
 // 缩放控制
@@ -376,18 +729,24 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .map-page {
-  padding: 16px 20px;
-  overflow-y: auto;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 10px 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
   flex: 1;
   position: relative;
 }
 
 .map-controls {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding: 12px;
+  margin-bottom: 10px;
+  padding: 10px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -454,15 +813,35 @@ onMounted(() => {
 
 .map-container {
   position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   overflow: auto;
   background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 20px;
-  min-height: 400px;
+  padding: 10px;
+  box-sizing: border-box;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-overflow-scrolling: touch;
+
+  &.is-dragging {
+    cursor: grabbing;
+  }
+}
+
+.map-zoom-space {
+  position: relative;
+  min-width: 1px;
+  min-height: 1px;
 }
 
 .map-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: inline-block;
   transition: transform 0.2s ease;
 }
@@ -583,10 +962,13 @@ onMounted(() => {
 }
 
 .location-detail {
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
-  width: 280px;
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 58px;
+  width: auto;
+  max-height: min(48%, 320px);
+  overflow: auto;
   background: rgba(15, 23, 42, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
@@ -656,16 +1038,31 @@ onMounted(() => {
 }
 
 .detail-value {
+  min-width: 0;
   font-size: 12px;
   font-weight: 500;
   color: white;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.detail-description {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+
+  .detail-value {
+    color: rgba(255, 255, 255, 0.86);
+    line-height: 1.5;
+    text-align: left;
+  }
 }
 
 .current-location {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
+  flex: 0 0 auto;
+  max-width: 100%;
+  margin: 8px auto 0;
   padding: 10px 20px;
   background: rgba(34, 211, 238, 0.2);
   border: 1px solid rgba(34, 211, 238, 0.5);
@@ -676,10 +1073,19 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   backdrop-filter: blur(10px);
-  z-index: 100;
+  z-index: 2;
+  box-sizing: border-box;
 
   i {
+    flex: 0 0 auto;
     color: #22d3ee;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

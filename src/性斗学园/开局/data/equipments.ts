@@ -491,7 +491,7 @@ export const ACCESSORIES: EquipmentData[] = [
     flavorText: '每一朵玫瑰都带刺...',
   },
   {
-    id: 'eq_willpower_amulet',
+    id: 'eq_resilience_amulet',
     name: '意志护符',
     description: '增强精神力量的神秘护符',
     icon: 'Shield',
@@ -677,7 +677,7 @@ export const EQUIPMENT_SETS: EquipmentSetData[] = [
     name: '女王套装',
     description: '支配者专用的豪华套装',
     icon: 'Crown',
-    pieces: ['eq_golden_whip', 'eq_collar', 'eq_willpower_amulet'],
+    pieces: ['eq_golden_whip', 'eq_collar', 'eq_resilience_amulet'],
     setBonus: [
       {
         piecesRequired: 2,

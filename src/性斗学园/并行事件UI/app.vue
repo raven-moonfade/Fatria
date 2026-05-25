@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { getSharedTextColor } from '../shared/textAppearance';
 
 // 正则表达式：匹配 <parallel> 标签包裹的内容
 const PARALLEL_REGEX = /<parallel>([\s\S]*?)<\/parallel>/g;
@@ -45,6 +46,7 @@ interface ParallelEvent {
 }
 
 const events = ref<ParallelEvent[]>([]);
+const textColor = ref(getSharedTextColor());
 
 // 折叠状态（默认折叠）
 const isCollapsed = ref(true);
@@ -63,6 +65,7 @@ const containerStyle = computed(() => ({
   width: '100%',
   margin: '0',
   padding: '0',
+  '--shared-text-color': textColor.value,
 }));
 
 // 事件项样式
@@ -262,6 +265,7 @@ const waitForGlobalFunctions = async (maxRetries = 30, interval = 200): Promise<
 
 onMounted(async () => {
   console.info('[并行事件UI] 组件已加载');
+  textColor.value = getSharedTextColor();
 
   // 等待全局函数初始化
   const functionsReady = await waitForGlobalFunctions();
@@ -506,7 +510,7 @@ onMounted(async () => {
 }
 
 .event-description {
-  color: #e5e7eb;
+  color: var(--shared-text-color, #e5e7eb);
   line-height: 1.6;
   padding-left: 1.5rem;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);

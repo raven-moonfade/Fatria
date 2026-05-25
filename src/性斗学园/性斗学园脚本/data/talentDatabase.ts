@@ -522,8 +522,8 @@ export const TALENT_DATABASE: TalentData[] = [
     ],
   },
   {
-    id: 'talent_willpower',
-    name: '意志力',
+    id: 'talent_resilience',
+    name: '坚忍',
     description: '基础忍耐力+4，基础忍耐力成算+2。每回合第一次受到的快感伤害减少15点。',
     rarity: 'SS',
     bonus: { 基础忍耐力加成: 4, 基础忍耐力成算: 2 },
@@ -537,8 +537,8 @@ export const TALENT_DATABASE: TalentData[] = [
     ],
   },
   {
-    id: 'talent_willpower_variant_1',
-    name: '意志力·坚守',
+    id: 'talent_resilience_variant_1',
+    name: '坚忍·守势',
     description: '基础忍耐力+8，基础忍耐力成算+5。每回合第一次受到的快感伤害减少8点。',
     rarity: 'S',
     bonus: { 基础忍耐力加成: 8, 基础忍耐力成算: 5 },

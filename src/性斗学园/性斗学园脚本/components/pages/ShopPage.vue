@@ -245,12 +245,11 @@
             </div>
           </div>
         </div>
-
       </div>
     </div>
 
     <!-- 性癖奖励选择弹窗 -->
-    
+
     <div v-else-if="fetishDecisionModalVisible && pendingFetishDecision" class="shop-detail-view">
       <div class="detail-page-header fetish-detail-header">
         <div class="detail-title-block">
@@ -267,9 +266,10 @@
         <div class="modal-body shop-detail-body">
           <div class="fetish-name-row">
             <span class="fetish-name">{{ pendingFetishDecision.name }}</span>
-            <span class="fetish-align-tag" :class="
-              pendingFetishDecision.alignment ? 'align-' + pendingFetishDecision.alignment.toLowerCase() : ''
-            ">
+            <span
+              class="fetish-align-tag"
+              :class="pendingFetishDecision.alignment ? 'align-' + pendingFetishDecision.alignment.toLowerCase() : ''"
+            >
               {{ pendingFetishAlignmentLabel }}
             </span>
           </div>
@@ -335,7 +335,11 @@
           <div class="quantity-selector" v-if="selectedItem?.category !== 'equipment'">
             <span class="qty-label">数量:</span>
             <div class="quantity-control">
-              <button class="qty-btn" :disabled="isGoldInsufficient" @click="purchaseQuantity = Math.max(1, purchaseQuantity - 1)">
+              <button
+                class="qty-btn"
+                :disabled="isGoldInsufficient"
+                @click="purchaseQuantity = Math.max(1, purchaseQuantity - 1)"
+              >
                 -
               </button>
               <input
@@ -346,7 +350,11 @@
                 :disabled="isGoldInsufficient"
                 @blur="validatePurchaseQuantity"
               />
-              <button class="qty-btn" :disabled="isGoldInsufficient || purchaseQuantity >= maxPurchaseQuantity" @click="purchaseQuantity = Math.min(maxPurchaseQuantity, purchaseQuantity + 1)">
+              <button
+                class="qty-btn"
+                :disabled="isGoldInsufficient || purchaseQuantity >= maxPurchaseQuantity"
+                @click="purchaseQuantity = Math.min(maxPurchaseQuantity, purchaseQuantity + 1)"
+              >
                 +
               </button>
             </div>
@@ -361,7 +369,9 @@
               <i class="fas fa-coins"></i>
               <template v-if="selectedItem && getItemDiscount(selectedItem) > 0">
                 <span class="original-price">{{ (selectedItem?.price || 0) * purchaseQuantity }}</span>
-                <span class="discounted-price">{{ selectedItem ? getDiscountedPrice(selectedItem) * purchaseQuantity : 0 }}</span>
+                <span class="discounted-price">{{
+                  selectedItem ? getDiscountedPrice(selectedItem) * purchaseQuantity : 0
+                }}</span>
                 <span class="discount-tag">-{{ selectedItem ? getItemDiscount(selectedItem) : 0 }}%</span>
               </template>
               <template v-else>
@@ -372,7 +382,11 @@
         </div>
         <div class="modal-footer shop-detail-footer">
           <button class="cancel-btn" @click="selectedItem = null">取消</button>
-          <button class="confirm-btn" :disabled="!selectedItem || goldCoins < getDiscountedPrice(selectedItem) * purchaseQuantity" @click="purchaseItem">
+          <button
+            class="confirm-btn"
+            :disabled="!selectedItem || goldCoins < getDiscountedPrice(selectedItem) * purchaseQuantity"
+            @click="purchaseItem"
+          >
             <i class="fas fa-shopping-cart"></i>
             购买
           </button>
@@ -384,6 +398,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import {
+  isSpecialBattleUnlocked as getSpecialBattleUnlocked,
+  saveSpecialBattleUnlocked,
+} from '../../../shared/localPreferences';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
+import { getPlayerDerivedStats } from '../../../shared/statSelectors';
 import { grandWheelFetishPool, type FetishEntry } from '../../data/fetishPool';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
 
@@ -450,8 +470,48 @@ interface WheelRewardResult {
 }
 
 type FetishDecision = 'keep' | 'reroll' | 'discard';
+type BonusKey =
+  | '魅力加成'
+  | '幸运加成'
+  | '基础性斗力加成'
+  | '基础性斗力成算'
+  | '基础忍耐力加成'
+  | '基础忍耐力成算'
+  | '闪避率加成'
+  | '暴击率加成';
 
 const RARE_WEIGHT_FACTOR = 0.5;
+const BONUS_KEYS: BonusKey[] = [
+  '魅力加成',
+  '幸运加成',
+  '基础性斗力加成',
+  '基础性斗力成算',
+  '基础忍耐力加成',
+  '基础忍耐力成算',
+  '闪避率加成',
+  '暴击率加成',
+];
+
+function createEmptyBonusStats(): Record<BonusKey, number> {
+  return Object.fromEntries(BONUS_KEYS.map(key => [key, 0])) as Record<BonusKey, number>;
+}
+
+function normalizeBonusStats(input: Record<string, any> | undefined | null): Partial<Record<BonusKey, number>> {
+  const bonus: Partial<Record<BonusKey, number>> = {};
+  for (const key of BONUS_KEYS) {
+    const value = Number(input?.[key] ?? 0);
+    if (Number.isFinite(value) && value !== 0) bonus[key] = value;
+  }
+  return bonus;
+}
+
+function ensurePermanentStatusContainer(statData: any): Record<string, any> {
+  if (!statData.永久状态) statData.永久状态 = {};
+  if (!statData.永久状态.状态列表 || Array.isArray(statData.永久状态.状态列表)) {
+    statData.永久状态.状态列表 = {};
+  }
+  return statData.永久状态.状态列表;
+}
 
 // 获取当前天赋ID
 const currentTalentId = computed(() => {
@@ -717,7 +777,11 @@ function stopModalDrag(event?: MouseEvent | TouchEvent | PointerEvent) {
   if (activeDragMode.value === 'pointer' && event && isPointerEvent(event)) {
     if (activeDragPointerId.value !== null && event.pointerId !== activeDragPointerId.value) return;
   }
-  if (dragCaptureElement.value && activeDragPointerId.value !== null && dragCaptureElement.value.releasePointerCapture) {
+  if (
+    dragCaptureElement.value &&
+    activeDragPointerId.value !== null &&
+    dragCaptureElement.value.releasePointerCapture
+  ) {
     dragCaptureElement.value.releasePointerCapture(activeDragPointerId.value);
   }
   dragCaptureElement.value = null;
@@ -775,11 +839,7 @@ function validatePurchaseQuantity() {
 const isSpecialBattleUnlocked = ref(false);
 
 onMounted(() => {
-  try {
-    isSpecialBattleUnlocked.value = localStorage.getItem('shop_unlock_special_battle') === '1';
-  } catch {
-    isSpecialBattleUnlocked.value = false;
-  }
+  isSpecialBattleUnlocked.value = getSpecialBattleUnlocked();
   window.addEventListener('pointermove', handleModalDragMove);
   window.addEventListener('pointerup', stopModalDrag);
   window.addEventListener('pointercancel', stopModalDrag);
@@ -805,11 +865,7 @@ onUnmounted(() => {
 
 function unlockSpecialBattle() {
   isSpecialBattleUnlocked.value = true;
-  try {
-    localStorage.setItem('shop_unlock_special_battle', '1');
-  } catch {
-    // ignore
-  }
+  saveSpecialBattleUnlocked();
 }
 
 // 分类列表（移除礼物）
@@ -2647,7 +2703,8 @@ const allEquipments = [
     grade: 'A',
     gender: '女',
     attrFocus: '特殊',
-    description: '用本命年大红色染就的丁字裤，剥开后露出的红色布料紧贴脚心和私处，吐息间透出隐秘的红色诱惑——据说能带来好运',
+    description:
+      '用本命年大红色染就的丁字裤，剥开后露出的红色布料紧贴脚心和私处，吐息间透出隐秘的红色诱惑——据说能带来好运',
     bonuses: { 幸运加成: 10, 基础忍耐力加成: 5 },
   },
   {
@@ -2659,7 +2716,8 @@ const allEquipments = [
     grade: 'A',
     gender: '女',
     attrFocus: '特殊',
-    description: '铜钱形状的金属夹子严密地夺住两粒敦起的乳尖，夹子下垂的红色流苏随身体摇曳而颤动，每一步都牵动乳尖带来酢麻快感，无比色情',
+    description:
+      '铜钱形状的金属夹子严密地夺住两粒敦起的乳尖，夹子下垂的红色流苏随身体摇曳而颤动，每一步都牵动乳尖带来酢麻快感，无比色情',
     bonuses: { 魅力加成: 12, 幸运加成: 8, 基础忍耐力加成: -5 },
   },
   {
@@ -2683,7 +2741,8 @@ const allEquipments = [
     grade: 'SS',
     gender: '女',
     attrFocus: '特殊',
-    description: '色情的僵尸装只遮住乳尖和私处的最小面积，符咒纸贴在额头散发神秘的光芒，穿戴时胸部会不断膨胀，身体逐渐变得刺骨性感——似乎有小概率恶堕变成巨乳女僵尸',
+    description:
+      '色情的僵尸装只遮住乳尖和私处的最小面积，符咒纸贴在额头散发神秘的光芒，穿戴时胸部会不断膨胀，身体逐渐变得刺骨性感——似乎有小概率恶堕变成巨乳女僵尸',
     bonuses: { 魅力加成: 50, 基础忍耐力加成: 40, 幸运加成: -10, 基础忍耐力成算: 10 },
   },
   {
@@ -2695,7 +2754,8 @@ const allEquipments = [
     grade: 'S',
     gender: '女',
     attrFocus: '特殊',
-    description: '高开叉的红色旗袍内藏红绳绑缚，红绳从胸前穿过胡桃夹住肯豆再通过膛间绕臀结系，每一步走动红绳都会摩擦敏感点，让穿戴者既兴奋又难耐',
+    description:
+      '高开叉的红色旗袍内藏红绳绑缚，红绳从胸前穿过胡桃夹住肯豆再通过膛间绕臀结系，每一步走动红绳都会摩擦敏感点，让穿戴者既兴奋又难耐',
     bonuses: { 基础性斗力加成: 45, 幸运加成: 25, 基础忍耐力加成: -10, 暴击率加成: 15 },
   },
   {
@@ -2707,7 +2767,8 @@ const allEquipments = [
     grade: 'SS',
     gender: '女',
     attrFocus: '特殊',
-    description: '轻纱如翅的小仙子装，半透明的纱衣若隐若现地勾勒娇小的身体曲线，穿戴时修炼有可能增加顿悟技能，但会逐渐变得呢喝娇憎，身体缩小变成可爱的笨蛋萝莉',
+    description:
+      '轻纱如翅的小仙子装，半透明的纱衣若隐若现地勾勒娇小的身体曲线，穿戴时修炼有可能增加顿悟技能，但会逐渐变得呢喝娇憎，身体缩小变成可爱的笨蛋萝莉',
     bonuses: { 魅力加成: 60, 幸运加成: 40, 基础性斗力成算: 12, 基础忍耐力成算: -5 },
   },
   {
@@ -2719,7 +2780,8 @@ const allEquipments = [
     grade: 'A',
     gender: '女',
     attrFocus: '特殊',
-    description: '刺绣着牡丹的红缎肚兜，只遮住胸前一小片，两侧乳肉从肚兜边缘溢出，绑带系在背后的结只需轻轻一拉就能彻底解放',
+    description:
+      '刺绣着牡丹的红缎肚兜，只遮住胸前一小片，两侧乳肉从肚兜边缘溢出，绑带系在背后的结只需轻轻一拉就能彻底解放',
     bonuses: { 魅力加成: 15, 基础性斗力加成: 8, 闪避率加成: 5 },
   },
   {
@@ -2941,7 +3003,7 @@ const consumableSubCategories = [
         category: 'consumable',
         combatOnly: false,
         effectText: '基础魅力+2',
-        effect: { permanent: { $基础魅力: 2 } },
+        effect: { permanent: { 魅力: 2 } },
         description: '永久提升2点基础魅力',
       },
       {
@@ -2952,7 +3014,7 @@ const consumableSubCategories = [
         category: 'consumable',
         combatOnly: false,
         effectText: '基础幸运+2',
-        effect: { permanent: { $基础幸运: 2 } },
+        effect: { permanent: { 幸运: 2 } },
         description: '永久提升2点基础幸运',
       },
       {
@@ -3043,7 +3105,8 @@ const wheelSSEquipmentPool = allEquipments.filter(item => item.grade === 'SS');
 const wheelRecoveryPool: any[] = (
   (consumableSubCategories.find(subCat => subCat.type === 'recovery')?.items ?? []) as any[]
 ).filter(item => item.id.startsWith('con_r_'));
-const wheelTempBuffPool: any[] = (consumableSubCategories.find(subCat => subCat.type === 'temp_buff')?.items ?? []) as any[];
+const wheelTempBuffPool: any[] = (consumableSubCategories.find(subCat => subCat.type === 'temp_buff')?.items ??
+  []) as any[];
 
 const wheelTypes = [
   { id: 'basic' as WheelType, name: '基础转盘', icon: 'fas fa-dice-one' },
@@ -3192,7 +3255,7 @@ const fetishDecisionResolver = ref<((choice: FetishDecision) => void) | null>(nu
 
 const currentWheelConfig = computed(() => wheelConfigs[activeWheelType.value]);
 const luckyRareMultiplier = computed(() => {
-  const luck = Number(props.characterData.核心状态?._幸运 ?? 0);
+  const luck = getPlayerDerivedStats(props.characterData || {}).luck;
   return getRareMultiplierByLuck(luck);
 });
 const totalLotteryTickets = computed(() => {
@@ -3320,9 +3383,8 @@ function handleFetishDecision(choice: FetishDecision) {
 function ensureShopStatData(statData: any) {
   if (!statData.角色基础) statData.角色基础 = {};
   if (!statData.核心状态) statData.核心状态 = {};
-  if (!statData.永久状态) statData.永久状态 = { 状态列表: [], 加成统计: {} };
-  if (!Array.isArray(statData.永久状态.状态列表)) statData.永久状态.状态列表 = [];
-  if (!statData.永久状态.加成统计) statData.永久状态.加成统计 = {};
+  if (!statData.基础属性) statData.基础属性 = {};
+  ensurePermanentStatusContainer(statData);
   if (!statData.物品系统) statData.物品系统 = {};
   if (!statData.物品系统.背包) statData.物品系统.背包 = {};
   if (typeof statData.物品系统.学园金币 !== 'number') {
@@ -3342,7 +3404,9 @@ function consumeLotteryTickets(backpack: Record<string, any>, needed: number): b
   if (available < needed) return false;
 
   let remain = needed;
-  const ticketKeys = Object.keys(backpack).filter(itemName => itemName.includes('抽奖卷')).sort((a, b) => a.localeCompare(b));
+  const ticketKeys = Object.keys(backpack)
+    .filter(itemName => itemName.includes('抽奖卷'))
+    .sort((a, b) => a.localeCompare(b));
   for (const key of ticketKeys) {
     if (remain <= 0) break;
     const item = backpack[key];
@@ -3410,13 +3474,33 @@ function addConsumableToBackpack(statData: any, consumable: any, quantity: numbe
 }
 
 function addPermanentBonus(statData: any, key: string, value: number) {
-  statData.永久状态.加成统计[key] = (statData.永久状态.加成统计[key] || 0) + value;
+  if (!BONUS_KEYS.includes(key as BonusKey)) return;
+
+  const statusList = ensurePermanentStatusContainer(statData);
+  const statusName = `商店永久加成_${key}`;
+  const current = statusList[statusName] || {
+    加成: createEmptyBonusStats(),
+    描述: '商店获得的永久数值提升',
+  };
+  current.加成 = {
+    ...createEmptyBonusStats(),
+    ...normalizeBonusStats(current.加成),
+    [key]: Number(current.加成?.[key] || 0) + value,
+  };
+  statusList[statusName] = current;
 }
 
-function addPermanentState(statData: any, stateName: string) {
-  if (!statData.永久状态.状态列表.includes(stateName)) {
-    statData.永久状态.状态列表.push(stateName);
-  }
+function addPermanentState(statData: any, stateName: string, bonus: Record<string, any> = {}, description = '') {
+  const statusList = ensurePermanentStatusContainer(statData);
+  const current = statusList[stateName] || { 加成: createEmptyBonusStats(), 描述: description };
+  statusList[stateName] = {
+    加成: {
+      ...createEmptyBonusStats(),
+      ...normalizeBonusStats(current.加成),
+      ...normalizeBonusStats(bonus),
+    },
+    描述: description || current.描述 || '',
+  };
 }
 
 async function resolveFetishReward(initialFetish: FetishEntry, statData: any): Promise<string> {
@@ -3428,10 +3512,7 @@ async function resolveFetishReward(initialFetish: FetishEntry, statData: any): P
       return `放弃永久状态「${current.name}」`;
     }
     if (choice === 'keep') {
-      addPermanentState(statData, current.name);
-      for (const [key, value] of Object.entries(current.bonuses)) {
-        addPermanentBonus(statData, key, Number(value) || 0);
-      }
+      addPermanentState(statData, current.name, current.bonuses, '商店大转盘获得的永久状态');
       pendingFetishDecision.value = null;
       return `永久状态「${current.name}」`;
     }
@@ -3592,12 +3673,10 @@ async function drawWheel(times: 1 | 10) {
   if (isWheelDrawing.value) return;
 
   const isTenDraw = times === 10;
-  const globalAny = window as any;
-  if (!globalAny.Mvu) return;
 
   isWheelDrawing.value = true;
   try {
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     ensureShopStatData(mvuData.stat_data);
@@ -3615,7 +3694,7 @@ async function drawWheel(times: 1 | 10) {
       return;
     }
 
-    const luck = Number(mvuData.stat_data.核心状态?._幸运 || 0);
+    const luck = getPlayerDerivedStats(mvuData.stat_data || {}).luck;
     const rareMultiplier = getRareMultiplierByLuck(luck);
     const drawResults: Array<{ segment: WheelSegment; text: string }> = [];
     const pendingFetishRewards: Array<{ resultIndex: number; fetish: FetishEntry }> = [];
@@ -3637,7 +3716,7 @@ async function drawWheel(times: 1 | 10) {
       drawResults[pending.resultIndex].text = resolvedText;
     }
 
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     const previewText = drawResults.map(result => result.text).join('、');
     wheelLastResultText.value = isTenDraw ? `十连结果：${previewText}` : `获得：${drawResults[0].text}`;
@@ -3682,10 +3761,7 @@ async function purchaseItem() {
   if (!selectedItem.value) return;
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 确保物品系统存在
@@ -3802,8 +3878,8 @@ async function purchaseItem() {
           // 幸运红包特殊处理：随机属性+1 或 随机金币
           if (item.effect.luckyEnvelope) {
             if (!mvuData.stat_data.核心状态) mvuData.stat_data.核心状态 = {};
-            if (!mvuData.stat_data.永久状态) mvuData.stat_data.永久状态 = { 状态列表: [], 加成统计: {} };
-            if (!mvuData.stat_data.永久状态.加成统计) mvuData.stat_data.永久状态.加成统计 = {};
+            if (!mvuData.stat_data.基础属性) mvuData.stat_data.基础属性 = {};
+            ensurePermanentStatusContainer(mvuData.stat_data);
             const results: string[] = [];
             for (let i = 0; i < quantity; i++) {
               const roll = Math.random();
@@ -3812,14 +3888,14 @@ async function purchaseItem() {
                 const statPool = [
                   { key: '基础性斗力成算', label: '性斗力成算', target: 'bonus' },
                   { key: '基础忍耐力成算', label: '忍耐力成算', target: 'bonus' },
-                  { key: '$基础魅力', label: '基础魅力', target: 'core' },
-                  { key: '$基础幸运', label: '基础幸运', target: 'core' },
+                  { key: '_魅力', label: '基础魅力', target: 'base' },
+                  { key: '_幸运', label: '基础幸运', target: 'base' },
                 ];
                 const chosen = statPool[Math.floor(Math.random() * statPool.length)];
                 if (chosen.target === 'bonus') {
-                  mvuData.stat_data.永久状态.加成统计[chosen.key] = (mvuData.stat_data.永久状态.加成统计[chosen.key] || 0) + 1;
+                  addPermanentBonus(mvuData.stat_data, chosen.key, 1);
                 } else {
-                  mvuData.stat_data.核心状态[chosen.key] = (mvuData.stat_data.核心状态[chosen.key] || 0) + 1;
+                  mvuData.stat_data.基础属性[chosen.key] = (mvuData.stat_data.基础属性[chosen.key] || 0) + 1;
                 }
                 results.push(`${chosen.label}+1`);
               } else {
@@ -3829,7 +3905,7 @@ async function purchaseItem() {
                 results.push(`金币+${goldReward}`);
               }
             }
-            await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+            await replaceLatestMvuData(mvuData);
             if (typeof toastr !== 'undefined') {
               toastr.success(`红包开启：${results.join(', ')}`, '🧧 恭喜发财');
             }
@@ -3838,20 +3914,31 @@ async function purchaseItem() {
           }
 
           if (item.effect.permanent) {
-            // 永久提升类：直接应用效果到核心状态
+            // 永久提升类：直接应用到持久事实字段
             if (!mvuData.stat_data.核心状态) mvuData.stat_data.核心状态 = {};
+            if (!mvuData.stat_data.基础属性) mvuData.stat_data.基础属性 = {};
+            const baseAttributeKeyMap: Record<string, string> = {
+              魅力: '_魅力',
+              幸运: '_幸运',
+              闪避率: '_闪避率',
+              暴击率: '_暴击率',
+            };
             for (const [key, value] of Object.entries(item.effect.permanent)) {
               if (key === '_潜力') {
                 const currentPotentialRaw = mvuData.stat_data.核心状态._潜力 ?? 0;
                 const currentPotential = Number(currentPotentialRaw) || 0;
                 const nextPotential = Math.min(10, currentPotential + (Number(value) || 0) * quantity);
                 mvuData.stat_data.核心状态._潜力 = nextPotential;
+              } else if (baseAttributeKeyMap[key]) {
+                const baseKey = baseAttributeKeyMap[key];
+                mvuData.stat_data.基础属性[baseKey] =
+                  (mvuData.stat_data.基础属性[baseKey] || 0) + (value as number) * quantity;
               } else {
                 mvuData.stat_data.核心状态[key] = (mvuData.stat_data.核心状态[key] || 0) + (value as number) * quantity;
               }
             }
             // 永久提升不存入背包，直接生效
-            await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+            await replaceLatestMvuData(mvuData);
 
             if (typeof toastr !== 'undefined') {
               toastr.success(`永久属性提升成功！`, '购买成功');
@@ -3861,15 +3948,13 @@ async function purchaseItem() {
           }
 
           if (item.effect.permanentBonus) {
-            // 永久成算类提升：直接应用效果到永久状态.加成统计
-            if (!mvuData.stat_data.永久状态) mvuData.stat_data.永久状态 = { 状态列表: [], 加成统计: {} };
-            if (!mvuData.stat_data.永久状态.加成统计) mvuData.stat_data.永久状态.加成统计 = {};
+            // 永久成算类提升：写入永久状态条目，由 selector 实时汇总。
+            ensurePermanentStatusContainer(mvuData.stat_data);
             for (const [key, value] of Object.entries(item.effect.permanentBonus)) {
-              mvuData.stat_data.永久状态.加成统计[key] =
-                (mvuData.stat_data.永久状态.加成统计[key] || 0) + (value as number) * quantity;
+              addPermanentBonus(mvuData.stat_data, key, (value as number) * quantity);
             }
             // 永久提升不存入背包，直接生效
-            await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+            await replaceLatestMvuData(mvuData);
 
             if (typeof toastr !== 'undefined') {
               toastr.success(`永久属性提升成功！`, '购买成功');
@@ -3884,7 +3969,7 @@ async function purchaseItem() {
     }
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`成功购买 ${item.name} x${quantity}`, '购买成功');
@@ -3975,7 +4060,6 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   }
 }
 
-
 .shop-detail-view {
   display: flex;
   flex-direction: column;
@@ -3998,7 +4082,6 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   color: white;
   cursor: pointer;
 }
-
 
 .detail-title-block {
   display: flex;
@@ -5017,7 +5100,9 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 0.2s, opacity 0.2s;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
 
   small {
     font-size: 10px;

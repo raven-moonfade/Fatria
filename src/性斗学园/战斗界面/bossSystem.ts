@@ -8,6 +8,20 @@
  */
 
 import { reactive, ref } from 'vue';
+import { BOSS_CONFIG } from './bossConfig';
+import { createBossMechanicRuntime, evaluateBossMechanics } from './bossMechanicEngine';
+import {
+  getCurrentBossDefinition,
+  getCurrentBossPhaseAvatarUrl,
+  getCurrentBossPhaseClimaxLimit,
+  getCurrentBossPhaseDataKey,
+  getCurrentBossPhaseDisplayName,
+  getCurrentBossPhaseSkillPoolKey,
+  type CurrentBossId,
+} from './bossDefinitions';
+
+export { BOSS_CONFIG } from './bossConfig';
+export { CURRENT_BOSS_DEFINITIONS, CURRENT_BOSS_DEFINITION_BY_ID } from './bossDefinitions';
 
 // ==================== 类型定义 ====================
 export interface BossState {
@@ -261,6 +275,39 @@ export const isDialogueSkippable = ref(true);
 let dialogueAutoPlayTimer: number | null = null;
 const DIALOGUE_DISPLAY_DURATION = 2500; // 每句对话显示2.5秒
 
+export function getConfiguredBossClimaxLimit(bossId: CurrentBossId, phase: number, fallback: number = 1): number {
+  return getCurrentBossPhaseClimaxLimit(bossId, phase) ?? fallback;
+}
+
+function getConfiguredPhaseTransition(params: {
+  bossId: CurrentBossId;
+  phase: number;
+  currentPleasure: number;
+  maxPleasure: number;
+  currentClimaxCount: number;
+  flags?: Record<string, boolean>;
+}): number | undefined {
+  const definition = getCurrentBossDefinition(params.bossId);
+  const runtime = createBossMechanicRuntime(definition);
+  const pleasurePercent = params.maxPleasure <= 0 ? 100 : (params.currentPleasure / params.maxPleasure) * 100;
+
+  runtime.currentPhase = params.phase;
+  runtime.flags = { ...(params.flags ?? {}) };
+
+  const evaluation = evaluateBossMechanics(definition, runtime, {
+    event: 'pleasurePercentAtOrAbove',
+    currentPhase: params.phase,
+    turn: runtime.turn,
+    pleasurePercent,
+    climaxCounters: { boss: params.currentClimaxCount },
+    flags: params.flags,
+  });
+  const setPhaseAction = evaluation.actions.find(
+    action => action.type === 'setPhase' && typeof action.phase === 'number',
+  );
+  return setPhaseAction?.phase;
+}
+
 // ==================== BOSS检测函数 ====================
 /**
  * 检测是否是沐芯兰BOSS战
@@ -504,7 +551,7 @@ export function getRandomBattleDialogue(phase: 1 | 2 | 3): BossDialogue | null {
     case 2:
       dialogues = MUXINLAN_DIALOGUES.phase2_battle;
       break;
-    case 3:
+    case 3: {
       // 第三阶段使用顺序对话
       const idx = bossState.dialogueIndex;
       if (idx < MUXINLAN_DIALOGUES.phase3_battle.length) {
@@ -513,6 +560,7 @@ export function getRandomBattleDialogue(phase: 1 | 2 | 3): BossDialogue | null {
       }
       // 循环最后几条
       return MUXINLAN_DIALOGUES.phase3_battle[MUXINLAN_DIALOGUES.phase3_battle.length - 1];
+    }
     default:
       return null;
   }
@@ -525,13 +573,16 @@ export function getRandomBattleDialogue(phase: 1 | 2 | 3): BossDialogue | null {
  * 获取当前阶段的敌人数据键名
  */
 export function getMuxinlanDataKey(phase: 1 | 2 | 3): string {
-  return `沐芯兰_${phase}`;
+  return getCurrentBossPhaseDataKey('muxinlan', phase) ?? `沐芯兰_${phase}`;
 }
 
 /**
  * 获取当前阶段的显示名称
  */
 export function getMuxinlanDisplayName(phase: 1 | 2 | 3): string {
+  const displayName = getCurrentBossPhaseDisplayName('muxinlan', phase);
+  if (displayName) return displayName;
+
   switch (phase) {
     case 1:
       return '茉莉(?)';
@@ -548,7 +599,9 @@ export function getMuxinlanDisplayName(phase: 1 | 2 | 3): string {
  * 获取当前阶段的立绘
  */
 export function getMuxinlanAvatarUrl(phase: 1 | 2 | 3): string {
-  return `https://img.vinsimage.org/性斗学园/立绘/沐芯兰_${phase}.png`;
+  return (
+    getCurrentBossPhaseAvatarUrl('muxinlan', phase) ?? `https://img.vinsimage.org/性斗学园/立绘/沐芯兰_${phase}.png`
+  );
 }
 
 /**
@@ -591,21 +644,29 @@ export function shouldTransitionPhase(
   }
 
   // 获取当前阶段的高潮次数上限
-  const climaxLimit = BOSS_CONFIG.muxinlan.climaxLimits[phase - 1];
+  const climaxLimit = getCurrentBossPhaseClimaxLimit('muxinlan', phase) ?? BOSS_CONFIG.muxinlan.climaxLimits[phase - 1];
+  const configuredNextPhase = getConfiguredPhaseTransition({
+    bossId: 'muxinlan',
+    phase,
+    currentPleasure,
+    maxPleasure,
+    currentClimaxCount,
+    flags: { honorMedalUsed: bossState.hasUsedMedal },
+  });
 
   // 第一阶段：快感达到最大值时，转换到第二阶段
   if (phase === 1 && currentPleasure >= maxPleasure) {
     // 如果使用了勋章，跳过第二阶段直接到第三阶段
     if (bossState.hasUsedMedal) {
-      return { shouldTransition: true, nextPhase: 3 };
+      return { shouldTransition: true, nextPhase: configuredNextPhase === 3 ? configuredNextPhase : 3 };
     }
-    return { shouldTransition: true, nextPhase: 2 };
+    return { shouldTransition: true, nextPhase: configuredNextPhase === 2 ? configuredNextPhase : 2 };
   }
 
   // 第二阶段：高潮次数达到上限-1且快感达到最大值时，转换到第三阶段
   // 例如：climaxLimit=3时，高潮2次后快感满就转换
   if (phase === 2 && currentClimaxCount >= climaxLimit - 1 && currentPleasure >= maxPleasure) {
-    return { shouldTransition: true, nextPhase: 3 };
+    return { shouldTransition: true, nextPhase: configuredNextPhase === 3 ? configuredNextPhase : 3 };
   }
 
   return { shouldTransition: false, nextPhase: phase };
@@ -778,13 +839,16 @@ export function initChristineBoss(): void {
  * 获取克莉丝汀当前阶段的敌人数据键名
  */
 export function getChristineDataKey(phase: 1 | 2): string {
-  return `克莉丝汀_${phase}`;
+  return getCurrentBossPhaseDataKey('christine', phase) ?? `克莉丝汀_${phase}`;
 }
 
 /**
  * 获取克莉丝汀当前阶段的显示名称
  */
 export function getChristineDisplayName(phase: 1 | 2): string {
+  const displayName = getCurrentBossPhaseDisplayName('christine', phase);
+  if (displayName) return displayName;
+
   switch (phase) {
     case 1:
       return '克莉丝汀(?)';
@@ -800,7 +864,9 @@ export function getChristineDisplayName(phase: 1 | 2): string {
  */
 export function getChristineAvatarUrl(phase: 1 | 2): string {
   // 克莉丝汀分阶段立绘：克莉丝汀_1、克莉丝汀_2
-  return `https://img.vinsimage.org/性斗学园/立绘/克莉丝汀_${phase}.png`;
+  return (
+    getCurrentBossPhaseAvatarUrl('christine', phase) ?? `https://img.vinsimage.org/性斗学园/立绘/克莉丝汀_${phase}.png`
+  );
 }
 
 /**
@@ -883,63 +949,21 @@ export function shouldChristineTransitionPhase(
     return { shouldTransition: false, nextPhase: phase };
   }
 
+  const configuredNextPhase = getConfiguredPhaseTransition({
+    bossId: 'christine',
+    phase,
+    currentPleasure,
+    maxPleasure,
+    currentClimaxCount: _currentClimaxCount,
+  });
+
   // 第一阶段：快感达到最大值时，转换到第二阶段
   if (phase === 1 && currentPleasure >= maxPleasure) {
-    return { shouldTransition: true, nextPhase: 2 };
+    return { shouldTransition: true, nextPhase: configuredNextPhase === 2 ? configuredNextPhase : 2 };
   }
 
   return { shouldTransition: false, nextPhase: phase };
 }
-
-// ==================== 导出BOSS系统配置 ====================
-export const BOSS_CONFIG = {
-  muxinlan: {
-    id: 'muxinlan',
-    phases: 3,
-    dataKeys: ['沐芯兰_1', '沐芯兰_2', '沐芯兰_3'],
-    displayNames: ['茉莉(?)', '꧁༺茉莉༻꧂', '沐芯兰（真身）'],
-    levels: [50, 88, 11],
-    climaxLimits: [1, 3, 1], // 各阶段的高潮次数上限（胜负规则.高潮次数上限）
-    specialItem: '刻有沐芯兰名字的三好学生荣誉勋章',
-  },
-  christine: {
-    id: 'christine',
-    phases: 2,
-    dataKeys: ['克莉丝汀_1', '克莉丝汀_2'],
-    displayNames: ['克莉丝汀(?)', '꧁༺克莉丝汀༻꧂'],
-    levels: [55, 88],
-    climaxLimits: [1, 3], // 第一阶段高潮1次转阶段，第二阶段高潮3次结束
-  },
-  eden: {
-    id: 'eden',
-    phases: 1, // 只有一个阶段
-    dataKeys: ['伊甸芙宁'],
-    displayNames: ['伊甸芙宁'],
-    levels: [99],
-    climaxLimits: [1], // 初始为1，苏醒后可能变为3
-    sinType: 'sloth' as const, // 七宗罪类型：懒惰
-    gameOverSkillId: '伊甸芙宁_16', // Game Over技能ID
-  },
-  vespera: {
-    id: 'vespera',
-    phases: 1, // 只有一个阶段
-    dataKeys: ['薇丝佩菈'],
-    displayNames: ['薇丝佩菈'],
-    levels: [40],
-    climaxLimits: [3], // 高潮次数上限3
-    sinType: 'lust' as const, // 七宗罪类型：色欲
-    selfSacrificeSkillId: '薇丝佩菈_自体献祭', // 自体献祭技能ID
-  },
-  heisaki: {
-    id: 'heisaki',
-    phases: 1, // 只有一个阶段
-    dataKeys: ['黑崎晴雯'],
-    displayNames: ['黑崎晴雯'],
-    levels: [60],
-    climaxLimits: [3], // 高潮次数上限3
-    sinType: 'greed' as const, // 七宗罪类型：贪婪
-  },
-};
 
 // ==================== 伊甸芙宁 BOSS 对话库 ====================
 export const EDEN_DIALOGUES = {
@@ -1062,7 +1086,7 @@ export function initEdenBoss(): void {
  * 获取伊甸芙宁显示名称
  */
 export function getEdenDisplayName(): string {
-  return '伊甸芙宁';
+  return getCurrentBossPhaseDisplayName('eden', 1) ?? '伊甸芙宁';
 }
 
 /**
@@ -1070,9 +1094,12 @@ export function getEdenDisplayName(): string {
  */
 export function getEdenAvatarUrl(sleeping: boolean = false): string {
   if (sleeping) {
-    return 'https://img.vinsimage.org/性斗学园/立绘/伊甸芙宁_1.png';
+    return (
+      getCurrentBossDefinition('eden').legacy?.sleepingAvatarUrl ??
+      'https://img.vinsimage.org/性斗学园/立绘/伊甸芙宁_1.png'
+    );
   }
-  return 'https://img.vinsimage.org/性斗学园/立绘/伊甸芙宁_2.png';
+  return getCurrentBossPhaseAvatarUrl('eden', 1) ?? 'https://img.vinsimage.org/性斗学园/立绘/伊甸芙宁_2.png';
 }
 
 /**
@@ -1336,14 +1363,14 @@ export function initElizabethBoss(): void {
  * 获取伊丽莎白夜羽显示名称
  */
 export function getElizabethDisplayName(): string {
-  return '伊丽莎白夜羽';
+  return getCurrentBossPhaseDisplayName('elizabeth', 1) ?? '伊丽莎白夜羽';
 }
 
 /**
  * 获取伊丽莎白夜羽立绘URL
  */
 export function getElizabethAvatarUrl(): string {
-  return 'https://img.vinsimage.org/性斗学园/立绘/伊丽莎白夜羽.png';
+  return getCurrentBossPhaseAvatarUrl('elizabeth', 1) ?? 'https://img.vinsimage.org/性斗学园/立绘/伊丽莎白夜羽.png';
 }
 
 // ==================== 伊丽莎白夜羽 傲慢天赋机制 ====================
@@ -1650,14 +1677,14 @@ export function initVesperaBoss(playerGender: string = '女'): void {
  * 获取薇丝佩菈显示名称
  */
 export function getVesperaDisplayName(): string {
-  return '薇丝佩菈';
+  return getCurrentBossPhaseDisplayName('vespera', 1) ?? '薇丝佩菈';
 }
 
 /**
  * 获取薇丝佩菈立绘URL
  */
 export function getVesperaAvatarUrl(): string {
-  return 'https://img.vinsimage.org/性斗学园/立绘/薇丝佩菈.png';
+  return getCurrentBossPhaseAvatarUrl('vespera', 1) ?? 'https://img.vinsimage.org/性斗学园/立绘/薇丝佩菈.png';
 }
 
 /**
@@ -2002,14 +2029,14 @@ export function initHeisakiBoss(): void {
  * 获取黑崎晴雯显示名称
  */
 export function getHeisakiDisplayName(): string {
-  return '黑崎晴雯';
+  return getCurrentBossPhaseDisplayName('heisaki', 1) ?? '黑崎晴雯';
 }
 
 /**
  * 获取黑崎晴雯立绘URL
  */
 export function getHeisakiAvatarUrl(): string {
-  return 'https://img.vinsimage.org/性斗学园/立绘/黑崎晴雯.png';
+  return getCurrentBossPhaseAvatarUrl('heisaki', 1) ?? 'https://img.vinsimage.org/性斗学园/立绘/黑崎晴雯.png';
 }
 
 /**
@@ -2418,6 +2445,13 @@ export function initAgnesBoss(playerGender: string): void {
 }
 
 /**
+ * 获取艾格妮丝显示名称
+ */
+export function getAgnesDisplayName(): string {
+  return getCurrentBossPhaseDisplayName('agnes', 1) ?? '艾格妮丝';
+}
+
+/**
  * 获取当前卡路里值
  */
 export function getAgnesCalories(): number {
@@ -2754,4 +2788,76 @@ export function getAgnesGluttonyDescription(): string {
     '• 艾格妮丝被束缚1回合',
   ];
   return effects.join('\n');
+}
+
+// ==================== 山田花子 / 西园寺辉夜 BOSS 检测与阶段 ====================
+
+/**
+ * 检测是否是山田花子特殊战。
+ */
+export function isYamadaHanakoBoss(enemyName: string): boolean {
+  if (!enemyName) return false;
+  const name = enemyName.toLowerCase();
+  return (
+    name.includes('山田花子') ||
+    name.includes('山田') ||
+    name.includes('花子') ||
+    name.includes('西园寺辉夜') ||
+    name.includes('辉夜') ||
+    name.includes('yamada') ||
+    name.includes('hanako')
+  );
+}
+
+export function isYamadaHanakoTrueName(enemyName: string): boolean {
+  if (!enemyName) return false;
+  const name = enemyName.toLowerCase();
+  return name.includes('西园寺辉夜') || name.includes('辉夜');
+}
+
+export function initYamadaHanakoBoss(initialPhase: 1 | 2 = 1): void {
+  bossState.isBossFight = true;
+  bossState.bossId = 'yamadaHanako';
+  bossState.currentPhase = initialPhase;
+  bossState.phaseTransitioning = false;
+  bossState.dialogueIndex = 0;
+  bossState.buttonsDisabled = false;
+  bossState.hasUsedMedal = false;
+}
+
+export function getYamadaHanakoDisplayName(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string {
+  return getCurrentBossPhaseDisplayName('yamadaHanako', phase) ?? (phase === 2 ? '西园寺辉夜' : '山田花子');
+}
+
+export function getYamadaHanakoDataKey(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string {
+  return getCurrentBossPhaseDataKey('yamadaHanako', phase) ?? (phase === 2 ? '山田花子' : '山田花子_伪装');
+}
+
+export function getYamadaHanakoSkillPoolKey(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string {
+  return getCurrentBossPhaseSkillPoolKey('yamadaHanako', phase) ?? getYamadaHanakoDataKey(phase);
+}
+
+export function getYamadaHanakoAvatarUrl(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string | undefined {
+  return getCurrentBossPhaseAvatarUrl('yamadaHanako', phase) ?? 'https://img.vinsimage.org/性斗学园/立绘/山田花子.png';
+}
+
+export function shouldTriggerYamadaHanakoTrueNameRelease(currentPleasure: number, maxPleasure: number): boolean {
+  if (!bossState.isBossFight || bossState.bossId !== 'yamadaHanako' || bossState.currentPhase !== 1) {
+    return false;
+  }
+
+  return (
+    getConfiguredPhaseTransition({
+      bossId: 'yamadaHanako',
+      phase: 1,
+      currentPleasure,
+      maxPleasure,
+      currentClimaxCount: 0,
+    }) === 2
+  );
+}
+
+export function executeYamadaHanakoTrueNameRelease(): void {
+  bossState.currentPhase = 2;
+  bossState.phaseTransitioning = false;
 }

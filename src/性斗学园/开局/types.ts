@@ -31,7 +31,6 @@ export interface CharacterAttributes {
     经验值: number; // 普通
     声望?: number; // 普通
     _段位?: string; // 只读
-    段位积分?: number; // 普通
   };
 
   // 核心状态
@@ -44,20 +43,17 @@ export interface CharacterAttributes {
     $快感: number; // 可修改
     堕落度: number; // 普通
     _潜力: number; // 只读 (5.0-10.0) - 用于计算升级获得的点数
-    _魅力: number; // 只读 - 最终魅力值
-    $基础魅力: number; // 可修改 - 基础魅力值
-    _幸运: number; // 只读 - 最终幸运值
-    $基础幸运: number; // 可修改 - 基础幸运值
-    $基础性斗力: number; // 可修改
-    $基础忍耐力: number; // 可修改
-    _闪避率: number; // 只读 - 最终闪避率 (0-60)
-    $基础闪避率: number; // 可修改
-    _暴击率: number; // 只读 - 最终暴击率 (0-100)
-    $基础暴击率: number; // 可修改
+  };
+
+  基础属性: {
+    _魅力: number;
+    _幸运: number;
+    _闪避率: number;
+    _暴击率: number;
   };
 }
 
-// 永久状态加成统计（匹配MVU变量结构，无前缀）
+// 状态/装备加成属性
 export interface PermanentBonus {
   魅力加成: number;
   幸运加成: number;
@@ -134,7 +130,6 @@ export const INITIAL_ATTRIBUTES: CharacterAttributes = {
     经验值: 0,
     声望: 0,
     _段位: '无段位',
-    段位积分: 0,
   },
   核心状态: {
     $属性点: 0,
@@ -145,16 +140,12 @@ export const INITIAL_ATTRIBUTES: CharacterAttributes = {
     $快感: 0,
     堕落度: 0,
     _潜力: 5.0,
+  },
+  基础属性: {
     _魅力: 10,
-    $基础魅力: 10,
     _幸运: 10,
-    $基础幸运: 10,
-    $基础性斗力: 10,
-    $基础忍耐力: 10,
     _闪避率: 0,
-    $基础闪避率: 0,
     _暴击率: 0,
-    $基础暴击率: 0,
   },
 };
 

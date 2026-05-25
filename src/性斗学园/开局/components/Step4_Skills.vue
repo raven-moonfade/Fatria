@@ -304,7 +304,6 @@ const getModifierLabel = (stat: string): string => {
     基础忍耐力成算: '忍耐力乘算',
     闪避率加成: '闪避率',
     暴击率加成: '暴击率',
-    意志力加成: '意志力',
     最大耐力加成: '最大耐力',
     最大快感加成: '最大快感',
   };
@@ -318,8 +317,6 @@ const getDamageSourceName = (source: DamageSource): string => {
       return '性斗力';
     case DamageSource.CHARM:
       return '魅力';
-    case DamageSource.WILLPOWER:
-      return '意志力';
     case DamageSource.LEVEL:
       return '等级';
     case DamageSource.TARGET_LUST:

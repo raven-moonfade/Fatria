@@ -368,6 +368,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import { performSingleGacha, performTenGacha, type GachaSkillData } from '../../data/skillGachaPool';
 import {
   getAdjustedGachaRates,
@@ -526,10 +527,7 @@ async function upgradeSkill(skillId: string, skill: any) {
   upgradingSkillIds.value.add(skillId);
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 确保路径存在
@@ -584,7 +582,7 @@ async function upgradeSkill(skillId: string, skill: any) {
     mvuData.stat_data.核心状态.$技能点 = Math.max(0, currentSkillPoints - cost);
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     // 显示成功提示
     if (typeof toastr !== 'undefined') {
@@ -606,10 +604,7 @@ async function performGacha(count: number) {
   if (skillPoints.value < cost) return;
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 扣除技能点
@@ -624,7 +619,7 @@ async function performGacha(count: number) {
     mvuData.stat_data.核心状态.$技能点 = Math.max(0, currentSkillPoints - cost);
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     // 执行抽取
     if (count === 1) {
@@ -679,10 +674,7 @@ async function confirmGachaResults() {
   }
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 确保技能系统存在
@@ -733,7 +725,7 @@ async function confirmGachaResults() {
     }
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     // 清空结果和选择
     const count = selectedSkills.value.size;
@@ -757,10 +749,7 @@ async function performExchange() {
   if (goldCoins.value < goldCost) return;
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 扣除金币
@@ -772,7 +761,7 @@ async function performExchange() {
     mvuData.stat_data.核心状态.$技能点 = (mvuData.stat_data.核心状态.$技能点 || 0) + exchangeAmount.value;
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`兑换成功！消耗${goldCost}金币，获得${exchangeAmount.value}技能点`, '成功', { timeOut: 1500 });
@@ -799,10 +788,7 @@ async function performTalentGachaAction() {
   }
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 扣除技能点
@@ -817,7 +803,7 @@ async function performTalentGachaAction() {
     mvuData.stat_data.核心状态.$技能点 = Math.max(0, currentSkillPoints - cost);
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     // 执行天赋抽取（传入堕落度）
     const corruption = mvuData.stat_data.核心状态?.堕落度 || 0;
@@ -848,10 +834,7 @@ async function confirmReplaceTalent() {
   if (!drawnTalent.value) return;
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 确保技能系统存在
@@ -867,7 +850,7 @@ async function confirmReplaceTalent() {
     };
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`成功获得天赋【${drawnTalent.value.name}】！`, '成功', { timeOut: 2000 });
@@ -942,13 +925,7 @@ function toggleAuthorTest() {
 // 选择天赋进行测试
 async function selectTalentForTest(talent: TalentData) {
   try {
-    const globalAny = window as any;
-    if (typeof globalAny.Mvu === 'undefined') {
-      console.error('[作者测试] Mvu未定义');
-      return;
-    }
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData?.stat_data) return;
 
     if (!mvuData.stat_data.技能系统) mvuData.stat_data.技能系统 = {};
@@ -962,7 +939,7 @@ async function selectTalentForTest(talent: TalentData) {
       },
     };
 
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`已设置天赋【${talent.name}】`, '成功', { timeOut: 2000 });
@@ -994,10 +971,7 @@ async function forgetSkill(skillId: string) {
   }
 
   try {
-    const globalAny = window as any;
-    if (!globalAny.Mvu) return;
-
-    const mvuData = globalAny.Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
 
     // 删除技能
@@ -1006,7 +980,7 @@ async function forgetSkill(skillId: string) {
     }
 
     // 写回MVU
-    await globalAny.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+    await replaceLatestMvuData(mvuData);
 
     if (typeof toastr !== 'undefined') {
       toastr.success(`技能「${skillName}」已遗忘`, '成功', { timeOut: 1500 });

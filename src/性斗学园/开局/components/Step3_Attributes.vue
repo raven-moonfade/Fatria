@@ -97,7 +97,7 @@
 import { computed, ref } from 'vue';
 import { DIFFICULTY_POINTS, MAX_STATS } from '../constants';
 import { CharacterAttributes, CharacterData, INITIAL_ATTRIBUTES } from '../types';
-import { updateMvuVariable } from '../utils/mvu-helper';
+import { updateLatestStatData } from '../../shared/mvuStore';
 
 const props = defineProps<{
   data: CharacterData;
@@ -150,10 +150,10 @@ const pointsUsed = computed(() => {
   // 核心状态 - 潜力（使用 Math.round 避免浮点数精度问题）
   const potentialDiff = getVal(attrs, ['核心状态', '_潜力'], 5.0) - getVal(init, ['核心状态', '_潜力'], 5.0);
   used += Math.round(potentialDiff * 10) * 2; // 0.1潜力 = 2点，先乘10取整再乘2避免浮点误差
-  // 核心状态 - 基础魅力
-  used += (getVal(attrs, ['核心状态', '$基础魅力'], 10) - getVal(init, ['核心状态', '$基础魅力'], 10)) * 1;
-  // 核心状态 - 基础幸运
-  used += (getVal(attrs, ['核心状态', '$基础幸运'], 10) - getVal(init, ['核心状态', '$基础幸运'], 10)) * 1;
+  // 基础属性 - 魅力
+  used += (getVal(attrs, ['基础属性', '_魅力'], 10) - getVal(init, ['基础属性', '_魅力'], 10)) * 1;
+  // 基础属性 - 幸运
+  used += (getVal(attrs, ['基础属性', '_幸运'], 10) - getVal(init, ['基础属性', '_幸运'], 10)) * 1;
   // 核心状态 - 最大耐力和最大快感
   used += (getVal(attrs, ['核心状态', '$最大耐力'], 100) - getVal(init, ['核心状态', '$最大耐力'], 100)) / 5;
   used += (getVal(attrs, ['核心状态', '$最大快感'], 100) - getVal(init, ['核心状态', '$最大快感'], 100)) / 5;
@@ -182,13 +182,13 @@ const stats = [
   },
   { path: '核心状态.$最大快感', label: '最大快感', icon: 'fa-heart', color: 'text-pink-400', costText: '1点 = 5快感' },
   {
-    path: '核心状态.$基础魅力',
+    path: '基础属性._魅力',
     label: '基础魅力',
     icon: 'fa-face-grin-hearts',
     color: 'text-rose-400',
     costText: '1点 = 1魅力',
   },
-  { path: '核心状态.$基础幸运', label: '基础幸运', icon: 'fa-clover', color: 'text-cyan-400', costText: '1点 = 1幸运' },
+  { path: '基础属性._幸运', label: '基础幸运', icon: 'fa-clover', color: 'text-cyan-400', costText: '1点 = 1幸运' },
 ];
 
 const handleStatChange = async (path: string, delta: number) => {
@@ -263,7 +263,7 @@ const handleStatChange = async (path: string, delta: number) => {
       });
 
       // 然后实时更新 MVU 变量
-      await updateMvuVariable(path, newVal, `角色创建：${delta > 0 ? '增加' : '减少'}${Math.abs(valueChange)}`);
+      await updateLatestStatData({ [path]: newVal });
     } catch (error) {
       console.error('更新失败:', error);
     } finally {

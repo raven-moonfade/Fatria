@@ -158,12 +158,7 @@
         </div>
         <div class="modal-body">
           <div class="image-container">
-            <img
-              class="modal-cg-img"
-              :src="getModalImageUrl()"
-              :alt="modalCG?.name"
-              @error="handleModalImageError"
-            />
+            <img class="modal-cg-img" :src="getModalImageUrl()" :alt="modalCG?.name" @error="handleModalImageError" />
           </div>
           <div class="modal-description" v-if="modalCG">
             <p>{{ modalCG.description }}</p>
@@ -186,6 +181,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { getCGImageKey, getUnlockedCGKeys, saveUnlockedCGKeys } from '../../../shared/localPreferences';
 import { CG_CONFIGS, type CGEvent } from '../../../战斗界面/data/cgConfig';
 
 const unlockedCGs = ref<Set<string>>(new Set());
@@ -335,48 +331,29 @@ const getFilteredUnlockedCount = computed(() => {
 const detailCGList = computed<FlattenedCGImage[]>(() => {
   if (!modalCG.value) return [];
 
-  const sourceList = currentCategory.value === 'all'
-    ? allCGImages.value.filter(cg => cg.characterName === modalCG.value?.characterName)
-    : filteredCGImages.value;
+  const sourceList =
+    currentCategory.value === 'all'
+      ? allCGImages.value.filter(cg => cg.characterName === modalCG.value?.characterName)
+      : filteredCGImages.value;
 
   return sourceList.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex));
 });
 
 const detailCGIndex = computed(() => {
   if (!modalCG.value) return -1;
-  return detailCGList.value.findIndex(
-    cg => cg.id === modalCG.value?.id && cg.imageIndex === modalCG.value?.imageIndex,
-  );
+  return detailCGList.value.findIndex(cg => cg.id === modalCG.value?.id && cg.imageIndex === modalCG.value?.imageIndex);
 });
 
 const canShowPreviousCG = computed(() => detailCGIndex.value > 0);
 const canShowNextCG = computed(() => detailCGIndex.value >= 0 && detailCGIndex.value < detailCGList.value.length - 1);
 
-function getCGImageKey(cgId: string, imageIndex: number): string {
-  return `${cgId}-${imageIndex}`;
-}
-
 function loadUnlockedCGs() {
-  try {
-    const stored = localStorage.getItem('unlocked_cgs');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        unlockedCGs.value = new Set(parsed);
-      }
-    }
-    console.info('[CG页面] 加载已解锁CG数量:', unlockedCGs.value.size);
-  } catch (e) {
-    console.error('[CG页面] 加载解锁CG失败:', e);
-  }
+  unlockedCGs.value = getUnlockedCGKeys();
+  console.info('[CG页面] 加载已解锁CG数量:', unlockedCGs.value.size);
 }
 
 function saveUnlockedCGs() {
-  try {
-    localStorage.setItem('unlocked_cgs', JSON.stringify(Array.from(unlockedCGs.value)));
-  } catch (e) {
-    console.error('[CG页面] 保存解锁CG失败:', e);
-  }
+  saveUnlockedCGKeys(unlockedCGs.value);
 }
 
 function unlockCGImage(cgId: string, imageIndex: number) {

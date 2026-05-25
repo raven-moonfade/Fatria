@@ -1,5 +1,5 @@
 <template>
-  <div class="variable-update-beautifier">
+  <div class="variable-update-beautifier" :style="textColorStyle">
     <div v-if="updateContent" class="update-container">
       <div class="update-card" :class="{ 'is-expanded': isExpanded }">
         <!-- 折叠栏头部 -->
@@ -32,9 +32,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { getSharedTextColor } from '../shared/textAppearance';
 
 const updateContent = ref<string>('');
 const isExpanded = ref(false);
+const textColor = ref(getSharedTextColor());
+const textColorStyle = computed(() => ({
+  '--shared-text-color': textColor.value,
+}));
 
 // 格式化内容
 const formattedContent = computed(() => {
@@ -286,6 +291,7 @@ const waitForGlobalFunctions = async (maxRetries = 30, interval = 200): Promise<
 
 onMounted(async () => {
   console.info('[变量更新] 组件已加载');
+  textColor.value = getSharedTextColor();
 
   // 等待全局函数初始化
   const functionsReady = await waitForGlobalFunctions();
@@ -415,7 +421,7 @@ onMounted(async () => {
 }
 
 .content-wrapper {
-  color: #e5e7eb;
+  color: var(--shared-text-color, #e5e7eb);
   font-size: 0.95rem;
   line-height: 1.7;
 
@@ -445,20 +451,20 @@ onMounted(async () => {
   }
 
   :deep(.section-content) {
-    color: #d1d5db;
+    color: var(--shared-text-color, #d1d5db);
   }
 
   :deep(.analysis-item) {
     margin: 0.1rem 0;
     padding-left: 1rem;
-    color: #e5e7eb;
+    color: var(--shared-text-color, #e5e7eb);
     line-height: 1;
   }
 
   :deep(.analysis-subitem) {
     margin: 0.15rem 0;
     padding-left: 2rem;
-    color: #cbd5e1;
+    color: var(--shared-text-color, #cbd5e1);
     font-size: 0.9em;
     line-height: 1.4;
   }
