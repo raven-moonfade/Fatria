@@ -15,6 +15,7 @@ import { getLatestMvuData, replaceLatestMvuData, waitForMvu } from '../shared/mv
 import { shouldTriggerOrgasm } from '../开局/utils/combat-calculator';
 import StatusBarWrapper from './components/StatusBarWrapper.vue';
 import { getDailyTalentEffect } from './data/talentDatabase';
+import { installBackstreetMainPromptInjector } from './phone/mainPromptInjector';
 
 /**
  * 规范化名字：去除中间点等特殊字符
@@ -29,6 +30,8 @@ function normalizeName(name: string): string {
 
 // 等待 MVU 初始化（带安全检查和超时）
 const globalAny = window as any;
+installBackstreetMainPromptInjector();
+
 if (typeof globalAny.waitGlobalInitialized === 'function') {
   try {
     // 添加超时保护：最多等待10秒
@@ -164,6 +167,88 @@ function calculateRank(level: number): string {
   if (level >= 20) return 'C';
   if (level >= 10) return 'D';
   return '无段位';
+}
+
+const EXORCISM_MAZE_UNLOCK_LEVEL = 50;
+const EXORCISM_MAZE_QUEST_NAME = '事件-EX 隐藏副本·驱魔迷宫';
+const EXORCISM_MAZE_UNLOCK_FLAG = '性斗学园_驱魔迷宫_首次达到50级已解锁';
+
+function readAllVariables(): Record<string, any> {
+  try {
+    return typeof globalAny.getAllVariables === 'function' ? globalAny.getAllVariables() || {} : {};
+  } catch (error) {
+    console.warn('[性斗学园脚本] 读取聊天变量失败:', error);
+    return {};
+  }
+}
+
+function isExorcismMazeUnlockRecorded(): boolean {
+  return readAllVariables()[EXORCISM_MAZE_UNLOCK_FLAG] === true;
+}
+
+function markExorcismMazeUnlockRecorded() {
+  try {
+    if (typeof globalAny.insertOrAssignVariables === 'function') {
+      globalAny.insertOrAssignVariables({ [EXORCISM_MAZE_UNLOCK_FLAG]: true }, { type: 'chat' });
+    } else {
+      console.warn('[性斗学园脚本] insertOrAssignVariables 不可用，无法写入驱魔迷宫首次解锁聊天变量');
+    }
+  } catch (error) {
+    console.warn('[性斗学园脚本] 写入驱魔迷宫首次解锁聊天变量失败:', error);
+  }
+}
+
+function isQuestInactive(status: unknown): boolean {
+  return ['已完成', '已失败', '已放弃'].includes(String(status || ''));
+}
+
+function prepareExorcismMazeQuestUnlock(mvuData: Mvu.MvuData): { changed: boolean; shouldRecord: boolean } {
+  const statData = mvuData?.stat_data as Record<string, any> | undefined;
+  if (!statData) return { changed: false, shouldRecord: false };
+
+  const level = Number(get(statData, '角色基础._等级', 1));
+  if (!Number.isFinite(level) || level < EXORCISM_MAZE_UNLOCK_LEVEL) {
+    return { changed: false, shouldRecord: false };
+  }
+
+  if (!statData.任务系统 || typeof statData.任务系统 !== 'object') {
+    statData.任务系统 = {};
+  }
+  const taskSystem = statData.任务系统 as Record<string, any>;
+  if (!taskSystem.支线任务 || typeof taskSystem.支线任务 !== 'object') {
+    taskSystem.支线任务 = {};
+  }
+
+  const sideQuests = taskSystem.支线任务 as Record<string, any>;
+  const existingQuest = sideQuests[EXORCISM_MAZE_QUEST_NAME];
+  const mainQuestName = String(taskSystem.主线任务?.名称 || '');
+  const mainQuestStatus = taskSystem.主线任务?.状态;
+  const hasQuest =
+    !!existingQuest || (mainQuestName.includes('驱魔迷宫') && !isQuestInactive(mainQuestStatus));
+  const hasRecorded = isExorcismMazeUnlockRecorded();
+
+  if (hasQuest) {
+    return { changed: false, shouldRecord: !hasRecorded };
+  }
+  if (hasRecorded) {
+    return { changed: false, shouldRecord: false };
+  }
+
+  sideQuests[EXORCISM_MAZE_QUEST_NAME] = {
+    描述: '风音与铃音神社下方的古老封印出现异动。协助双子巫女深入地下五层迷宫，阻止“万魔之母”苏醒。',
+    类型: '隐藏',
+    状态: '进行中',
+    目标: {
+      解锁条件: '角色首次达到50级',
+      当前阶段: '前往神社确认封印异动',
+      地下层数: 5,
+    },
+    奖励: '封印回廊高阶奖励、稀有装备、隐藏剧情解锁',
+    期限: '无',
+  };
+
+  console.info('[性斗学园脚本] 首次达到50级，已解锁隐藏任务：事件-EX 隐藏副本·驱魔迷宫');
+  return { changed: true, shouldRecord: true };
 }
 
 /**
@@ -309,7 +394,14 @@ async function updateDependentVariables() {
       for (const [path, value] of Object.entries(updates)) {
         set(mvuData.stat_data, path, value);
       }
+    }
+
+    const exorcismMazeUnlock = prepareExorcismMazeQuestUnlock(mvuData);
+    if (Object.keys(updates).length > 0 || exorcismMazeUnlock.changed) {
       await replaceLatestMvuData(mvuData);
+    }
+    if (exorcismMazeUnlock.shouldRecord) {
+      markExorcismMazeUnlockRecorded();
     }
   } catch (error) {
     console.error('[性斗学园脚本] 更新持久变量时出错:', error);
@@ -574,6 +666,7 @@ $(() => {
   // 初始化状态栏
   initStatusBar();
   removeLegacyStatusBarButton();
+  installBackstreetMainPromptInjector();
 
   // 兼容旧按钮事件；正常入口已改为悬浮小手机。
   eventOn(getButtonEvent('打开状态栏'), () => {

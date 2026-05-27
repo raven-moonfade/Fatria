@@ -63,8 +63,8 @@
               </div>
             </section>
 
-            <section v-else class="app-page-shell">
-              <header class="app-page-header">
+            <section v-else class="app-page-shell" :class="{ 'app-page-shell-flush': currentPage === 'backstreet' }">
+              <header v-if="currentPage !== 'backstreet'" class="app-page-header">
                 <button class="back-button" type="button" title="返回桌面" @click="setPage('home')">
                   <i class="fas fa-chevron-left"></i>
                 </button>
@@ -76,7 +76,7 @@
                 </div>
               </header>
 
-              <div class="status-content">
+              <div class="status-content" :class="{ 'status-content-flush': currentPage === 'backstreet' }">
                 <DashboardPage v-if="currentPage === 'dashboard'" :character-data="characterData" />
 
                 <ProfilePage v-if="currentPage === 'profile'" :character-data="characterData" :combat-data="combatData" />
@@ -87,6 +87,12 @@
 
                 <RelationshipPage v-if="currentPage === 'relationship'" :character-data="characterData" />
 
+                <BackstreetPage
+                  v-if="currentPage === 'backstreet'"
+                  :character-data="characterData"
+                  @back-home="setPage('home')"
+                />
+
                 <SkillPage v-if="currentPage === 'skills'" :character-data="characterData" />
 
                 <MapPage v-if="currentPage === 'map'" :character-data="characterData" />
@@ -96,6 +102,11 @@
                 <CGPage v-if="currentPage === 'cg'" :character-data="characterData" />
 
                 <div v-if="currentPage === 'settings'" class="settings-page">
+                  <div class="settings-category-heading">
+                    <span>桌面设置</span>
+                    <small>外观与入口</small>
+                  </div>
+
                   <section class="settings-section">
                     <div class="settings-section-title">
                       <span>手机屏幕背景</span>
@@ -260,12 +271,105 @@
                       <input v-model.number="phonePrefs.tintStrength" type="range" min="0" max="70" step="5" />
                     </label>
                   </section>
+
+                  <div class="settings-category-heading">
+                    <span>后街设置</span>
+                    <small>聊天与模型</small>
+                  </div>
+
+                  <section class="settings-section settings-section-compact">
+                    <div class="settings-section-title">
+                      <span>后街聊天</span>
+                      <small>显示楼层</small>
+                    </div>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>可见聊天楼层</span>
+                        <strong>{{ phonePrefs.backstreetVisibleMessageCount }} 层</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetVisibleMessageCount"
+                        type="range"
+                        min="5"
+                        max="100"
+                        step="1"
+                      />
+                    </label>
+                  </section>
+
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>后街第二 API</span>
+                      <small>OpenAI Compatible</small>
+                    </div>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-plug-circle-bolt"></i></span>
+                      <span class="settings-row-label">启用第二 API</span>
+                      <input
+                        v-model="secondaryPhoneApi.enabled"
+                        class="settings-toggle"
+                        type="checkbox"
+                        @change="persistSecondaryApiSettings()"
+                      />
+                    </label>
+
+                    <label class="settings-text-field">
+                      <span>API URL</span>
+                      <input
+                        v-model.trim="secondaryPhoneApi.baseUrl"
+                        type="text"
+                        placeholder="https://api.example.com/v1"
+                      />
+                    </label>
+
+                    <label class="settings-text-field">
+                      <span>API Key</span>
+                      <input v-model.trim="secondaryPhoneApi.apiKey" type="password" placeholder="sk-..." />
+                    </label>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-microchip"></i></span>
+                      <span class="settings-row-label">调用模型</span>
+                      <select
+                        v-model="secondaryPhoneApi.model"
+                        :disabled="secondaryApiModelOptions.length === 0"
+                        @change="persistSecondaryApiSettings()"
+                      >
+                        <option value="">未选择</option>
+                        <option v-for="model in secondaryApiModelOptions" :key="model" :value="model">
+                          {{ model }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <div class="settings-actions">
+                      <button
+                        class="settings-action-primary"
+                        type="button"
+                        :disabled="isSecondaryApiTesting"
+                        @click="refreshSecondaryApiModels"
+                      >
+                        <i class="fas fa-cloud-arrow-down"></i>
+                        {{ isSecondaryApiTesting ? '读取中' : '读取模型' }}
+                      </button>
+                      <button type="button" @click="clearSecondaryApiModel">
+                        <i class="fas fa-rotate-left"></i>
+                        清除模型
+                      </button>
+                    </div>
+
+                    <div class="settings-helper" :class="{ ready: secondaryApiReady }">
+                      {{ secondaryApiStatusText }}
+                    </div>
+                  </section>
                 </div>
               </div>
             </section>
           </main>
 
-          <div class="home-indicator"></div>
+          <div v-if="currentPage !== 'backstreet'" class="home-indicator"></div>
         </div>
       </div>
     </div>
@@ -276,6 +380,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { getLatestMvuData, replaceLatestMvuData } from '../../shared/mvuStore';
 import { getDailyTalentEffect } from '../data/talentDatabase';
+import BackstreetPage from './pages/BackstreetPage.vue';
 import CGPage from './pages/CGPage.vue';
 import DashboardPage from './pages/DashboardPage.vue';
 import InventoryPage from './pages/InventoryPage.vue';
@@ -285,6 +390,12 @@ import QuestPage from './pages/QuestPage.vue';
 import RelationshipPage from './pages/RelationshipPage.vue';
 import ShopPage from './pages/ShopPage.vue';
 import SkillPage from './pages/SkillPage.vue';
+import {
+  fetchSecondaryPhoneApiModels,
+  loadSecondaryPhoneApiSettings,
+  saveSecondaryPhoneApiSettings,
+  type SecondaryPhoneApiSettings,
+} from '../phone/phoneApiSettings';
 
 const props = defineProps<{
   isVisible: boolean;
@@ -309,6 +420,7 @@ type PageKey =
   | 'inventory'
   | 'quest'
   | 'relationship'
+  | 'backstreet'
   | 'shop'
   | 'cg'
   | 'map'
@@ -396,6 +508,7 @@ interface PhonePreferences {
   wallpaperOpacity: number;
   wallpaperBlur: number;
   tintStrength: number;
+  backstreetVisibleMessageCount: number;
 }
 
 interface PhoneApp {
@@ -419,6 +532,7 @@ const DEFAULT_PHONE_PREFS: PhonePreferences = {
   wallpaperOpacity: 70,
   wallpaperBlur: 0,
   tintStrength: 15,
+  backstreetVisibleMessageCount: 20,
 };
 
 const phoneApps: PhoneApp[] = [
@@ -428,6 +542,7 @@ const phoneApps: PhoneApp[] = [
   { page: 'inventory', label: '背包', icon: 'fas fa-briefcase', colorClass: 'app-amber', dock: true },
   { page: 'quest', label: '任务', icon: 'fas fa-list-check', colorClass: 'app-green' },
   { page: 'relationship', label: '关系', icon: 'fas fa-heart', colorClass: 'app-pink' },
+  { page: 'backstreet', label: '后街', icon: 'fas fa-comments', colorClass: 'app-backstreet' },
   { page: 'map', label: '地图', icon: 'fas fa-map-location-dot', colorClass: 'app-teal' },
   { page: 'shop', label: '商店', icon: 'fas fa-store', colorClass: 'app-orange' },
   { page: 'cg', label: '相册', icon: 'fas fa-images', colorClass: 'app-rose' },
@@ -437,6 +552,10 @@ const phoneApps: PhoneApp[] = [
 const currentPage = ref<PageKey>('home');
 const wallpaperInputRef = ref<HTMLInputElement | null>(null);
 const phonePrefs = ref<PhonePreferences>(loadPhonePreferences());
+const secondaryPhoneApi = ref<SecondaryPhoneApiSettings>(loadSecondaryPhoneApiSettings());
+const secondaryApiModelOptions = ref<string[]>([...secondaryPhoneApi.value.models]);
+const secondaryApiStatus = ref('');
+const isSecondaryApiTesting = ref(false);
 
 const homeApps = computed(() => phoneApps.filter(app => !app.dock));
 const dockApps = computed(() => phoneApps.filter(app => app.dock));
@@ -458,6 +577,20 @@ const phoneStyle = computed(() => {
     '--phone-font-family': PHONE_FONT_FAMILIES[phonePrefs.value.fontFamily] ?? PHONE_FONT_FAMILIES.system,
   };
 });
+const secondaryApiReady = computed(
+  () =>
+    Boolean(
+      secondaryPhoneApi.value.enabled &&
+        secondaryPhoneApi.value.baseUrl.trim() &&
+        secondaryPhoneApi.value.model.trim(),
+    ),
+);
+const secondaryApiStatusText = computed(() => {
+  if (secondaryApiStatus.value) return secondaryApiStatus.value;
+  if (secondaryApiReady.value) return `后街聊天将使用第二 API：${secondaryPhoneApi.value.model}`;
+  if (secondaryPhoneApi.value.enabled) return '已启用，请读取模型并选择调用模型。';
+  return '关闭时后街聊天继续使用酒馆原 API。';
+});
 
 watch(
   phonePrefs,
@@ -466,6 +599,25 @@ watch(
   },
   { deep: true },
 );
+
+watch(
+  secondaryPhoneApi,
+  settings => {
+    persistSecondaryApiSettings(settings);
+  },
+  { deep: true },
+);
+
+function syncSecondaryApiModelOptions(settings: SecondaryPhoneApiSettings) {
+  secondaryApiModelOptions.value = settings.model
+    ? Array.from(new Set([settings.model, ...settings.models]))
+    : [...settings.models];
+}
+
+function persistSecondaryApiSettings(settings: SecondaryPhoneApiSettings = secondaryPhoneApi.value) {
+  saveSecondaryPhoneApiSettings(settings);
+  syncSecondaryApiModelOptions(settings);
+}
 
 function setPage(page: PageKey) {
   currentPage.value = page;
@@ -529,6 +681,11 @@ function loadPhonePreferences(): PhonePreferences {
       wallpaperOpacity: clampNumber(Number(parsed.wallpaperOpacity), 20, 100),
       wallpaperBlur: clampNumber(Number(parsed.wallpaperBlur), 0, 16),
       tintStrength: clampNumber(Number(parsed.tintStrength), 0, 70),
+      backstreetVisibleMessageCount: clampNumber(
+        Number(parsed.backstreetVisibleMessageCount ?? DEFAULT_PHONE_PREFS.backstreetVisibleMessageCount),
+        5,
+        100,
+      ),
     };
   } catch {
     return { ...DEFAULT_PHONE_PREFS };
@@ -543,6 +700,42 @@ function savePhonePreferences(prefs: PhonePreferences) {
   }
 
   window.dispatchEvent(new CustomEvent(PHONE_PREFS_UPDATED_EVENT, { detail: { ...prefs } }));
+}
+
+async function refreshSecondaryApiModels() {
+  if (isSecondaryApiTesting.value) return;
+  isSecondaryApiTesting.value = true;
+  secondaryApiStatus.value = '正在连接第二 API...';
+
+  try {
+    const models = await fetchSecondaryPhoneApiModels(secondaryPhoneApi.value);
+    secondaryApiModelOptions.value = models;
+    secondaryPhoneApi.value.models = models;
+    secondaryPhoneApi.value.enabled = true;
+    if (!models.includes(secondaryPhoneApi.value.model)) {
+      secondaryPhoneApi.value.model = models[0] || '';
+    }
+    saveSecondaryPhoneApiSettings(secondaryPhoneApi.value);
+    secondaryApiStatus.value = `已读取 ${models.length} 个模型，当前：${secondaryPhoneApi.value.model || '未选择'}`;
+    if (typeof toastr !== 'undefined') {
+      toastr.success('模型列表读取成功', '后街第二 API');
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '读取模型失败';
+    secondaryApiStatus.value = message;
+    if (typeof toastr !== 'undefined') {
+      toastr.error(message, '后街第二 API');
+    }
+  } finally {
+    isSecondaryApiTesting.value = false;
+  }
+}
+
+function clearSecondaryApiModel() {
+  secondaryPhoneApi.value.model = '';
+  secondaryPhoneApi.value.models = [];
+  secondaryApiModelOptions.value = [];
+  secondaryApiStatus.value = '已清除模型选择，关闭开关时会使用酒馆原 API。';
 }
 
 function openWallpaperFilePicker() {
@@ -1268,6 +1461,10 @@ onUnmounted(() => {
   background: linear-gradient(145deg, #c35f7d, #8b3a58);
 }
 
+.app-backstreet {
+  background: linear-gradient(145deg, #35a687, #2c6778);
+}
+
 .app-slate {
   background: linear-gradient(145deg, #91a3ad, #566a74);
 }
@@ -1431,6 +1628,10 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.app-page-shell-flush {
+  background: transparent;
+}
+
 .app-page-header {
   position: relative;
   z-index: 30;
@@ -1571,6 +1772,11 @@ onUnmounted(() => {
   }
 }
 
+.status-content-flush {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
 .settings-page {
   min-height: 100%;
   padding: 14px 14px 30px;
@@ -1582,6 +1788,28 @@ onUnmounted(() => {
     radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.86), transparent 24%),
     linear-gradient(180deg, rgba(247, 251, 255, 0.96), rgba(226, 239, 245, 0.88));
   box-sizing: border-box;
+}
+
+.settings-category-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 2px 0;
+
+  span {
+    min-width: 0;
+    color: #21313b;
+    font-size: 16px;
+    font-weight: 950;
+  }
+
+  small {
+    flex: 0 0 auto;
+    color: #71838e;
+    font-size: 11px;
+    font-weight: 800;
+  }
 }
 
 .settings-section {
@@ -1959,6 +2187,11 @@ onUnmounted(() => {
     &:hover {
       background: #fff;
     }
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.68;
+    }
   }
 
   .settings-action-primary {
@@ -1996,6 +2229,38 @@ onUnmounted(() => {
     box-shadow: none !important;
     outline: none;
     font-weight: 800;
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+  }
+}
+
+.settings-toggle {
+  justify-self: end;
+  width: 46px;
+  height: 26px;
+  margin: 0;
+  accent-color: #2ca4b5;
+  cursor: pointer;
+}
+
+.settings-helper {
+  margin-top: 10px;
+  border: 1px solid rgba(124, 142, 153, 0.16);
+  border-radius: 12px;
+  padding: 9px 10px;
+  color: #637684;
+  background: rgba(247, 250, 252, 0.74);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+
+  &.ready {
+    border-color: rgba(45, 151, 169, 0.28);
+    color: #237484;
+    background: rgba(230, 250, 252, 0.72);
   }
 }
 
