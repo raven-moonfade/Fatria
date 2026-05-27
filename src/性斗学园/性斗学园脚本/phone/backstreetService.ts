@@ -54,10 +54,40 @@ function normalizeList(value: unknown, maxItems = 12): string[] {
   return uniqueStrings(value.map(item => safeString(item)).filter(Boolean)).slice(0, maxItems);
 }
 
-function normalizeBridgeKeywords(value: unknown, maxItems = 8): string[] {
-  const blocked = new Set(['苏菲', '玩家', '后街', '私聊', '记忆', '总结', '对话', '对方']);
-  return normalizeList(value, 24)
-    .filter(keyword => keyword.length >= 2 && keyword.length <= 18 && !blocked.has(keyword) && !/^\d+$/.test(keyword))
+function collectShortBridgeKeywordCandidates(values: unknown[], fallbackText = ''): string[] {
+  const candidates: string[] = [];
+  const sources = [...values.map(value => safeString(value)), fallbackText].filter(Boolean);
+
+  for (const source of sources) {
+    const chineseRuns = source.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    for (const run of chineseRuns) {
+      const segments = run.split(/[的了着过和与及或并也都就又再很更最在对把被将从到中里内]/).filter(Boolean);
+      for (const segment of segments.length ? segments : [run]) {
+        if (segment.length >= 2 && segment.length <= 3) {
+          candidates.push(segment);
+          continue;
+        }
+        for (let i = 0; i < segment.length - 1; i += 1) {
+          candidates.push(segment.slice(i, i + 2));
+        }
+        for (let i = 0; i < segment.length - 2; i += 1) {
+          candidates.push(segment.slice(i, i + 3));
+        }
+      }
+    }
+
+    const asciiRuns = source.match(/[A-Za-z0-9_-]{2,24}/g) || [];
+    candidates.push(...asciiRuns);
+  }
+
+  return candidates;
+}
+
+function normalizeBridgeKeywords(value: unknown, maxItems = 8, fallbackText = ''): string[] {
+  const blocked = new Set(['苏菲', '玩家', '后街', '私聊', '记忆', '总结', '对方', '这个', '那个', '什么']);
+  const rawValues = Array.isArray(value) ? value : [];
+  return uniqueStrings(collectShortBridgeKeywordCandidates(rawValues, fallbackText))
+    .filter(keyword => keyword.length >= 2 && !blocked.has(keyword) && !/^\d+$/.test(keyword))
     .slice(0, maxItems);
 }
 
@@ -66,7 +96,7 @@ function normalizeBridgeItem(value: Partial<BackstreetBridgeMemoryItem>, fallbac
   if (!text) return null;
   return {
     text,
-    keywords: normalizeBridgeKeywords(value.keywords),
+    keywords: normalizeBridgeKeywords(value.keywords, 8, text),
     updatedAt: Number(value.updatedAt || fallbackUpdatedAt || Date.now()),
   };
 }
@@ -137,7 +167,7 @@ function normalizeBridgeMemory(
             text: [safeString(value?.summary), ...normalizeList(value?.facts, 16), ...normalizeList(value?.openLoops, 10)]
               .filter(Boolean)
               .join('\n'),
-            keywords: normalizeBridgeKeywords(value?.keywords, 16),
+            keywords: normalizeBridgeKeywords(value?.keywords, 16, `${safeString(value?.summary)}\n${recentText}`),
             updatedAt,
           },
           updatedAt,
@@ -152,7 +182,7 @@ function normalizeBridgeMemory(
     facts: normalizeList(value?.facts, 16),
     openLoops: normalizeList(value?.openLoops, 10),
     keywords: collectKeywords(contact, `${safeString(value?.summary)}\n${recentText}`, [
-      ...normalizeBridgeKeywords(value?.keywords, 16),
+      ...normalizeBridgeKeywords(value?.keywords, 16, `${safeString(value?.summary)}\n${recentText}`),
       ...items.flatMap(item => item.keywords),
     ]),
     items,
@@ -214,14 +244,15 @@ function validateBackstreetReply(content: string, replies: ParsedBackstreetReply
   return '';
 }
 
-function buildBackstreetRepairPrompt(contact: string, fallbackTime: string, reason: string): string {
+function buildBackstreetRepairPrompt(contact: string, reason: string): string {
   return `上一次后街回复不可用：${reason}。
 不要解释，不要复述规则，不要输出代码块。
 只补发「${contact}」接下来 1-2 条真实手机消息。
+不要生成时间字段，消息时间由系统自动写入。
 必须严格输出：
 <backstreet>
 [
-  {"type":"text","time":"${fallbackTime}","text":"消息内容"}
+  {"type":"text","text":"消息内容"}
 ]
 </backstreet>`;
 }
@@ -241,7 +272,7 @@ async function requestBackstreetReplyWithRecovery(
             ...promptMessages,
             {
               role: 'user' as const,
-              content: buildBackstreetRepairPrompt(contact, fallbackTime, lastReason),
+              content: buildBackstreetRepairPrompt(contact, lastReason),
             },
           ];
 
@@ -345,7 +376,7 @@ export class BackstreetService {
 1. core：给后街本人继续聊天用，保留关系、已知事实、未了事项、最近语气。
 2. bridge：给主线正文世界书蓝灯条目使用，只保留会影响正文互动的私聊事实、暗号、约定、承诺、秘密或未完成事项。
 bridge.items[].text 必须是正文可自然消化的自然语言总结，不要写 JSON、世界书、提示词、插件、EJS、蓝灯等机制词。
-bridge.items[].keywords 只写 2-6 个用于最近两楼正文触发该总结的短关键词，不要写整句话，不要写泛词；例如暗号原文、约定名、道具名、地点名、事件名。
+bridge.items[].keywords 必须写 4-8 个用于最近两楼正文触发该总结的短关键词。中文关键词必须为 2-3 个字，不要写“地脉波动”“底下的东西”这类长词，要拆成“地脉”“波动”“底下”“东西”；英文/数字暗号可保留原文。不要写整句话，不要写泛词。
 只输出 XML 包裹的 JSON，不要解释：
 <backstreet_memory_update>
 {
@@ -361,7 +392,7 @@ bridge.items[].keywords 只写 2-6 个用于最近两楼正文触发该总结的
     "items": [
       {
         "text": "1-3句自然语言总结，例如：苏菲与凰天羽曾在后街私聊中约定暗号。当苏菲说“巴山楚水凄凉地”时，凰天羽应知道回应是“responsibility”。这是两人的私下约定，旁人默认不知道。",
-        "keywords": ["暗号", "巴山楚水凄凉地", "responsibility"]
+        "keywords": ["暗号", "巴山", "楚水", "凄凉", "responsibility"]
       }
     ],
     "summary": "可选：本轮最重要的桥接摘要",
@@ -442,11 +473,12 @@ ${recentText}
 【主线快照】是真实主线当前状态；如果它和旧后街记忆冲突，以主线快照、当前会话和玩家刚刚发送的消息为准。
 不要输出主线正文、状态栏、变量更新、战斗格式或世界书控制指令。
 语言像真实手机聊天：短句、口语、可以试探、停顿、主动或冷淡。一次回复 1-4 条消息。
+不要输出、推算或编写消息时间；消息时间由系统根据当前 MVU 时间自动写入。
 
 输出必须严格为：
 <backstreet>
 [
-  {"type":"text","time":"HH:MM","text":"消息内容"}
+  {"type":"text","text":"消息内容"}
 ]
 </backstreet>`;
 
@@ -484,7 +516,7 @@ ${latestUserMessage}
       sender: reply.type === 'system' ? 'system' : 'contact',
       contact,
       type: reply.type,
-      time: reply.time || fallbackTime,
+      time: fallbackTime,
       text: reply.text,
       createdAt: Date.now(),
     }));

@@ -65,17 +65,47 @@ function normalizeStringArray(value: unknown, maxItems = 12): string[] {
   return uniqueStrings(value.map(item => safeString(item)).filter(Boolean)).slice(0, maxItems);
 }
 
-function normalizeBridgeKeywords(value: unknown, maxItems = 8): string[] {
-  const blocked = new Set(['苏菲', '玩家', '后街', '私聊', '记忆', '总结', '对话', '对方']);
-  return normalizeStringArray(value, 24)
-    .filter(keyword => keyword.length >= 2 && keyword.length <= 18 && !blocked.has(keyword) && !/^\d+$/.test(keyword))
+function collectShortBridgeKeywordCandidates(values: unknown[], fallbackText = ''): string[] {
+  const candidates: string[] = [];
+  const sources = [...values.map(value => safeString(value)), fallbackText].filter(Boolean);
+
+  for (const source of sources) {
+    const chineseRuns = source.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    for (const run of chineseRuns) {
+      const segments = run.split(/[的了着过和与及或并也都就又再很更最在对把被将从到中里内]/).filter(Boolean);
+      for (const segment of segments.length ? segments : [run]) {
+        if (segment.length >= 2 && segment.length <= 3) {
+          candidates.push(segment);
+          continue;
+        }
+        for (let i = 0; i < segment.length - 1; i += 1) {
+          candidates.push(segment.slice(i, i + 2));
+        }
+        for (let i = 0; i < segment.length - 2; i += 1) {
+          candidates.push(segment.slice(i, i + 3));
+        }
+      }
+    }
+
+    const asciiRuns = source.match(/[A-Za-z0-9_-]{2,24}/g) || [];
+    candidates.push(...asciiRuns);
+  }
+
+  return candidates;
+}
+
+function normalizeBridgeKeywords(value: unknown, maxItems = 8, fallbackText = ''): string[] {
+  const blocked = new Set(['苏菲', '玩家', '后街', '私聊', '记忆', '总结', '对方', '这个', '那个', '什么']);
+  const rawValues = Array.isArray(value) ? value : [];
+  return uniqueStrings(collectShortBridgeKeywordCandidates(rawValues, fallbackText))
+    .filter(keyword => keyword.length >= 2 && !blocked.has(keyword) && !/^\d+$/.test(keyword))
     .slice(0, maxItems);
 }
 
 function normalizeBridgeItem(value: Partial<BackstreetBridgeMemoryItem>, fallbackUpdatedAt: number): BackstreetBridgeMemoryItem | null {
   const text = safeString(value.text);
   if (!text) return null;
-  const keywords = normalizeBridgeKeywords(value.keywords);
+  const keywords = normalizeBridgeKeywords(value.keywords, 8, text);
   return {
     text,
     keywords,
@@ -133,7 +163,7 @@ function normalizeBridgeMemory(contact: string, value: Partial<BackstreetBridgeM
     summary: safeString(value.summary),
     facts: normalizeStringArray(value.facts, 16),
     openLoops: normalizeStringArray(value.openLoops, 10),
-    keywords: uniqueStrings([contact, ...normalizeBridgeKeywords(value.keywords, 16), ...items.flatMap(item => item.keywords)]),
+    keywords: uniqueStrings([contact, ...normalizeBridgeKeywords(value.keywords, 16, safeString(value.summary)), ...items.flatMap(item => item.keywords)]),
     items,
   };
 }
@@ -186,8 +216,9 @@ function parseBridgeTemplateMemory(contact: string, content: string): Backstreet
 
   const items: BackstreetBridgeMemoryItem[] = [];
   for (const [hitName, keywords] of hitDefinitions.entries()) {
+    const hitIndex = safeString(hitName.match(/\d+$/)?.[0]);
     const itemPattern = new RegExp(
-      `<%_\\s*if\\s*\\(\\s*${hitName}\\s*\\)\\s*\\{\\s*_%>\\s*([\\s\\S]*?)\\s*<%_\\s*\\}\\s*_%>`,
+      `<%_\\s*if\\s*\\(\\s*(?:${hitName}|bstBridgeShouldShow\\(\\s*${hitIndex}\\s*\\))\\s*\\)\\s*\\{\\s*_%>\\s*([\\s\\S]*?)\\s*<%_\\s*\\}\\s*_%>`,
       'm',
     );
     const itemMatch = text.match(itemPattern);
@@ -219,10 +250,10 @@ function renderBridgeMemory(memory: BackstreetBridgeMemory): string {
   const hitDefinitions = items
     .map((item, index) => `  var bstBridgeHit${index} = matchChatMessages(${JSON.stringify(item.keywords)});`)
     .join('\n');
-  const hitCondition = items.map((_, index) => `bstBridgeHit${index}`).join(' || ');
+  const hitArray = `[${items.map((_, index) => `bstBridgeHit${index}`).join(', ')}]`;
   const itemBlocks = items
     .map(
-      (item, index) => `<%_ if (bstBridgeHit${index}) { _%>
+      (item, index) => `<%_ if (bstBridgeShouldShow(${index})) { _%>
 ${escapeEjsLiteralText(item.text)}
 <%_ } _%>`,
     )
@@ -237,7 +268,23 @@ var bstPresentText = Array.isArray(bstPresent) ? bstPresent.join('|') : String(b
 var bstIsHere = bstNorm(bstPresentText).includes(bstNorm(${JSON.stringify(contact)}));
 if (bstIsHere) {
 ${hitDefinitions}
-  if (${hitCondition}) {
+  var bstBridgeHits = ${hitArray};
+  var bstBridgeShouldShow = function(index) {
+    var start = Math.max(0, index - 2);
+    var end = Math.min(bstBridgeHits.length - 1, index + 2);
+    for (var i = start; i <= end; i += 1) {
+      if (bstBridgeHits[i]) return true;
+    }
+    return false;
+  };
+  var bstBridgeAnyHit = false;
+  for (var j = 0; j < bstBridgeHits.length; j += 1) {
+    if (bstBridgeHits[j]) {
+      bstBridgeAnyHit = true;
+      break;
+    }
+  }
+  if (bstBridgeAnyHit) {
 _%>
 【后街私聊记忆：${contact}】
 
