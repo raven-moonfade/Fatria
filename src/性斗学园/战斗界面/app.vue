@@ -131,14 +131,14 @@
     <!-- 粒子封印画布 -->
     <canvas ref="sealCanvas" class="seal-canvas"></canvas>
 
+    <!-- 右上角浮动战斗日志 -->
+    <aside class="floating-log-panel">
+      <CombatLog :logs="logs" :default-expanded="false" :show-preview="false" dock="side" />
+    </aside>
+
     <!-- 底部操作区域 -->
     <footer class="combat-footer">
       <div class="footer-content">
-        <!-- 战斗日志 -->
-        <div class="log-section">
-          <CombatLog :logs="logs" />
-        </div>
-
         <!-- 操作菜单 -->
         <div class="action-section">
           <!-- 菜单标题 -->
@@ -294,9 +294,13 @@
                 <Card
                   v-for="skill in player.skills"
                   :key="skill.id"
-                  :hover="!isSkillDisabled(skill)"
+                  :hover="playerBoundTurns <= 0 && !isSkillDisabled(skill)"
                   class="skill-card"
-                  :class="{ disabled: isSkillDisabled(skill) }"
+                  :class="{
+                    disabled: playerBoundTurns <= 0 && isSkillDisabled(skill),
+                    'bound-blocked': playerBoundTurns > 0,
+                    'unusable-shake': unusableSkillFeedbackId === skill.id,
+                  }"
                   @click="handlePlayerSkill(skill)"
                 >
                   <div v-if="skill.currentCooldown > 0" class="cooldown-overlay">
@@ -315,9 +319,12 @@
                     <span class="cooldown-count">{{ skill.currentCooldown }}<small>T</small></span>
                   </div>
                   <div class="skill-header">
-                    <span class="skill-name" :class="{ 'skill-disabled': isSkillDisabled(skill) }">{{
-                      skill.name
-                    }}</span>
+                    <span
+                      class="skill-name"
+                      :class="{ 'skill-disabled': playerBoundTurns <= 0 && isSkillDisabled(skill) }"
+                    >
+                      {{ skill.name }}
+                    </span>
                     <span class="skill-rarity" :class="'rarity-' + (skill.data?.rarity || 'C').toLowerCase()">{{
                       skill.data?.rarity || 'C'
                     }}</span>
@@ -391,15 +398,6 @@
                       </svg>
                       {{ skill.data?.accuracyModifier || 100 }}%
                     </span>
-                  </div>
-                  <div class="skill-damage-source">
-                    伤害来源：<span class="source-type">{{ getSkillDamageSourceLabel(skill) }}</span> ×{{
-                      getSkillPowerCoeff(skill)
-                    }}%
-                  </div>
-                  <div v-if="skill.data?.effectDescription" class="skill-effect">
-                    <span class="effect-label">效果：</span>
-                    <span class="effect-value">{{ skill.data.effectDescription }}</span>
                   </div>
                 </Card>
                 <button class="back-btn" @click="activeMenu = 'main'">返回</button>
@@ -499,6 +497,20 @@
 
     <!-- 战斗特效 -->
     <CombatEffect v-if="effectType" :type="effectType!" :show="showEffect" />
+
+    <!-- 协同作战立绘特效 -->
+    <div v-if="companionAssistEffect" class="companion-assist-effect">
+      <div class="companion-assist-strike"></div>
+      <img
+        class="companion-assist-portrait"
+        :src="companionAssistEffect.avatarUrl"
+        :alt="companionAssistEffect.name"
+      />
+      <div class="companion-assist-caption">
+        <span class="companion-name">{{ companionAssistEffect.name }}</span>
+        <span class="companion-skill">{{ companionAssistEffect.skillName }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -541,6 +553,17 @@ import {
   type BossClimaxAction,
 } from './combatClimaxBoss';
 import { buildCombatEndContext, createPostBattleRecoveryLogs, selectCombatCG } from './combatConclusion';
+import {
+  COOPERATION_CHANCE_STEP,
+  createCooperationCompanion,
+  createCooperationRoll,
+  getPresentCompanionNames,
+  hasMatchingCooperationIdentity,
+  hasActiveExorcismMazeSideQuest,
+  pickCooperationAction,
+  resolveCompanionSkillAttack,
+  type CooperationCompanion,
+} from './combatCooperation';
 import {
   buildExorcismClimaxCounterKeys,
   createExorcismPhaseRuntimeConfig,
@@ -647,14 +670,21 @@ import {
 import { grantVictoryRewards } from './combatRewards';
 import { createCombatRuntime } from './combatRuntime';
 import { statusListToEffects } from './combatStatusView';
-import { createDefaultEnemy, createDefaultPlayer, getEnemyPortraitUrl, savePlayerCustomAvatar } from './constants';
+import {
+  createDefaultEnemy,
+  createDefaultPlayer,
+  getEnemyPortraitUrl,
+  resolvePlayerCustomAvatar,
+  savePlayerCustomAvatarBlob,
+} from './constants';
 import { normalizeEnemyName, resolveEnemyName } from './enemyDatabase';
-import type { Character, CombatLogEntry, Item, Skill, TurnState } from './types';
+import type { Character, CombatLogEntry, Item, Skill, SkillData, TurnState } from './types';
 import {
   applyBossMechanicEvaluation,
   evaluateBossMechanics,
   type BossMechanicAction,
   type BossMechanicRuntime,
+  type BossSkillActor,
   type BossTriggerType,
   type DeclarativeBossDefinition,
 } from './bossMechanicEngine';
@@ -736,6 +766,11 @@ const phaseTransitionEffect = ref<'phase1to2' | 'phase2to3' | 'eden-game-over' |
 // 特效状态
 const effectType = ref<'critical' | 'dodge' | 'climax' | 'victory' | 'defeat' | null>(null);
 const showEffect = ref(false);
+const companionAssistEffect = ref<{ name: string; avatarUrl: string; skillName: string } | null>(null);
+const cooperationTriggerChance = ref(0);
+const unusableSkillFeedbackId = ref<string | null>(null);
+let companionAssistTimer: ReturnType<typeof setTimeout> | null = null;
+let unusableSkillFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 玩家立绘上传 input
 const playerPortraitInput = ref<HTMLInputElement | null>(null);
@@ -1043,6 +1078,7 @@ interface ExorcismMechanicApplyResult {
 
 interface ExorcismMechanicOptions {
   skill?: Skill;
+  skillActor?: BossSkillActor;
   targetEnemy?: Character;
   playerDialogue?: string;
   damageTakenPercent?: number;
@@ -1072,6 +1108,38 @@ function getExorcismRelationships(): Record<string, number> {
     }
   });
   return result;
+}
+
+function isCurrentEnemyName(statData: Record<string, any>, companionName: string, resolvedCompanionName: string): boolean {
+  const rawEnemyNames = [enemy.value.name, String(_.get(statData, '性斗系统.对手名称', '') || '')].filter(Boolean);
+  return hasMatchingCooperationIdentity(rawEnemyNames, [companionName, resolvedCompanionName]);
+}
+
+async function getCooperationCompanions(statData: Record<string, any>): Promise<CooperationCompanion[]> {
+  const { enemySkillDbModule } = await loadDatabaseModules();
+  const companions: CooperationCompanion[] = [];
+
+  getPresentCompanionNames(statData).forEach(companionName => {
+    const resolvedName = resolveEnemyName(companionName);
+    if (isCurrentEnemyName(statData, companionName, resolvedName)) {
+      return;
+    }
+
+    const skillDataList = (enemySkillDbModule.getEnemySkills(companionName, resolvedName) || []) as SkillData[];
+    const companion = createCooperationCompanion({
+      name: companionName,
+      skillDataList,
+      playerLevel: player.value.stats.level,
+      maxClimaxCount: player.value.stats.maxClimaxCount,
+      getAvatarUrl: getEnemyPortraitUrl,
+    });
+
+    if (companion) {
+      companions.push(companion);
+    }
+  });
+
+  return companions;
 }
 
 function getCurrentExorcismSkillTagMultiplier(skill: Skill | null | undefined): number {
@@ -1202,6 +1270,7 @@ async function applyExorcismMechanicActions(actions: BossMechanicAction[], resul
         loadedPhaseSkillPoolKey = phaseConfig?.skillPoolKey;
         result.phaseChanged = true;
         await evaluateAndApplyExorcismMechanics('phaseEnter');
+        await evaluateAndApplyExorcismMechanics('playerGenderIs');
         break;
       }
       case 'setSkillPool':
@@ -1321,6 +1390,7 @@ async function evaluateAndApplyExorcismMechanics(
     pleasurePercent: getExorcismPleasurePercent(targetEnemy),
     damageTakenPercent: options.damageTakenPercent,
     skillTags: getExorcismSkillTags(options.skill),
+    skillActor: options.skillActor,
     playerDialogue: options.playerDialogue,
     playerGender: await readPlayerGender('男'),
     companions: getExorcismCompanions(),
@@ -2160,6 +2230,68 @@ async function applyCombatSkillEffects(skillId: string, isPlayerSkill: boolean):
   return logs;
 }
 
+async function applyCompanionSkillEffects(skill: Skill): Promise<string[]> {
+  const logs: string[] = [];
+  if (!skill.data) return logs;
+
+  const { enemySkillDbModule } = await loadDatabaseModules();
+  const runtimeSkill = enemySkillDbModule.convertToMvuSkillFormat(skill.data);
+  const effectList = (_.get(runtimeSkill, '伤害与效果.效果列表', {}) || {}) as Record<string, any>;
+  if (Object.keys(effectList).length === 0) return logs;
+
+  let enemyStatusChanged = false;
+
+  for (const [effectName, effectData] of Object.entries(effectList)) {
+    const resolvedEffect = resolveSkillEffect(effectData);
+    if (resolvedEffect.kind === 'skip') continue;
+
+    if (!resolvedEffect.targetEnemy) {
+      continue;
+    }
+
+    if (resolvedEffect.kind === 'bind') {
+      if (BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'muxinlan') {
+        const immuneDialogue = BossSystem.getBindImmuneDialogue(BossSystem.bossState.currentPhase);
+        if (immuneDialogue) {
+          BossSystem.queueDialogues([immuneDialogue]);
+        }
+        logs.push(`${enemy.value.name} 免疫了协同束缚效果！`);
+        continue;
+      }
+
+      let finalDuration = resolvedEffect.duration;
+      if (enemySensoryNumb.value > 0) {
+        finalDuration = 1;
+        enemySensoryNumb.value = 0;
+        logs.push(`【感官麻木】${enemy.value.name} 的束缚持续时间被减少为1回合！`);
+      }
+
+      finalDuration = Math.min(finalDuration, MAX_BIND_DURATION);
+      enemyBoundTurns.value = finalDuration;
+      enemyBindSource.value = 'player';
+      logs.push(`${enemy.value.name} 被协同束缚了 ${finalDuration} 回合，无法行动！`);
+      continue;
+    }
+
+    const statusKey = `协同_${getSkillStatusKey(resolvedEffect.effectType, skill.id, effectName)}`;
+    const currentStatusList = { ...(enemyRuntimeStatuses.value as Record<string, any>) };
+    const result = upsertSkillStatus(currentStatusList, statusKey, {
+      加成: resolvedEffect.bonus,
+      剩余回合: resolvedEffect.duration,
+    });
+
+    enemyRuntimeStatuses.value = result.statusList;
+    enemyStatusChanged = true;
+    logs.push(buildSkillStatusLog(enemy.value.name, resolvedEffect, result.refreshed));
+  }
+
+  if (enemyStatusChanged) {
+    await updateEnemyRealtimeStats();
+  }
+
+  return logs;
+}
+
 /**
  * 回合结束时更新状态效果
  * 只负责减少剩余回合数，移除过期状态
@@ -2193,26 +2325,6 @@ async function tickCombatStatusEffects(): Promise<string[]> {
   }
 
   return logs;
-}
-
-function getSkillDamageSourceLabel(skill: any): string {
-  const key = skill?.data?.damageSource || (skill?.data?.damageFormula?.[0]?.source as any);
-  const map: Record<string, string> = {
-    sex_power: '性斗力',
-    charm: '魅力',
-    luck: '幸运',
-    fixed: '固定值',
-    target_pleasure: '目标快感',
-  };
-  return map[key] || '性斗力';
-}
-
-function getSkillPowerCoeff(skill: any): number {
-  const v = skill?.data?.powerCoeff;
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  const coef = skill?.data?.damageFormula?.[0]?.coefficient;
-  if (typeof coef === 'number' && Number.isFinite(coef)) return Math.round(coef * 100);
-  return 100;
 }
 
 function loadSkillData(skill: any): void {
@@ -2310,6 +2422,38 @@ function triggerEffect(type: 'critical' | 'dodge' | 'climax' | 'victory' | 'defe
       effectType.value = null;
     }, 300);
   }, 1500);
+}
+
+function triggerCompanionAssistVisual(companion: CooperationCompanion, skill: Skill) {
+  if (companionAssistTimer) {
+    clearTimeout(companionAssistTimer);
+  }
+
+  companionAssistEffect.value = {
+    name: companion.character.name,
+    avatarUrl: companion.character.avatarUrl,
+    skillName: skill.name,
+  };
+
+  companionAssistTimer = setTimeout(() => {
+    companionAssistEffect.value = null;
+    companionAssistTimer = null;
+  }, 1800);
+}
+
+function triggerUnusableSkillFeedback(skill: Skill) {
+  if (unusableSkillFeedbackTimer) {
+    clearTimeout(unusableSkillFeedbackTimer);
+  }
+
+  unusableSkillFeedbackId.value = null;
+  setTimeout(() => {
+    unusableSkillFeedbackId.value = skill.id;
+    unusableSkillFeedbackTimer = setTimeout(() => {
+      unusableSkillFeedbackId.value = null;
+      unusableSkillFeedbackTimer = null;
+    }, 420);
+  }, 0);
 }
 
 // 清空临时状态（战斗结束后调用）
@@ -2862,6 +3006,7 @@ function handlePlayerSkill(skill: Skill) {
 
   // 检查是否被束缚
   if (playerBoundTurns.value > 0) {
+    triggerUnusableSkillFeedback(skill);
     addLog(`${player.value.name} 被束缚了，无法使用技能！剩余 ${playerBoundTurns.value} 回合`, 'system', 'info');
     return;
   }
@@ -2982,7 +3127,10 @@ function handlePlayerSkill(skill: Skill) {
         return;
       }
 
-      const exorcismUsedResult = await evaluateAndApplyExorcismMechanics('skillTagUsed', { skill });
+      const exorcismUsedResult = await evaluateAndApplyExorcismMechanics('skillTagUsed', {
+        skill,
+        skillActor: 'player',
+      });
       if (exorcismUsedResult.phaseChanged) {
         nextEnemy = cloneCharacter(enemy.value);
       }
@@ -3077,7 +3225,7 @@ function handlePlayerSkill(skill: Skill) {
         if (hasDirectDamage) {
           // 使用totalDamage而不是actualDamage（连击总伤害）
           if (result.isCritical) {
-            addLog(`暴击！总计造成 ${result.totalDamage} 点快感伤害！`, 'player', 'critical');
+            addLog(`暴击！总计造成 ${result.totalDamage} 点快感！`, 'player', 'critical');
             triggerEffect('critical');
             applyPlayerAttackActions(
               createPlayerCriticalHitActions({
@@ -3088,7 +3236,7 @@ function handlePlayerSkill(skill: Skill) {
               { nextEnemy },
             );
           } else {
-            addLog(`总计造成 ${result.totalDamage} 点快感伤害`, 'player', 'damage');
+            addLog(`总计造成 ${result.totalDamage} 点快感`, 'player', 'damage');
           }
 
           // 应用伤害（结算快感）- 使用totalDamage
@@ -3098,7 +3246,7 @@ function handlePlayerSkill(skill: Skill) {
             nextEnemy.stats.currentPleasure + result.totalDamage,
           );
           addLog(
-            `${nextEnemy.name} 的快感从 ${oldPleasure} 增加到 ${nextEnemy.stats.currentPleasure}`,
+            `${nextEnemy.name} 的快感从 ${oldPleasure}/${nextEnemy.stats.maxPleasure} 增加到 ${nextEnemy.stats.currentPleasure}/${nextEnemy.stats.maxPleasure}`,
             'system',
             'info',
           );
@@ -3182,7 +3330,12 @@ function handlePlayerSkill(skill: Skill) {
       };
 
       if (!result.isDodged) {
-        collectExorcismResult(await evaluateAndApplyExorcismMechanics('skillTagHit', { skill }));
+        collectExorcismResult(
+          await evaluateAndApplyExorcismMechanics('skillTagHit', {
+            skill,
+            skillActor: 'player',
+          }),
+        );
         collectExorcismResult(await evaluateAndApplyExorcismMechanics('progressAtLeast'));
       }
 
@@ -3417,7 +3570,7 @@ async function runEdenGameOverSequence() {
     player.value.stats.maxPleasure,
     player.value.stats.currentPleasure + gameOverDamage,
   );
-  addLog(`${player.value.name} 受到了 ${gameOverDamage} 点快感伤害！`, 'system', 'critical');
+  addLog(`${player.value.name} 受到了 ${gameOverDamage} 点快感！`, 'system', 'critical');
 
   setTimeout(() => {
     phaseTransitionEffect.value = '';
@@ -3483,7 +3636,10 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
       return;
     }
 
-    const exorcismUsedResult = await evaluateAndApplyExorcismMechanics('skillTagUsed', { skill });
+    const exorcismUsedResult = await evaluateAndApplyExorcismMechanics('skillTagUsed', {
+      skill,
+      skillActor: 'enemy',
+    });
     if (exorcismUsedResult.phaseChanged) {
       nextEnemy = cloneCharacter(enemy.value);
     }
@@ -3552,7 +3708,10 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
 
     let exorcismStopsBattle = false;
     if (attackResolution.shouldApplySkillEffects) {
-      const hitResult = await evaluateAndApplyExorcismMechanics('skillTagHit', { skill });
+      const hitResult = await evaluateAndApplyExorcismMechanics('skillTagHit', {
+        skill,
+        skillActor: 'enemy',
+      });
       const progressResult = await evaluateAndApplyExorcismMechanics('progressAtLeast');
       exorcismStopsBattle =
         hitResult.triggeredBadEnd ||
@@ -3707,6 +3866,80 @@ async function handleEnemyTurn() {
   }, 1000);
 }
 
+async function tryRunCompanionCooperationAtTurnStart(): Promise<boolean> {
+  if (isBattleFlowLocked()) {
+    return true;
+  }
+
+  const statData = await readCombatStatData(data => data as Record<string, any>);
+  if (statData) {
+    currentCombatStatData = statData;
+  }
+
+  if (!statData || !hasActiveExorcismMazeSideQuest(statData)) {
+    cooperationTriggerChance.value = 0;
+    return false;
+  }
+
+  const companions = await getCooperationCompanions(statData);
+  if (companions.length === 0) {
+    cooperationTriggerChance.value = 0;
+    return false;
+  }
+
+  const rollResult = createCooperationRoll(cooperationTriggerChance.value);
+  cooperationTriggerChance.value = rollResult.nextChance;
+  if (!rollResult.triggered) {
+    const message =
+      rollResult.roll === null
+        ? `【协同作战】${companions.map(companion => companion.resolvedName).join('、')}进入协同状态，触发率提升至 ${COOPERATION_CHANCE_STEP}%`
+        : `【协同作战】本回合未触发，触发率提升至 ${rollResult.nextChance}%`;
+    addLog(message, 'system', 'info');
+    return false;
+  }
+
+  const action = pickCooperationAction(companions);
+  if (!action) {
+    return false;
+  }
+
+  cooperationTriggerChance.value = 0;
+  triggerCompanionAssistVisual(action.companion, action.skill);
+
+  try {
+    const nextEnemy = cloneCharacter(enemy.value);
+    const attackResolution = resolveCompanionSkillAttack({
+      companion: action.companion.character,
+      target: nextEnemy,
+      skill: action.skill,
+    });
+
+    attackResolution.logs.forEach(log => addLog(log.message, log.source, log.type));
+    if (attackResolution.effect) {
+      triggerEffect(attackResolution.effect);
+    }
+
+    enemy.value = nextEnemy;
+
+    if (attackResolution.shouldApplySkillEffects) {
+      const effectLogs = await applyCompanionSkillEffects(action.skill);
+      effectLogs.forEach(log => addLog(log, 'system', 'info'));
+    }
+
+    addLog('【协同作战】触发率回落至 0%', 'system', 'info');
+
+    if (enemy.value.stats.currentPleasure >= enemy.value.stats.maxPleasure && turnState.climaxTarget === null) {
+      await triggerClimaxProcessing({ characterName: enemy.value.name, targetIsEnemy: true, reason: '协同作战' });
+      return true;
+    }
+  } catch (error) {
+    console.error('[战斗界面] 协同作战执行失败', error);
+    addLog('协同作战执行失败', 'system', 'critical');
+  }
+
+  return isBattleFlowLocked();
+}
+
 async function startNewTurn() {
   if (isBattleFlowLocked()) {
     return;
@@ -3728,6 +3961,10 @@ async function startNewTurn() {
     exorcismTurnLimit.triggeredBadEnd ||
     exorcismTurnLimit.skipBattle
   ) {
+    return;
+  }
+
+  if (await tryRunCompanionCooperationAtTurnStart()) {
     return;
   }
 
@@ -3970,7 +4207,7 @@ async function endTurn(): Promise<boolean> {
 async function selectAndDisplayCG() {
   try {
     const playerGender = await readPlayerGender('男');
-    const selection = selectCombatCG({
+    const selection = await selectCombatCG({
       enemyName: enemy.value.name,
       playerGender,
       phase: turnState.phase,
@@ -4584,34 +4821,39 @@ function openPlayerPortraitPicker() {
   playerPortraitInput.value.click();
 }
 
-function handlePlayerPortraitSelected(event: Event) {
+async function handlePlayerPortraitSelected(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) {
     return;
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    alert('图片文件过大，请选择小于 5MB 的图片');
+  if (!file.type.startsWith('image/')) {
+    alert('请选择图片文件');
     input.value = '';
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = e => {
-    const base64 = e.target?.result as string;
-    if (base64) {
-      savePlayerCustomAvatar(base64);
-      // 强制触发响应式更新：创建新对象
-      player.value = {
-        ...player.value,
-        avatarUrl: base64,
-      };
-      console.info('[战斗界面] 玩家立绘已更新:', base64.substring(0, 50) + '...');
-    }
+  if (file.size > 25 * 1024 * 1024) {
+    alert('图片文件过大，请选择小于 25MB 的图片');
     input.value = '';
-  };
-  reader.readAsDataURL(file);
+    return;
+  }
+
+  try {
+    const objectUrl = await savePlayerCustomAvatarBlob(file);
+    // 强制触发响应式更新：创建新对象
+    player.value = {
+      ...player.value,
+      avatarUrl: objectUrl,
+    };
+    console.info('[战斗界面] 玩家立绘已更新');
+  } catch (error) {
+    console.error('[战斗界面] 玩家立绘保存失败:', error);
+    alert('图片保存失败，请稍后重试或换一张图片');
+  } finally {
+    input.value = '';
+  }
 }
 
 async function handleSurrender() {
@@ -4668,7 +4910,7 @@ async function handleSelfPleasure() {
   player.value.stats.currentPleasure = after;
 
   addLog(
-    `${player.value.name} 选择了在对手前自慰，快感从 ${before} 上升到 ${after}（+${increase}）。`,
+    `${player.value.name} 选择了在对手前自慰，快感从 ${before}/${player.value.stats.maxPleasure} 上升到 ${after}/${player.value.stats.maxPleasure}（+${increase}）。`,
     'system',
     'info',
   );
@@ -4757,6 +4999,20 @@ watch(
   },
 );
 
+async function refreshPlayerCustomAvatar() {
+  try {
+    const avatarUrl = await resolvePlayerCustomAvatar();
+    if (avatarUrl) {
+      player.value = {
+        ...player.value,
+        avatarUrl,
+      };
+    }
+  } catch (error) {
+    console.warn('[战斗界面] 玩家头像加载失败:', error);
+  }
+}
+
 // ================= 初始化 =================
 onMounted(async () => {
   // 重置BOSS状态，确保重新进入战斗时状态正确
@@ -4767,6 +5023,7 @@ onMounted(async () => {
   // 确保玩家名字已设置
   const userName = getUserName();
   player.value.name = userName;
+  await refreshPlayerCustomAvatar();
 
   // 重新计算所有属性（包括加成）
   await reloadStatusFromMvu();
@@ -4782,24 +5039,28 @@ onMounted(async () => {
 
   const exorcismBattleStart = await evaluateAndApplyExorcismMechanics('battleStart');
   const exorcismPhaseEnter = await evaluateAndApplyExorcismMechanics('phaseEnter');
+  const exorcismPlayerGender = await evaluateAndApplyExorcismMechanics('playerGenderIs');
   const exorcismCompanionPresent = await evaluateAndApplyExorcismMechanics('companionPresent');
   const exorcismRelationship = await evaluateAndApplyExorcismMechanics('relationshipAtLeast');
-  let exorcismCompanionMissing: ExorcismMechanicApplyResult | null = null;
-  if (getExorcismCompanions()) {
-    exorcismCompanionMissing = await evaluateAndApplyExorcismMechanics('companionMissing');
-  }
+  const exorcismCompanionMissing = await evaluateAndApplyExorcismMechanics('companionMissing');
   if (
     exorcismBattleStart.skipBattle ||
     exorcismBattleStart.triggeredBadEnd ||
     exorcismPhaseEnter.skipBattle ||
     exorcismPhaseEnter.triggeredBadEnd ||
+    exorcismPlayerGender.skipBattle ||
+    exorcismPlayerGender.triggeredBadEnd ||
     exorcismCompanionPresent.skipBattle ||
     exorcismCompanionPresent.triggeredBadEnd ||
     exorcismRelationship.skipBattle ||
     exorcismRelationship.triggeredBadEnd ||
-    exorcismCompanionMissing?.skipBattle ||
-    exorcismCompanionMissing?.triggeredBadEnd
+    exorcismCompanionMissing.skipBattle ||
+    exorcismCompanionMissing.triggeredBadEnd
   ) {
+    return;
+  }
+
+  if (await tryRunCompanionCooperationAtTurnStart()) {
     return;
   }
 
@@ -5030,7 +5291,7 @@ function getSinTalentDisplayName(sinType: string): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem 2rem;
+  padding: 0.9rem 1.5rem;
   background: linear-gradient(to bottom, rgba(9, 9, 11, 0.95), transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -5047,7 +5308,7 @@ function getSinTalentDisplayName(sinType: string): string {
 }
 
 .title {
-  font-size: 1.75rem;
+  font-size: 1.45rem;
   font-weight: 900;
   letter-spacing: -0.025em;
   background: linear-gradient(135deg, #c084fc, #f472b6, #fb7185);
@@ -5064,7 +5325,7 @@ function getSinTalentDisplayName(sinType: string): string {
 }
 
 .turn-counter {
-  font-size: 1.75rem;
+  font-size: 1.45rem;
   font-family: ui-monospace, monospace;
   font-weight: 900;
   background: linear-gradient(135deg, #60a5fa, #a78bfa);
@@ -5090,16 +5351,29 @@ function getSinTalentDisplayName(sinType: string): string {
   z-index: 10;
   max-width: 72rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
-  padding-bottom: 20rem;
+  padding: 1.25rem 1rem;
+  padding-bottom: 0.9rem;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
   justify-content: center;
-  gap: 1rem;
+  gap: 0.75rem;
 
   @media (max-width: 640px) {
-    padding-bottom: 22rem;
+    padding-bottom: 0.75rem;
+  }
+}
+
+.floating-log-panel {
+  position: absolute;
+  top: 6.4rem;
+  right: 0;
+  z-index: 55;
+  width: auto;
+  pointer-events: auto;
+
+  @media (max-width: 640px) {
+    top: 5.25rem;
   }
 }
 
@@ -5109,21 +5383,21 @@ function getSinTalentDisplayName(sinType: string): string {
   align-items: center;
   justify-content: center;
   opacity: 0.3;
-  padding-top: 6rem;
+  padding-top: 4rem;
   flex-shrink: 0;
-  width: 10%;
+  width: 8%;
 }
 
 .divider-line {
-  height: 8rem;
+  height: 6rem;
   width: 1px;
   background: linear-gradient(to bottom, transparent, white, transparent);
 }
 
 .vs-text {
-  margin: 1rem 0;
+  margin: 0.75rem 0;
   font-weight: 900;
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-style: italic;
   font-family: ui-monospace, monospace;
   color: rgba(255, 255, 255, 0.5);
@@ -5131,57 +5405,46 @@ function getSinTalentDisplayName(sinType: string): string {
 
 // ========== 底部操作区 ==========
 .combat-footer {
-  position: fixed;
+  position: sticky;
   bottom: 0;
-  left: 0;
   width: 100%;
   z-index: 30;
   background: linear-gradient(to top, rgba(9, 9, 11, 0.98), rgba(9, 9, 11, 0.85));
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(30px) saturate(180%);
-  padding: 0.75rem 1.25rem 1rem; // 减少20%
+  padding: 0.6rem 1rem 0.75rem;
   box-shadow:
     0 -20px 60px rgba(0, 0, 0, 0.7),
     0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 
   @media (max-width: 640px) {
-    padding: 0.5rem 0.7rem 0.75rem; // 减少20%
+    padding: 0.45rem 0.65rem 0.65rem;
   }
 }
 
 .footer-content {
-  max-width: 72rem;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   display: flex;
   flex-direction: column-reverse;
-  gap: 1rem;
-}
-
-@media (min-width: 1024px) {
-  .footer-content {
-    flex-direction: row;
-  }
-}
-
-.log-section {
-  width: 100%;
-  flex: 0 0 30%;
-  max-width: 18rem;
+  gap: 0.5rem;
 }
 
 .action-section {
   flex: 1;
   min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .action-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .tab-btn {
@@ -5265,9 +5528,9 @@ function getSinTalentDisplayName(sinType: string): string {
 // 技能菜单样式
 .menu-skills {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   overflow-x: auto;
-  padding-bottom: 0.25rem;
+  padding-bottom: 0.15rem;
   // max-height constraint removed as per user request
 
   // 自定义滚动条
@@ -5331,7 +5594,7 @@ function getSinTalentDisplayName(sinType: string): string {
 .menu-skills,
 .menu-items {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   height: 100%;
   width: 100%;
   overflow-x: auto;
@@ -5447,16 +5710,16 @@ function getSinTalentDisplayName(sinType: string): string {
 .skill-card,
 .item-card {
   flex: 0 0 auto; // 不允许收缩，保持固定宽度
-  min-width: 220px; // 增加最小宽度，确保内容可读
-  max-width: 280px; // 设置最大宽度，避免过宽
-  width: 220px; // 固定宽度
+  min-width: 205px;
+  max-width: 240px;
+  width: 205px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   position: relative;
   overflow: hidden;
-  padding: 1rem;
-  border-radius: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -5476,6 +5739,22 @@ function getSinTalentDisplayName(sinType: string): string {
     filter: grayscale(0.7);
     pointer-events: none;
     cursor: not-allowed;
+  }
+}
+
+.skill-card {
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 8.25rem;
+
+  &.bound-blocked {
+    cursor: not-allowed;
+    border-color: rgba(248, 113, 113, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.08);
+  }
+
+  &.unusable-shake {
+    animation: unusableSkillShake 0.38s linear;
   }
 }
 
@@ -5517,7 +5796,7 @@ function getSinTalentDisplayName(sinType: string): string {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 .skill-name {
@@ -5548,37 +5827,24 @@ function getSinTalentDisplayName(sinType: string): string {
   }
 }
 
-.skill-desc,
-.item-desc {
-  font-size: 0.625rem;
-  color: #94a3b8;
-  line-height: 1.5;
+.skill-desc {
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.skill-effect {
-  margin-top: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(56, 189, 248, 0.1);
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  border-radius: 0.25rem;
+.item-desc {
   font-size: 0.625rem;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.effect-label {
   color: #94a3b8;
-  font-weight: 500;
-}
-
-.effect-value {
-  color: #38bdf8;
-  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .skill-type {
@@ -5650,9 +5916,9 @@ function getSinTalentDisplayName(sinType: string): string {
 .skill-stats-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.375rem;
-  padding: 0.375rem;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding: 0.35rem 0.4rem;
   background: rgba(0, 0, 0, 0.2);
   border-radius: 0.375rem;
 }
@@ -5698,25 +5964,41 @@ function getSinTalentDisplayName(sinType: string): string {
   }
 }
 
-// 伤害来源
-.skill-damage-source {
-  font-size: 0.625rem;
-  color: #94a3b8;
-  margin-top: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 0.25rem;
-
-  .source-type {
-    color: #f472b6;
-    font-weight: 600;
-  }
-}
-
 .item-name {
   font-weight: 700;
   font-size: 0.875rem;
   color: #4ade80;
+}
+
+@keyframes unusableSkillShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10% {
+    transform: translateX(-7px);
+  }
+  20% {
+    transform: translateX(7px);
+  }
+  30% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  50% {
+    transform: translateX(-5px);
+  }
+  60% {
+    transform: translateX(5px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+  90% {
+    transform: translateX(2px);
+  }
 }
 
 .item-quantity {
@@ -6183,6 +6465,139 @@ function getSinTalentDisplayName(sinType: string): string {
   pointer-events: none !important;
   cursor: not-allowed !important;
   transition: filter 0.5s ease;
+}
+
+// ========== 协同作战立绘特效 ==========
+.companion-assist-effect {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 88;
+  overflow: hidden;
+}
+
+.companion-assist-strike {
+  position: absolute;
+  top: 22%;
+  right: 7%;
+  width: min(44vw, 520px);
+  height: min(44vw, 520px);
+  border: 2px solid rgba(125, 211, 252, 0.75);
+  border-radius: 50%;
+  box-shadow:
+    0 0 24px rgba(125, 211, 252, 0.55),
+    inset 0 0 36px rgba(251, 191, 36, 0.22);
+  animation: companionStrike 1.8s ease-out forwards;
+}
+
+.companion-assist-portrait {
+  position: absolute;
+  right: 8%;
+  bottom: 12%;
+  width: min(36vw, 320px);
+  max-height: 76vh;
+  object-fit: contain;
+  filter: drop-shadow(0 0 28px rgba(125, 211, 252, 0.65)) drop-shadow(0 10px 32px rgba(0, 0, 0, 0.75));
+  animation: companionPortraitIn 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.companion-assist-caption {
+  position: absolute;
+  right: clamp(20px, 9vw, 140px);
+  bottom: 9%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
+  animation: companionCaptionIn 1.8s ease-out forwards;
+}
+
+.companion-name {
+  font-size: clamp(22px, 4vw, 44px);
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.companion-skill {
+  font-size: clamp(13px, 2vw, 18px);
+  color: #fde68a;
+}
+
+@media (max-width: 768px) {
+  .companion-assist-strike {
+    top: 26%;
+    right: -16%;
+    width: 78vw;
+    height: 78vw;
+  }
+
+  .companion-assist-portrait {
+    right: -4%;
+    bottom: 18%;
+    width: min(58vw, 240px);
+    max-height: 58vh;
+  }
+
+  .companion-assist-caption {
+    right: 18px;
+    bottom: 14%;
+  }
+}
+
+@keyframes companionStrike {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-16deg);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  68% {
+    opacity: 0.85;
+    transform: scale(1.08) rotate(8deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35) rotate(18deg);
+  }
+}
+
+@keyframes companionPortraitIn {
+  0% {
+    opacity: 0;
+    transform: translateX(34%) scale(0.9);
+  }
+  18% {
+    opacity: 1;
+    transform: translateX(0) scale(1.04);
+  }
+  72% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(18%) scale(0.96);
+  }
+}
+
+@keyframes companionCaptionIn {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  26%,
+  70% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 // ========== BOSS阶段转换特效 ==========

@@ -1,4 +1,4 @@
-import { getCGImageKey, unlockCGKey } from '../shared/localPreferences';
+import { getCGImageKey, unlockCharacterCGKey } from '../shared/cgUnlockStore';
 import { selectCGEvent } from './data/cgConfig';
 import type { CombatLogEntry, TurnState } from './types';
 
@@ -33,11 +33,11 @@ export function buildCombatEndContext(phase: TurnState['phase']): string {
   return '战斗结束';
 }
 
-export function selectCombatCG(params: {
+export async function selectCombatCG(params: {
   enemyName: string;
   playerGender: '男' | '女';
   phase: TurnState['phase'];
-}): CombatCGSelection {
+}): Promise<CombatCGSelection> {
   const cgResult = selectCGEvent(params.enemyName, params.playerGender, params.phase === 'victory');
   if (!cgResult) {
     return {
@@ -55,7 +55,7 @@ export function selectCombatCG(params: {
     description: cgResult.description,
     eventName: cgResult.event.name,
     cgKey,
-    unlockedNewCG: unlockCGKey(cgKey),
+    unlockedNewCG: await unlockCharacterCGKey(params.enemyName, cgKey),
   };
 }
 

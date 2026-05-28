@@ -1,5 +1,11 @@
 import { SkillType, type Character, type CombatLogEntry, type Item, type Skill } from './types';
-import { clearStoredPlayerAvatar, getStoredPlayerAvatar, saveStoredPlayerAvatar } from '../shared/localPreferences';
+import {
+  clearStoredPlayerAvatar,
+  getStoredPlayerAvatarSyncUrl,
+  resolveStoredPlayerAvatar,
+  saveStoredPlayerAvatar,
+  saveStoredPlayerAvatarBlob,
+} from '../shared/localPreferences';
 
 // R2 立绘基础路径
 const R2_PORTRAIT_BASE_URL = 'https://img.vinsimage.org/性斗学园/立绘';
@@ -37,20 +43,30 @@ export function getRandomImageUrl(): string {
 }
 
 /**
- * 获取玩家自定义头像（从 localStorage）
+ * 获取玩家自定义头像（同步偏好 URL）
  * @returns 玩家头像 URL 或 null
  */
 export function getPlayerCustomAvatar(): string | null {
-  return getStoredPlayerAvatar();
+  return getStoredPlayerAvatarSyncUrl();
+}
+
+export async function resolvePlayerCustomAvatar(): Promise<string | null> {
+  return resolveStoredPlayerAvatar();
 }
 
 /**
- * 保存玩家自定义头像到 localStorage
- * @param avatarUrl 头像 URL（base64 或 URL）
+ * 保存玩家自定义头像 URL 到本地偏好
+ * @param avatarUrl 头像 URL
  */
 export function savePlayerCustomAvatar(avatarUrl: string): void {
   saveStoredPlayerAvatar(avatarUrl);
   console.info('[战斗界面] 玩家自定义头像已保存');
+}
+
+export async function savePlayerCustomAvatarBlob(blob: Blob): Promise<string> {
+  const objectUrl = await saveStoredPlayerAvatarBlob(blob);
+  console.info('[战斗界面] 玩家自定义头像已保存');
+  return objectUrl;
 }
 
 /**

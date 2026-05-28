@@ -378,6 +378,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import {
+  deleteIndexedImage,
+  getIndexedImageObjectUrl,
+  isDataImageUrl,
+  isIndexedImageRef,
+  makeIndexedImageRef,
+  revokeIndexedImageObjectUrl,
+  saveIndexedImageBlob,
+  saveIndexedImageDataUrl,
+} from '../../shared/indexedImageStore';
 import { getLatestMvuData, replaceLatestMvuData } from '../../shared/mvuStore';
 import { getDailyTalentEffect } from '../data/talentDatabase';
 import BackstreetPage from './pages/BackstreetPage.vue';
@@ -521,6 +531,7 @@ interface PhoneApp {
 
 const PHONE_PREFS_STORAGE_KEY = 'fatria-status-phone-preferences-v1';
 const PHONE_PREFS_UPDATED_EVENT = 'fatria-status-phone-preferences-updated';
+const PHONE_WALLPAPER_IMAGE_REF = makeIndexedImageRef('phone-wallpaper:global');
 
 const DEFAULT_PHONE_PREFS: PhonePreferences = {
   wallpaperUrl: '',
@@ -552,16 +563,18 @@ const phoneApps: PhoneApp[] = [
 const currentPage = ref<PageKey>('home');
 const wallpaperInputRef = ref<HTMLInputElement | null>(null);
 const phonePrefs = ref<PhonePreferences>(loadPhonePreferences());
+const resolvedWallpaperUrl = ref('');
 const secondaryPhoneApi = ref<SecondaryPhoneApiSettings>(loadSecondaryPhoneApiSettings());
 const secondaryApiModelOptions = ref<string[]>([...secondaryPhoneApi.value.models]);
 const secondaryApiStatus = ref('');
 const isSecondaryApiTesting = ref(false);
+let wallpaperSourceRequestId = 0;
 
 const homeApps = computed(() => phoneApps.filter(app => !app.dock));
 const dockApps = computed(() => phoneApps.filter(app => app.dock));
 const currentApp = computed(() => phoneApps.find(app => app.page === currentPage.value));
 const currentPageTitle = computed(() => currentApp.value?.label || '性斗学园');
-const customWallpaperSrc = computed(() => phonePrefs.value.wallpaperUrl.trim());
+const customWallpaperSrc = computed(() => resolvedWallpaperUrl.value);
 const phoneFrameClasses = computed(() => [
   `theme-${phonePrefs.value.theme}`,
   `icon-style-${phonePrefs.value.appIconStyle}`,
@@ -598,6 +611,14 @@ watch(
     savePhonePreferences(prefs);
   },
   { deep: true },
+);
+
+watch(
+  () => phonePrefs.value.wallpaperUrl,
+  wallpaperUrl => {
+    void syncWallpaperSource(wallpaperUrl);
+  },
+  { immediate: true },
 );
 
 watch(
@@ -702,6 +723,47 @@ function savePhonePreferences(prefs: PhonePreferences) {
   window.dispatchEvent(new CustomEvent(PHONE_PREFS_UPDATED_EVENT, { detail: { ...prefs } }));
 }
 
+function setResolvedWallpaperUrl(url: string) {
+  if (resolvedWallpaperUrl.value !== url) {
+    revokeIndexedImageObjectUrl(resolvedWallpaperUrl.value);
+  }
+  resolvedWallpaperUrl.value = url;
+}
+
+async function syncWallpaperSource(sourceValue: string) {
+  const requestId = ++wallpaperSourceRequestId;
+  const source = sourceValue.trim();
+
+  if (!source) {
+    setResolvedWallpaperUrl('');
+    return;
+  }
+
+  try {
+    if (isDataImageUrl(source)) {
+      await saveIndexedImageDataUrl(PHONE_WALLPAPER_IMAGE_REF, source);
+      if (requestId !== wallpaperSourceRequestId) return;
+      phonePrefs.value.wallpaperUrl = PHONE_WALLPAPER_IMAGE_REF;
+      return;
+    }
+
+    if (isIndexedImageRef(source)) {
+      const objectUrl = await getIndexedImageObjectUrl(source);
+      if (requestId !== wallpaperSourceRequestId) {
+        revokeIndexedImageObjectUrl(objectUrl);
+        return;
+      }
+      setResolvedWallpaperUrl(objectUrl ?? '');
+      return;
+    }
+
+    setResolvedWallpaperUrl(source);
+  } catch (error) {
+    console.error('[状态栏] 壁纸加载失败:', error);
+    setResolvedWallpaperUrl(isIndexedImageRef(source) ? '' : source);
+  }
+}
+
 async function refreshSecondaryApiModels() {
   if (isSecondaryApiTesting.value) return;
   isSecondaryApiTesting.value = true;
@@ -743,12 +805,20 @@ function openWallpaperFilePicker() {
 }
 
 function selectWallpaperPreset(preset: WallpaperPreset) {
+  const previousWallpaperUrl = phonePrefs.value.wallpaperUrl;
   phonePrefs.value.wallpaperPreset = preset;
   phonePrefs.value.wallpaperUrl = '';
+  if (isIndexedImageRef(previousWallpaperUrl)) {
+    void deleteIndexedImage(previousWallpaperUrl);
+  }
 }
 
 function clearWallpaper() {
+  const previousWallpaperUrl = phonePrefs.value.wallpaperUrl;
   phonePrefs.value.wallpaperUrl = '';
+  if (isIndexedImageRef(previousWallpaperUrl)) {
+    void deleteIndexedImage(previousWallpaperUrl);
+  }
 }
 
 function handleWallpaperFileSelected(event: Event) {
@@ -756,9 +826,12 @@ function handleWallpaperFileSelected(event: Event) {
   const file = input.files?.[0];
   if (!file) return;
 
-  prepareWallpaperDataUrl(file)
-    .then(dataUrl => {
-      phonePrefs.value.wallpaperUrl = dataUrl;
+  prepareWallpaperBlob(file)
+    .then(async blob => {
+      await saveIndexedImageBlob(PHONE_WALLPAPER_IMAGE_REF, blob);
+      phonePrefs.value.wallpaperUrl = PHONE_WALLPAPER_IMAGE_REF;
+      await syncWallpaperSource(PHONE_WALLPAPER_IMAGE_REF);
+      savePhonePreferences(phonePrefs.value);
     })
     .catch(error => {
       console.error('[状态栏] 背景图加载失败:', error);
@@ -771,22 +844,6 @@ function handleWallpaperFileSelected(event: Event) {
     });
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
-    reader.onload = e => {
-      const result = e.target?.result;
-      if (typeof result === 'string') {
-        resolve(result);
-      } else {
-        reject(new Error('读取图片结果无效'));
-      }
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -796,14 +853,20 @@ function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function prepareWallpaperDataUrl(file: File): Promise<string> {
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+  return new Promise(resolve => {
+    canvas.toBlob(blob => resolve(blob), type, quality);
+  });
+}
+
+async function prepareWallpaperBlob(file: File): Promise<Blob> {
   const fileType = file.type.toLowerCase();
   if (!fileType.startsWith('image/')) {
     throw new Error('请选择图片文件');
   }
 
   if (fileType === 'image/gif' || fileType === 'image/svg+xml') {
-    return readFileAsDataUrl(file);
+    return file;
   }
 
   const objectUrl = URL.createObjectURL(file);
@@ -819,11 +882,11 @@ async function prepareWallpaperDataUrl(file: File): Promise<string> {
 
     const context = canvas.getContext('2d');
     if (!context) {
-      return readFileAsDataUrl(file);
+      return file;
     }
 
     context.drawImage(image, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', 0.86);
+    return (await canvasToBlob(canvas, 'image/jpeg', 0.86)) ?? file;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -1102,6 +1165,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  revokeIndexedImageObjectUrl(resolvedWallpaperUrl.value);
   if (updateInterval !== null) {
     clearInterval(updateInterval);
   }

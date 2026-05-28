@@ -524,7 +524,7 @@ export function resolveEnemySkillAttack(params: {
       finalDamage = 0;
     } else if (result.isCritical) {
       afterDialogueEvents.push(
-        createLogEvent(`暴击！总计造成 ${result.totalDamage} 点快感伤害！`, 'enemy', 'critical'),
+        createLogEvent(`暴击！总计造成 ${result.totalDamage} 点快感！`, 'enemy', 'critical'),
       );
       afterDialogueEvents.push({ kind: 'effect', effect: 'critical' });
       afterDialogueEvents.push({
@@ -532,7 +532,7 @@ export function resolveEnemySkillAttack(params: {
         actions: createPlayerCriticalHitTalentActions(params.sinType, params.talentState),
       });
     } else {
-      afterDialogueEvents.push(createLogEvent(`总计造成 ${result.totalDamage} 点快感伤害`, 'enemy', 'damage'));
+      afterDialogueEvents.push(createLogEvent(`总计造成 ${result.totalDamage} 点快感`, 'enemy', 'damage'));
     }
 
     if (hasDirectDamage) {
@@ -545,7 +545,7 @@ export function resolveEnemySkillAttack(params: {
       const pleasureChange = applyPleasureDamage(params.player, finalDamage);
       afterDialogueEvents.push(
         createLogEvent(
-          `${params.player.name} 的快感从 ${pleasureChange.oldPleasure} 增加到 ${pleasureChange.newPleasure}`,
+          `${params.player.name} 的快感从 ${pleasureChange.oldPleasure}/${params.player.stats.maxPleasure} 增加到 ${pleasureChange.newPleasure}/${params.player.stats.maxPleasure}`,
           'system',
           'info',
         ),

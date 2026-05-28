@@ -44,7 +44,7 @@ const percentage = computed(() => {
 <style lang="scss" scoped>
 .progress-container {
   width: 100%;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.55rem;
 }
 
 .progress-header {

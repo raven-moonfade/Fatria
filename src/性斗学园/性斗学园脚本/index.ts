@@ -5,12 +5,17 @@
  * - 快感达到上限时触发高潮与贤者时间
  * - 经验升级、满级经验转金币
  * - 段位随等级更新
+ * - 好感度满时解锁对应角色全部 CG
  *
  * 实时战斗属性由界面/shared selector 计算，不再写回 MVU。
  */
 
 import { get, isEqual, set } from '@/util/common';
 import { createScriptIdDiv, destroyScriptIdDiv, deteleportStyle, teleportStyle } from '@/util/script';
+import {
+  migrateLegacyCGUnlocksToCharacterVariables,
+  unlockMaxFavorCharacterCGsFromMvuData,
+} from '../shared/cgUnlockStore';
 import { getLatestMvuData, replaceLatestMvuData, waitForMvu } from '../shared/mvuStore';
 import { shouldTriggerOrgasm } from '../开局/utils/combat-calculator';
 import StatusBarWrapper from './components/StatusBarWrapper.vue';
@@ -223,8 +228,7 @@ function prepareExorcismMazeQuestUnlock(mvuData: Mvu.MvuData): { changed: boolea
   const existingQuest = sideQuests[EXORCISM_MAZE_QUEST_NAME];
   const mainQuestName = String(taskSystem.主线任务?.名称 || '');
   const mainQuestStatus = taskSystem.主线任务?.状态;
-  const hasQuest =
-    !!existingQuest || (mainQuestName.includes('驱魔迷宫') && !isQuestInactive(mainQuestStatus));
+  const hasQuest = !!existingQuest || (mainQuestName.includes('驱魔迷宫') && !isQuestInactive(mainQuestStatus));
   const hasRecorded = isExorcismMazeUnlockRecorded();
 
   if (hasQuest) {
@@ -249,6 +253,21 @@ function prepareExorcismMazeQuestUnlock(mvuData: Mvu.MvuData): { changed: boolea
 
   console.info('[性斗学园脚本] 首次达到50级，已解锁隐藏任务：事件-EX 隐藏副本·驱魔迷宫');
   return { changed: true, shouldRecord: true };
+}
+
+function notifyCGUnlockRecordsUpdated(characters: string[], unlockedCount: number) {
+  if (unlockedCount <= 0) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('cg-unlock-records-updated', {
+      detail: {
+        characters,
+        unlockedCount,
+      },
+    }),
+  );
 }
 
 /**
@@ -397,11 +416,25 @@ async function updateDependentVariables() {
     }
 
     const exorcismMazeUnlock = prepareExorcismMazeQuestUnlock(mvuData);
+
     if (Object.keys(updates).length > 0 || exorcismMazeUnlock.changed) {
       await replaceLatestMvuData(mvuData);
     }
     if (exorcismMazeUnlock.shouldRecord) {
       markExorcismMazeUnlockRecorded();
+    }
+    const legacyCGMigration = await migrateLegacyCGUnlocksToCharacterVariables(mvuData);
+    const maxFavorCGUnlock = await unlockMaxFavorCharacterCGsFromMvuData(mvuData);
+
+    if (legacyCGMigration.changed) {
+      console.info(`[性斗学园脚本] 已将旧版本地CG记录迁移至角色变量：${legacyCGMigration.unlockedCount} 张`);
+      notifyCGUnlockRecordsUpdated(legacyCGMigration.characters, legacyCGMigration.unlockedCount);
+    }
+    if (maxFavorCGUnlock.changed) {
+      console.info(
+        `[性斗学园脚本] 好感度已满，自动解锁角色CG：${maxFavorCGUnlock.characters.join('、')}，新增 ${maxFavorCGUnlock.unlockedCount} 张`,
+      );
+      notifyCGUnlockRecordsUpdated(maxFavorCGUnlock.characters, maxFavorCGUnlock.unlockedCount);
     }
   } catch (error) {
     console.error('[性斗学园脚本] 更新持久变量时出错:', error);
@@ -484,7 +517,7 @@ function registerMvuEventListeners() {
         }
       }
 
-      // 检查会影响持久派生事务的变量变化：高潮处理、升级、段位。
+      // 检查会影响持久派生事务的变量变化：高潮处理、升级、段位、满好感CG。
       const basePaths = [
         '角色基础._等级',
         '角色基础.经验值',
@@ -494,6 +527,7 @@ function registerMvuEventListeners() {
         '核心状态.$最大快感',
         '核心状态.$快感',
         '技能系统.$天赋',
+        '关系系统',
       ];
 
       let hasBaseChange = false;

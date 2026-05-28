@@ -262,7 +262,7 @@ ${escapeEjsLiteralText(item.text)}
   return `<%_
 var bstPresent = getvar('stat_data.关系系统.在场人物') || [];
 var bstNorm = function(value) {
-  return String(value || '').replace(/[·・‧•\\s　._\\-—]/g, '');
+  return String(value || '').replace(/[·・‧•\\s\\u3000._\\-—]/g, '');
 };
 var bstPresentText = Array.isArray(bstPresent) ? bstPresent.join('|') : String(bstPresent || '');
 var bstIsHere = bstNorm(bstPresentText).includes(bstNorm(${JSON.stringify(contact)}));

@@ -179,6 +179,7 @@ function phaseByHp(params: {
   id: string;
   label: string;
   threshold: number;
+  fromPhase: number;
   phase: number;
   skillPoolKey: string;
   message: string;
@@ -191,7 +192,7 @@ function phaseByHp(params: {
     description: `HP 降至 ${params.threshold}% 或以下时切换至第 ${params.phase} 阶段。`,
     reusable: true,
     once: true,
-    triggers: [{ type: 'hpPercentAtOrBelow', threshold: params.threshold }],
+    triggers: [{ type: 'hpPercentAtOrBelow', phase: params.fromPhase, threshold: params.threshold }],
     actions: [
       { type: 'setPhase', phase: params.phase },
       { type: 'setSkillPool', skillPoolKey: params.skillPoolKey },
@@ -286,7 +287,7 @@ function skillProgress(params: {
     label: params.label,
     description: `命中 ${params.skillTags.join(', ')} 标签技能时累积 ${params.stateKey}。`,
     reusable: true,
-    triggers: [{ type: 'skillTagHit', skillTags: params.skillTags }],
+    triggers: [{ type: 'skillTagHit', skillTags: params.skillTags, skillActor: 'enemy' }],
     actions: [{ type: 'addProgress', stateKey: params.stateKey, amount: params.amount }, logAction(params.message)],
     notes: params.notes,
   };
@@ -513,6 +514,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'amanda_hp40_awaken',
         label: '魅魔觉醒',
         threshold: 40,
+        fromPhase: 1,
         phase: 2,
         skillPoolKey: 'amanda_awakened',
         message: '阿曼达进入二阶段，洗脑系技能池与倍率切换。',
@@ -568,7 +570,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         message: '植物寄生进度满后进入连续挣脱判定。',
       }),
     ],
-    taskHooks: { questName: '驱魔', objectiveKeys: ['B2_阿娜温净化'] },
+    taskHooks: { questName: '驱魔', objectiveKeys: ['B4_阿娜温净化'] },
   },
   {
     id: 'exorcism_dark_elf',
@@ -608,7 +610,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         actions: [{ type: 'triggerBadEnd' }, logAction('暗精灵娘的精神侵蚀判定失败达到阈值。')],
       },
     ],
-    taskHooks: { questName: '驱魔', objectiveKeys: ['B2_暗精灵娘净化'] },
+    taskHooks: { questName: '驱魔', objectiveKeys: ['B4_暗精灵娘净化'] },
   },
   {
     id: 'exorcism_hachishaku',
@@ -632,6 +634,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'hachishaku_hp40_true_mother',
         label: '真母阶段',
         threshold: 40,
+        fromPhase: 1,
         phase: 2,
         skillPoolKey: 'hachishaku_true_mother',
         message: '八尺夫人进入二阶段真母形态。',
@@ -713,6 +716,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'tsubaki_hp50_fox_wife',
         label: '狐妻觉醒',
         threshold: 50,
+        fromPhase: 1,
         phase: 2,
         skillPoolKey: 'tsubaki_fox_wife',
         message: '鬼巫女椿进入狐妻觉醒阶段。',
@@ -817,7 +821,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         label: '核心弱点',
         description: '命中核心或净化标签时暴露弱点窗口。',
         reusable: true,
-        triggers: [{ type: 'skillTagHit', skillTags: ['core', 'purification'] }],
+        triggers: [{ type: 'skillTagHit', skillTags: ['core', 'purification'], skillActor: 'player' }],
         actions: [
           { type: 'setFlag', flag: 'dark_slime_core_exposed', value: true },
           logAction('黑暗史莱姆核心弱点暴露。'),
@@ -833,7 +837,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         message: '史莱姆同化进度满后进入挣脱判定。',
       }),
     ],
-    taskHooks: { questName: '驱魔', objectiveKeys: ['B2_黑暗史莱姆净化'] },
+    taskHooks: { questName: '驱魔', objectiveKeys: ['B4_黑暗史莱姆净化'] },
   },
   {
     id: 'exorcism_zombie_tianyu',
@@ -870,7 +874,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         label: '符咒使用限制',
         description: '不合规使用关键符咒时应取消本回合行动。',
         reusable: true,
-        triggers: [{ type: 'skillTagUsed', skillTags: ['forbiddenTalisman'] }],
+        triggers: [{ type: 'skillTagUsed', skillTags: ['forbiddenTalisman'], skillActor: 'player' }],
         actions: [{ type: 'cancelAction' }, logAction('风音中断了不合规符咒使用，本回合行动取消。')],
       },
     ],
@@ -889,16 +893,31 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     ],
     mechanics: [
       {
-        id: 'chloe_damage_step_persona_switch',
+        id: 'chloe_damage_step_to_sacred',
         kind: 'personaSwitch',
-        label: '伤害步进人格切换',
-        description: '每承受 20% 总伤害触发一次人格争夺，取消当前行动并切换技能池。',
+        label: '伤害步进神化面切换',
+        description: '魔化面每承受 20% 总伤害触发一次人格争夺，取消当前行动并切换至神化面。',
         reusable: true,
-        triggers: [{ type: 'damageTakenPercentStep', everyPercent: 20 }],
+        triggers: [{ type: 'damageTakenPercentStep', phase: 1, everyPercent: 20 }],
         actions: [
           { type: 'cancelAction' },
-          { type: 'setFlag', flag: 'chloe_persona_switch_pending', value: true },
-          logAction('克洛伊人格切换，当前行动取消。'),
+          { type: 'setPhase', phase: 2 },
+          { type: 'setSkillPool', skillPoolKey: 'chloe_sacred' },
+          logAction('克洛伊人格切换为神化面，当前行动取消。'),
+        ],
+      },
+      {
+        id: 'chloe_damage_step_to_demonic',
+        kind: 'personaSwitch',
+        label: '伤害步进魔化面切换',
+        description: '神化面每承受 20% 总伤害触发一次人格争夺，取消当前行动并切换至魔化面。',
+        reusable: true,
+        triggers: [{ type: 'damageTakenPercentStep', phase: 2, everyPercent: 20 }],
+        actions: [
+          { type: 'cancelAction' },
+          { type: 'setPhase', phase: 1 },
+          { type: 'setSkillPool', skillPoolKey: 'chloe_demonic' },
+          logAction('克洛伊人格切换为魔化面，当前行动取消。'),
         ],
       },
       dialogueStun({
@@ -914,7 +933,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         label: '净化强制神化面',
         description: '净化或圣系标签命中时强制切换至神化面。',
         reusable: true,
-        triggers: [{ type: 'skillTagUsed', skillTags: ['purification', 'holy'] }],
+        triggers: [{ type: 'skillTagUsed', skillTags: ['purification', 'holy'], skillActor: 'player' }],
         actions: [
           { type: 'setPhase', phase: 2 },
           { type: 'setSkillPool', skillPoolKey: 'chloe_sacred' },
@@ -927,7 +946,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         label: '污秽强制魔化面',
         description: '腐化或暗系标签命中时强制切换至魔化面。',
         reusable: true,
-        triggers: [{ type: 'skillTagUsed', skillTags: ['corruption', 'dark'] }],
+        triggers: [{ type: 'skillTagUsed', skillTags: ['corruption', 'dark'], skillActor: 'player' }],
         actions: [
           { type: 'setPhase', phase: 1 },
           { type: 'setSkillPool', skillPoolKey: 'chloe_demonic' },
@@ -935,7 +954,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         ],
       },
     ],
-    taskHooks: { questName: '驱魔', objectiveKeys: ['B2_克洛伊净化'] },
+    taskHooks: { questName: '驱魔', objectiveKeys: ['B4_克洛伊净化'] },
   },
   {
     id: 'exorcism_spirit_sakura',
@@ -990,7 +1009,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         message: '灵樱唤醒进度达到 3，进入唤醒判定。',
       }),
     ],
-    taskHooks: { questName: '驱魔', objectiveKeys: ['B3_灵樱唤醒'], companionNames: ['风音'] },
+    taskHooks: { questName: '驱魔', objectiveKeys: ['B5_灵樱唤醒'], companionNames: ['风音'] },
   },
   {
     id: 'exorcism_jorogumo',
@@ -1112,7 +1131,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         label: '石化凝视',
         description: '石化凝视标签命中时施加石化状态。',
         reusable: true,
-        triggers: [{ type: 'skillTagHit', skillTags: ['stoneGaze'] }],
+        triggers: [{ type: 'skillTagHit', skillTags: ['stoneGaze'], skillActor: 'enemy' }],
         actions: [{ type: 'applyStatus', statusName: '驱魔_石像鬼娘_石化凝视' }, logAction('石像鬼娘的石化凝视命中。')],
       },
       skillProgress({
@@ -1124,7 +1143,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         message: '石化/腐化标签命中后累积石化侵蚀进度。',
       }),
     ],
-    taskHooks: { questName: '驱魔', objectiveKeys: ['B2_石像鬼娘净化'] },
+    taskHooks: { questName: '驱魔', objectiveKeys: ['B4_石像鬼娘净化'] },
   },
   {
     id: 'exorcism_shuangning',
@@ -1210,6 +1229,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'mother_demon_hp60_phase2',
         label: '少女形态',
         threshold: 60,
+        fromPhase: 1,
         phase: 2,
         skillPoolKey: 'mother_demon_girl',
         message: '万魔之母进入第二阶段。',
@@ -1218,6 +1238,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'mother_demon_hp30_phase3',
         label: '熟女形态',
         threshold: 30,
+        fromPhase: 2,
         phase: 3,
         skillPoolKey: 'mother_demon_mature',
         message: '万魔之母进入第三阶段。',
@@ -1229,7 +1250,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         description: 'HP 低于 10% 时强制进入最终判定。',
         reusable: true,
         once: true,
-        triggers: [{ type: 'hpPercentAtOrBelow', threshold: 10 }],
+        triggers: [{ type: 'hpPercentAtOrBelow', phase: 3, threshold: 10 }],
         actions: [
           { type: 'forceSkill', skillId: 'mother_demon_final_ultimate' },
           { type: 'startJudgement', judgementKey: 'mother_demon_final', requiredSuccesses: 3 },
@@ -1392,6 +1413,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'heath_hp66_phase2',
         label: '诅咒扩张',
         threshold: 66,
+        fromPhase: 1,
         phase: 2,
         skillPoolKey: 'heath_curse',
         message: '希思进入第二阶段，解锁诅咒技能池。',
@@ -1400,6 +1422,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
         id: 'heath_hp33_phase3',
         label: '同化终局',
         threshold: 33,
+        fromPhase: 2,
         phase: 3,
         skillPoolKey: 'heath_assimilation',
         message: '希思进入第三阶段，解锁同化技能池。',

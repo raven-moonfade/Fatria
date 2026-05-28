@@ -44,6 +44,8 @@ export type BossTriggerType =
   | 'flagSet'
   | 'manual';
 
+export type BossSkillActor = 'player' | 'enemy' | 'any';
+
 export type BossActionType =
   | 'setPhase'
   | 'setSkillPool'
@@ -89,6 +91,7 @@ export interface BossMechanicTrigger {
   counterKey?: string;
   actorId?: string;
   actorIds?: string[];
+  skillActor?: BossSkillActor;
   requiresFlag?: string;
   blockedByFlag?: string;
 }
@@ -183,6 +186,7 @@ export interface BossMechanicContext {
   pleasurePercent?: number;
   damageTakenPercent?: number;
   skillTags?: string[];
+  skillActor?: BossSkillActor;
   playerDialogue?: string;
   playerGender?: string;
   companions?: string[];
@@ -212,6 +216,11 @@ function includesAnyText(source: string | undefined, needles: string[] | undefin
   if (!needles || needles.length === 0) return true;
   if (!source) return false;
   return needles.some(needle => source.includes(needle));
+}
+
+function matchesSkillActor(expectedActor: BossSkillActor | undefined, actualActor: BossSkillActor | undefined): boolean {
+  if (!expectedActor || expectedActor === 'any') return true;
+  return expectedActor === actualActor;
 }
 
 function readNumberRecordValue(
@@ -290,7 +299,7 @@ export function matchesBossTrigger(
     }
     case 'skillTagUsed':
     case 'skillTagHit':
-      return hasAnyTag(context.skillTags, trigger.skillTags);
+      return matchesSkillActor(trigger.skillActor, context.skillActor) && hasAnyTag(context.skillTags, trigger.skillTags);
     case 'playerDialogue':
       return includesAnyText(context.playerDialogue, trigger.dialogueIncludes);
     case 'playerGenderIs':

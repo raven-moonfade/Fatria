@@ -116,7 +116,7 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
 
 @media (min-width: 1024px) {
   .character-panel {
-    max-width: 28rem;
+    max-width: 24rem;
   }
 }
 
@@ -155,8 +155,8 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
 
   // 桌面（>=1024px）
   @media (min-width: 1024px) {
-    font-size: 1.25rem;
-    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
   }
 }
 
@@ -176,7 +176,7 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
   position: relative;
 
   @media (min-width: 1024px) {
-    padding: 0.5rem 1.5rem;
+    padding: 0.35rem 1rem;
   }
 }
 
@@ -199,7 +199,7 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
   text-overflow: ellipsis;
 
   @media (min-width: 1024px) {
-    font-size: 1.125rem;
+    font-size: 1rem;
   }
 }
 
@@ -236,8 +236,12 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
   margin-bottom: 0.5rem;
 
   @media (min-width: 1024px) {
-    max-width: 320px;
-    margin-bottom: 1.5rem;
+    max-width: 260px;
+    margin-bottom: 0.9rem;
+  }
+
+  @media (min-width: 1024px) and (min-height: 900px) {
+    max-width: 300px;
   }
 
   &:hover {

@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6 animate-slide-up">
+  <div class="animate-slide-up space-y-6">
     <div class="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -37,7 +37,10 @@
         </div>
       </div>
 
-      <div v-if="environmentSummary" class="mt-4 rounded-xl border border-yellow-400/20 bg-yellow-500/10 p-3 text-xs text-yellow-100">
+      <div
+        v-if="environmentSummary"
+        class="mt-4 rounded-xl border border-yellow-400/20 bg-yellow-500/10 p-3 text-xs text-yellow-100"
+      >
         {{ environmentSummary }}
       </div>
     </div>
@@ -45,18 +48,19 @@
     <div class="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
       <h3 class="mb-3 text-xl font-bold text-white">温馨提示</h3>
       <div class="space-y-4 text-sm leading-relaxed text-gray-200">
-        <p>你好，这里是前端作者“𝒱𝒾𝓃 ”，本卡为“芙芙可爱捏”与“𝒱𝒾𝓃”共同创作，仅在类脑与旅程免费发布/更新。</p>
+        <p>你好，这里是前端作者“𝒱𝒾𝓃 ”，本卡𝒱𝒾𝓃”共同创作，仅在类脑与旅程免费发布/更新。</p>
+        underline
         <div class="flex flex-col gap-2">
           <a
-            class="text-secondary underline decoration-secondary/40 underline-offset-4 hover:decoration-secondary"
+            class="text-secondary decoration-secondary/40 underline underline-offset-4 hover:decoration-secondary"
             href="https://discord.com/channels/1134557553011998840/1423668401422729452"
             target="_blank"
             rel="noreferrer"
           >
-            类脑发布帖
+            类脑发布帖 underline
           </a>
           <a
-            class="text-secondary underline decoration-secondary/40 underline-offset-4 hover:decoration-secondary"
+            class="text-secondary decoration-secondary/40 underline underline-offset-4 hover:decoration-secondary"
             href="https://discord.com/channels/1291925535324110879/1415162247139037304"
             target="_blank"
             rel="noreferrer"
@@ -83,7 +87,7 @@
         </div>
         <div>2. 酒馆助手渲染已开启且小白x渲染已关闭</div>
         <div>3. 开梯子！开梯子！开梯子！</div>
-        <div>4. 世界书有COT，请自行缝进预设，不知道怎么缝的去类脑找，不行去答疑区问。</div>
+        <div>4. 世界书有COT，请自行缝进预设，帖子内看标注有教程，不行去答疑区问。</div>
       </div>
     </div>
 
@@ -316,7 +320,8 @@ async function checkMvu() {
     const initializedLorebooks = Object.keys(mvuData?.initialized_lorebooks ?? {});
     const statData = mvuData?.stat_data ?? {};
     const hasSexBattleVars =
-      initializedLorebooks.includes('性斗学园') || Boolean(statData?.角色基础 || statData?.核心状态 || statData?.性斗系统);
+      initializedLorebooks.includes('性斗学园') ||
+      Boolean(statData?.角色基础 || statData?.核心状态 || statData?.性斗系统);
 
     updateCheck('mvu', {
       status: hasSexBattleVars ? 'pass' : 'warn',

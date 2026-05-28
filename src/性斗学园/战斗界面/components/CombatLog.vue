@@ -1,5 +1,12 @@
 <template>
-  <div class="combat-log" :class="{ 'log-expanded': isExpanded }">
+  <div
+    class="combat-log"
+    :class="{
+      'log-expanded': isExpanded,
+      'log-with-preview': showPreview,
+      'log-side': dock === 'side',
+    }"
+  >
     <!-- 头部切换栏 -->
     <div class="log-header" @click="isExpanded = !isExpanded">
       <div class="log-title">
@@ -27,7 +34,7 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <path d="m6 9 6 6 6-6" />
+          <path d="m18 15-6-6-6 6" />
         </svg>
         <svg
           v-else
@@ -39,13 +46,13 @@
           stroke="currentColor"
           stroke-width="2"
         >
-          <path d="m18 15-6-6-6 6" />
+          <path d="m6 9 6 6 6-6" />
         </svg>
       </div>
     </div>
 
     <!-- 折叠时显示最新日志 -->
-    <div v-if="!isExpanded && logs.length > 0" class="log-preview">
+    <div v-if="showPreview && !isExpanded && logs.length > 0" class="log-preview">
       <span class="log-turn">[{{ logs[logs.length - 1].turn }}]</span>
       {{ logs[logs.length - 1].message }}
     </div>
@@ -77,11 +84,21 @@
 import { nextTick, ref, watch } from 'vue';
 import type { CombatLogEntry } from '../types';
 
-const props = defineProps<{
-  logs: CombatLogEntry[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    logs: CombatLogEntry[];
+    defaultExpanded?: boolean;
+    showPreview?: boolean;
+    dock?: 'block' | 'side';
+  }>(),
+  {
+    defaultExpanded: true,
+    showPreview: true,
+    dock: 'block',
+  },
+);
 
-const isExpanded = ref(true);
+const isExpanded = ref(props.defaultExpanded);
 const bottomRef = ref<HTMLDivElement | null>(null);
 
 // 自动滚动到底部
@@ -107,10 +124,92 @@ watch(
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   transition: all 0.3s ease;
-  height: 3rem;
+  height: 2.25rem;
+
+  &.log-with-preview:not(.log-expanded) {
+    height: 3rem;
+  }
 
   &.log-expanded {
     height: 12rem;
+  }
+}
+
+.log-side {
+  width: 2.75rem;
+  height: 9.5rem;
+  border-right: 0;
+  border-radius: 0.75rem 0 0 0.75rem;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(12, 12, 16, 0.9)),
+    radial-gradient(circle at 0 20%, rgba(125, 211, 252, 0.18), transparent 45%);
+  box-shadow:
+    -12px 16px 36px rgba(0, 0, 0, 0.45),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition:
+    width 0.26s ease,
+    height 0.26s ease,
+    box-shadow 0.26s ease,
+    background 0.26s ease;
+
+  &.log-expanded {
+    width: min(26rem, calc(100vw - 4rem));
+    height: 16rem;
+    border-radius: 0.75rem 0 0 0.75rem;
+    background: rgba(8, 11, 18, 0.92);
+  }
+
+  &:not(.log-expanded) {
+    .log-header {
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.55rem;
+      padding: 0.65rem 0.4rem;
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.14), rgba(168, 85, 247, 0.14));
+    }
+
+    .log-title {
+      flex-direction: column;
+      gap: 0.45rem;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+
+      svg {
+        transform: rotate(90deg);
+      }
+
+      span {
+        letter-spacing: 0;
+      }
+    }
+
+    .log-toggle {
+      opacity: 0.7;
+      transform: rotate(90deg);
+    }
+
+    .log-content {
+      visibility: hidden;
+    }
+  }
+
+  &.log-expanded {
+    .log-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2.35rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.12), rgba(168, 85, 247, 0.12));
+    }
+
+    .log-content {
+      padding-top: 2.85rem;
+    }
   }
 }
 
@@ -142,7 +241,7 @@ watch(
   font-weight: 700;
   color: #94a3b8;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
 }
 
 .log-toggle {

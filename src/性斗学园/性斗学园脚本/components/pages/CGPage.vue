@@ -64,14 +64,14 @@
               :key="cg.id + '-' + cg.imageIndex"
               class="cg-item"
               :class="{
-                locked: !isCGImageUnlocked(cg.id, cg.imageIndex),
-                unlocked: isCGImageUnlocked(cg.id, cg.imageIndex),
+                locked: !isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex),
+                unlocked: isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex),
               }"
               @click="handleCGImageClick(cg)"
             >
               <div class="cg-thumbnail">
                 <img
-                  v-if="isCGImageUnlocked(cg.id, cg.imageIndex)"
+                  v-if="isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex)"
                   :src="getCGImageUrl(cg)"
                   :alt="cg.name"
                   @error="handleCGImageError($event)"
@@ -82,7 +82,9 @@
                 </div>
               </div>
               <div class="cg-info">
-                <span class="cg-name">{{ isCGImageUnlocked(cg.id, cg.imageIndex) ? cg.name : '???' }}</span>
+                <span class="cg-name">{{
+                  isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex) ? cg.name : '???'
+                }}</span>
               </div>
             </div>
           </div>
@@ -107,14 +109,14 @@
               :key="cg.id + '-' + cg.imageIndex"
               class="cg-item"
               :class="{
-                locked: !isCGImageUnlocked(cg.id, cg.imageIndex),
-                unlocked: isCGImageUnlocked(cg.id, cg.imageIndex),
+                locked: !isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex),
+                unlocked: isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex),
               }"
               @click="handleCGImageClick(cg)"
             >
               <div class="cg-thumbnail">
                 <img
-                  v-if="isCGImageUnlocked(cg.id, cg.imageIndex)"
+                  v-if="isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex)"
                   :src="getCGImageUrl(cg)"
                   :alt="cg.name"
                   @error="handleCGImageError($event)"
@@ -125,7 +127,9 @@
                 </div>
               </div>
               <div class="cg-info">
-                <span class="cg-name">{{ isCGImageUnlocked(cg.id, cg.imageIndex) ? cg.name : '???' }}</span>
+                <span class="cg-name">{{
+                  isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex) ? cg.name : '???'
+                }}</span>
               </div>
             </div>
           </div>
@@ -181,10 +185,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { getCGImageKey, getUnlockedCGKeys, saveUnlockedCGKeys } from '../../../shared/localPreferences';
+import {
+  getAllUnlockedCGKeysByCharacter,
+  getCGCharacterName,
+  getCGImageKey,
+  unlockCharacterCGKey,
+} from '../../../shared/cgUnlockStore';
 import { CG_CONFIGS, type CGEvent } from '../../../战斗界面/data/cgConfig';
 
-const unlockedCGs = ref<Set<string>>(new Set());
+const unlockedCGsByCharacter = ref<Record<string, Set<string>>>({});
 
 const collapsedCharacters = ref<Set<string>>(new Set());
 
@@ -268,14 +277,16 @@ const filteredCharactersWithCGs = computed(() => {
     return availableCharacters.value;
   }
   return availableCharacters.value.filter(char => {
-    return allCGImages.value.some(cg => cg.characterName === char && isCGImageUnlocked(cg.id, cg.imageIndex));
+    return allCGImages.value.some(
+      cg => cg.characterName === char && isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex),
+    );
   });
 });
 
 function getCharacterCGs(characterName: string): FlattenedCGImage[] {
   let cgs = allCGImages.value.filter(cg => cg.characterName === characterName);
   if (showOnlyUnlocked.value) {
-    cgs = cgs.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex));
+    cgs = cgs.filter(cg => isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex));
   }
   return cgs;
 }
@@ -302,7 +313,7 @@ const getCategoryTotalCount = computed(() => {
 const getTotalCGCount = computed(() => allCGImages.value.length);
 
 const getTotalUnlockedCount = computed(() => {
-  return allCGImages.value.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex)).length;
+  return allCGImages.value.filter(cg => isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex)).length;
 });
 
 const filteredCGImages = computed(() => {
@@ -318,14 +329,14 @@ const filteredCGImages = computed(() => {
   }
 
   if (showOnlyUnlocked.value) {
-    result = result.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex));
+    result = result.filter(cg => isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex));
   }
 
   return result;
 });
 
 const getFilteredUnlockedCount = computed(() => {
-  return filteredCGImages.value.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex)).length;
+  return filteredCGImages.value.filter(cg => isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex)).length;
 });
 
 const detailCGList = computed<FlattenedCGImage[]>(() => {
@@ -336,7 +347,7 @@ const detailCGList = computed<FlattenedCGImage[]>(() => {
       ? allCGImages.value.filter(cg => cg.characterName === modalCG.value?.characterName)
       : filteredCGImages.value;
 
-  return sourceList.filter(cg => isCGImageUnlocked(cg.id, cg.imageIndex));
+  return sourceList.filter(cg => isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex));
 });
 
 const detailCGIndex = computed(() => {
@@ -347,27 +358,35 @@ const detailCGIndex = computed(() => {
 const canShowPreviousCG = computed(() => detailCGIndex.value > 0);
 const canShowNextCG = computed(() => detailCGIndex.value >= 0 && detailCGIndex.value < detailCGList.value.length - 1);
 
-function loadUnlockedCGs() {
-  unlockedCGs.value = getUnlockedCGKeys();
-  console.info('[CG页面] 加载已解锁CG数量:', unlockedCGs.value.size);
+async function loadUnlockedCGs() {
+  const unlockMap = await getAllUnlockedCGKeysByCharacter();
+  unlockedCGsByCharacter.value = Object.fromEntries(
+    Object.entries(unlockMap).map(([characterName, cgKeys]) => [characterName, new Set(cgKeys)]),
+  );
+  console.info('[CG页面] 加载已解锁CG数量:', getTotalUnlockedCount.value);
 }
 
-function saveUnlockedCGs() {
-  saveUnlockedCGKeys(unlockedCGs.value);
-}
-
-function unlockCGImage(cgId: string, imageIndex: number) {
+async function unlockCGImage(characterName: string, cgId: string, imageIndex: number) {
   const key = getCGImageKey(cgId, imageIndex);
-  if (!unlockedCGs.value.has(key)) {
-    unlockedCGs.value.add(key);
-    saveUnlockedCGs();
-    console.info('[CG页面] 解锁CG图片:', key);
+  const currentKeys = new Set(unlockedCGsByCharacter.value[characterName] ?? []);
+
+  if (!currentKeys.has(key)) {
+    currentKeys.add(key);
+    unlockedCGsByCharacter.value = {
+      ...unlockedCGsByCharacter.value,
+      [characterName]: currentKeys,
+    };
+  }
+
+  const unlockedNew = await unlockCharacterCGKey(characterName, key);
+  if (unlockedNew) {
+    console.info('[CG页面] 解锁CG图片:', characterName, key);
   }
 }
 
-function isCGImageUnlocked(cgId: string, imageIndex: number): boolean {
+function isCGImageUnlocked(characterName: string, cgId: string, imageIndex: number): boolean {
   const key = getCGImageKey(cgId, imageIndex);
-  return unlockedCGs.value.has(key);
+  return unlockedCGsByCharacter.value[characterName]?.has(key) ?? false;
 }
 
 function getCategoryCount(category: string): number {
@@ -384,8 +403,9 @@ function getCategoryLabel(category: string): string {
 }
 
 function getCharacterUnlockCount(characterName: string): number {
-  return allCGImages.value.filter(cg => cg.characterName === characterName && isCGImageUnlocked(cg.id, cg.imageIndex))
-    .length;
+  return allCGImages.value.filter(
+    cg => cg.characterName === characterName && isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex),
+  ).length;
 }
 
 function getAvatarUrl(name: string): string {
@@ -439,7 +459,7 @@ function handleModalImageError(event: Event) {
 }
 
 function handleCGImageClick(cg: FlattenedCGImage) {
-  if (!isCGImageUnlocked(cg.id, cg.imageIndex)) {
+  if (!isCGImageUnlocked(cg.characterName, cg.id, cg.imageIndex)) {
     if (typeof toastr !== 'undefined') {
       toastr.info('该 CG 尚未解锁，请先在战斗中触发对应事件。');
     }
@@ -463,20 +483,38 @@ function closeModal() {
   modalCG.value = null;
 }
 
-function handleCGUnlockEvent(event: CustomEvent) {
+async function unlockCGImagesByLookup(cgId: string, imageIndex?: number, characterName?: string) {
+  const targetCharacterName = characterName ? (getCGCharacterName(characterName) ?? characterName) : undefined;
+  const eventCGs = allCGImages.value.filter(cg => {
+    if (cg.id !== cgId) {
+      return false;
+    }
+    if (imageIndex !== undefined && cg.imageIndex !== imageIndex) {
+      return false;
+    }
+    if (targetCharacterName && cg.characterName !== targetCharacterName) {
+      return false;
+    }
+    return true;
+  });
+
+  for (const cg of eventCGs) {
+    await unlockCGImage(cg.characterName, cg.id, cg.imageIndex);
+  }
+}
+
+async function handleCGUnlockEvent(event: CustomEvent) {
   const cgId = event.detail?.cgId;
   const imageIndex = event.detail?.imageIndex;
+  const characterName = event.detail?.characterName;
 
   if (cgId !== undefined) {
-    if (imageIndex !== undefined) {
-      unlockCGImage(cgId, imageIndex);
-    } else {
-      const eventCGs = allCGImages.value.filter(cg => cg.id === cgId);
-      for (const cg of eventCGs) {
-        unlockCGImage(cg.id, cg.imageIndex);
-      }
-    }
+    await unlockCGImagesByLookup(cgId, imageIndex, characterName);
   }
+}
+
+function handleCGUnlockRecordsUpdated() {
+  void loadUnlockedCGs();
 }
 
 watch(
@@ -493,16 +531,19 @@ watch(
 );
 
 onMounted(() => {
-  loadUnlockedCGs();
+  void loadUnlockedCGs();
 
   window.addEventListener('cg-unlocked', handleCGUnlockEvent as EventListener);
+  window.addEventListener('cg-unlock-records-updated', handleCGUnlockRecordsUpdated);
 
   const globalAny = window as any;
-  globalAny.__cgUnlockImage = unlockCGImage;
+  globalAny.__cgUnlockImage = (cgId: string, imageIndex?: number, characterName?: string) =>
+    unlockCGImagesByLookup(cgId, imageIndex, characterName);
 });
 
 onUnmounted(() => {
   window.removeEventListener('cg-unlocked', handleCGUnlockEvent as EventListener);
+  window.removeEventListener('cg-unlock-records-updated', handleCGUnlockRecordsUpdated);
 });
 </script>
 

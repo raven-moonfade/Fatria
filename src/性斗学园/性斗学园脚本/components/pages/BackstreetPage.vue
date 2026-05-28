@@ -151,7 +151,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { backstreetService } from '../../phone/backstreetService';
 import type { BackstreetContact, BackstreetMessage } from '../../phone/types';
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
-import { getStoredPlayerAvatar } from '../../../shared/localPreferences';
+import { PLAYER_AVATAR_UPDATED_EVENT, resolveStoredPlayerAvatar } from '../../../shared/localPreferences';
 
 const props = defineProps<{
   characterData: any;
@@ -195,12 +195,14 @@ watch(
 
 onMounted(() => {
   loadContacts();
-  loadPlayerAvatar();
+  void loadPlayerAvatar();
+  window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.addEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.addEventListener('storage', handlePhonePreferencesStorage);
 });
 
 onUnmounted(() => {
+  window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.removeEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.removeEventListener('storage', handlePhonePreferencesStorage);
 });
@@ -244,13 +246,17 @@ function handlePhonePreferencesStorage(event: StorageEvent) {
   syncVisibleMessageCount();
 }
 
-function loadPlayerAvatar() {
+async function loadPlayerAvatar() {
   try {
-    const url = getStoredPlayerAvatar();
+    const url = await resolveStoredPlayerAvatar();
     playerAvatarUrl.value = url?.trim() || '';
   } catch {
     playerAvatarUrl.value = '';
   }
+}
+
+function handlePlayerAvatarUpdated() {
+  void loadPlayerAvatar();
 }
 
 async function loadContacts() {
@@ -264,7 +270,7 @@ async function loadContacts() {
 
 async function selectContact(name: string) {
   activeContact.value = name;
-  loadPlayerAvatar();
+  void loadPlayerAvatar();
   await loadThread(name);
 }
 

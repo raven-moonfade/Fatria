@@ -4,9 +4,11 @@ function shouldKeepNarrationLog(log: CombatLogEntry): boolean {
   const message = log.message;
 
   if ((log.source === 'player' || log.source === 'enemy') && message.includes('使用了')) return true;
+  if (message.includes('【协同作战】') && message.includes('使用了')) return true;
   if (message.includes('闪避了攻击')) return true;
   if (message.includes('暴击！')) return true;
-  if (message.includes('造成') && (message.includes('伤害') || message.includes('暴击'))) return true;
+  if (message.includes('造成') && (message.includes('快感') || message.includes('伤害') || message.includes('暴击')))
+    return true;
   if (message.includes('的快感从')) return true;
   if (message.includes('第') && message.includes('回合')) return true;
   if (message.includes('闪避了')) return true;

@@ -1,8 +1,5 @@
 <template>
   <div class="profile-page">
-    <!-- 版本号显示 -->
-    <div class="version-label">版本：2.5.6.0</div>
-
     <button class="help-btn" @click="showHelp = true" title="玩法说明">
       <i class="fas fa-question"></i>
     </button>
@@ -343,7 +340,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { getStoredPlayerAvatar, saveStoredPlayerAvatar } from '../../../shared/localPreferences';
+import { resolveStoredPlayerAvatar, saveStoredPlayerAvatarBlob } from '../../../shared/localPreferences';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import { getPermanentBonus, getPlayerDerivedStats, getTemporaryBonus } from '../../../shared/statSelectors';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
@@ -489,9 +486,9 @@ const hasTempBonuses = computed(() => {
 });
 
 // 从本地偏好加载头像
-function loadAvatarUrl() {
+async function loadAvatarUrl() {
   try {
-    const localSaved = getStoredPlayerAvatar();
+    const localSaved = await resolveStoredPlayerAvatar();
     if (localSaved && localSaved.trim()) {
       avatarUrl.value = localSaved;
       return;
@@ -502,11 +499,10 @@ function loadAvatarUrl() {
   avatarUrl.value = '';
 }
 
-// 保存头像 URL 到本地偏好
-async function saveAvatarUrl(url: string) {
+// 保存头像到本地偏好
+async function saveAvatarFile(file: Blob) {
   try {
-    saveStoredPlayerAvatar(url);
-    avatarUrl.value = url;
+    avatarUrl.value = await saveStoredPlayerAvatarBlob(file);
     toastr.success('头像上传成功', '成功', { timeOut: 2000 });
   } catch (err) {
     console.error('[状态栏] 保存头像失败:', err);
@@ -518,7 +514,7 @@ function handleAvatarClick() {
   fileInputRef.value?.click();
 }
 
-function handleAvatarChange(event: Event) {
+async function handleAvatarChange(event: Event) {
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
   if (!file) return;
@@ -526,22 +522,18 @@ function handleAvatarChange(event: Event) {
   // 检查文件类型
   if (!file.type.startsWith('image/')) {
     toastr.error('请选择图片文件', '错误', { timeOut: 3000 });
+    target.value = '';
     return;
   }
 
-  // 检查文件大小（限制为5MB）
-  if (file.size > 5 * 1024 * 1024) {
-    toastr.error('图片大小不能超过5MB', '错误', { timeOut: 3000 });
+  // 检查文件大小（限制为25MB）
+  if (file.size > 25 * 1024 * 1024) {
+    toastr.error('图片大小不能超过25MB', '错误', { timeOut: 3000 });
+    target.value = '';
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    if (typeof reader.result === 'string') {
-      saveAvatarUrl(reader.result);
-    }
-  };
-  reader.readAsDataURL(file);
+  await saveAvatarFile(file);
 
   // 清空input，允许重复选择同一文件
   target.value = '';
@@ -621,13 +613,13 @@ function getExpPercentage(exp: number): number {
 }
 
 onMounted(() => {
-  loadAvatarUrl();
+  void loadAvatarUrl();
 
   // 监听MVU变量更新，同步头像
   const globalAny = window as any;
   if (globalAny.eventOn && globalAny.Mvu) {
     globalAny.eventOn(globalAny.Mvu.events.VARIABLE_UPDATE_ENDED, () => {
-      loadAvatarUrl();
+      void loadAvatarUrl();
     });
   }
 });
@@ -668,18 +660,6 @@ onMounted(() => {
     font-size: 13px;
     line-height: 1;
   }
-}
-
-.version-label {
-  position: absolute;
-  top: 16px;
-  left: 12px;
-  z-index: 30;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-  font-weight: 400;
-  letter-spacing: 0.2px;
-  user-select: none;
 }
 
 .help-overlay {
