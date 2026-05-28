@@ -2,6 +2,7 @@ import type {
   BossMechanicAction,
   BossMechanicDefinition,
   BossMechanicKind,
+  BossPhaseDefinition,
   DeclarativeBossDefinition,
 } from './bossMechanicEngine';
 
@@ -736,7 +737,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     id: 'exorcism_oni_sakura',
     sourceEntry: '驱魔_Boss_鬼樱.txt',
     displayName: '鬼樱',
-    aliases: ['鬼樱', '风音'],
+    aliases: ['鬼樱'],
     category: 'exorcism',
     status: 'draft',
     phases: [
@@ -843,7 +844,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     id: 'exorcism_zombie_tianyu',
     sourceEntry: '驱魔_Boss_僵尸天羽.txt',
     displayName: '僵尸天羽',
-    aliases: ['僵尸天羽', '凰天羽', '天羽'],
+    aliases: ['僵尸天羽', '僵尸凰天羽'],
     category: 'exorcism',
     status: 'draft',
     phases: [{ phase: 1, displayName: '僵尸化天羽', dataKey: '僵尸天羽', skillPoolKey: 'zombie_tianyu' }],
@@ -960,7 +961,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     id: 'exorcism_spirit_sakura',
     sourceEntry: '驱魔_Boss_灵樱.txt',
     displayName: '灵樱',
-    aliases: ['灵樱', '铃音'],
+    aliases: ['灵樱'],
     category: 'exorcism',
     status: 'draft',
     phases: [{ phase: 1, displayName: '堕落铃音', dataKey: '灵樱', skillPoolKey: 'spirit_sakura' }],
@@ -1320,7 +1321,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     id: 'exorcism_wuchang',
     sourceEntry: '驱魔_Boss_无常.txt',
     displayName: '无常',
-    aliases: ['无常', '黑白无常', '黑无常', '白无常'],
+    aliases: ['无常', '无常姐妹', '黑白无常', '黑无常', '白无常'],
     category: 'exorcism',
     status: 'draft',
     phases: [
@@ -1530,13 +1531,52 @@ export const EXORCISM_BOSS_DEFINITION_BY_ID = new Map(
   EXORCISM_BOSS_DEFINITIONS.map(definition => [definition.id, definition]),
 );
 
+export interface ExorcismBossDefinitionMatch {
+  definition: DeclarativeBossDefinition;
+  phase?: BossPhaseDefinition;
+}
+
+function normalizeBossDefinitionKeyword(keyword: string): string {
+  return String(keyword || '')
+    .trim()
+    .toLowerCase();
+}
+
+function getBossPhaseIdentityNames(definition: DeclarativeBossDefinition, phase: BossPhaseDefinition): string[] {
+  return [
+    phase.displayName,
+    phase.dataKey,
+    phase.skillPoolKey,
+    `${definition.displayName}·${phase.displayName}`,
+  ].filter((name): name is string => Boolean(name));
+}
+
+export function getExorcismBossDefinitionMatch(keyword: string): ExorcismBossDefinitionMatch | undefined {
+  const normalizedKeyword = normalizeBossDefinitionKeyword(keyword);
+
+  for (const definition of EXORCISM_BOSS_DEFINITIONS) {
+    if (
+      normalizeBossDefinitionKeyword(definition.id) === normalizedKeyword ||
+      normalizeBossDefinitionKeyword(definition.displayName) === normalizedKeyword ||
+      normalizeBossDefinitionKeyword(definition.sourceEntry) === normalizedKeyword ||
+      definition.aliases.some(alias => normalizeBossDefinitionKeyword(alias) === normalizedKeyword)
+    ) {
+      return { definition };
+    }
+
+    const phase = definition.phases.find(item =>
+      getBossPhaseIdentityNames(definition, item).some(name => normalizeBossDefinitionKeyword(name) === normalizedKeyword),
+    );
+    if (phase) {
+      return { definition, phase };
+    }
+  }
+
+  return undefined;
+}
+
 export function getExorcismBossDefinition(keyword: string): DeclarativeBossDefinition | undefined {
-  const normalizedKeyword = keyword.toLowerCase();
-  return EXORCISM_BOSS_DEFINITIONS.find(definition => {
-    if (definition.id === keyword || definition.displayName === keyword || definition.sourceEntry === keyword)
-      return true;
-    return definition.aliases.some(alias => alias.toLowerCase() === normalizedKeyword);
-  });
+  return getExorcismBossDefinitionMatch(keyword)?.definition;
 }
 
 export function isExorcismBossDefinitionReady(keyword: string): boolean {

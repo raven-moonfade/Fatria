@@ -6,7 +6,7 @@ import {
   type BossPhaseDefinition,
   type DeclarativeBossDefinition,
 } from './bossMechanicEngine';
-import { getExorcismBossDefinition } from './exorcismBossDefinitions';
+import { getExorcismBossDefinitionMatch } from './exorcismBossDefinitions';
 import type { Character, Skill } from './types';
 
 export interface ExorcismRuntimeSetup {
@@ -14,6 +14,8 @@ export interface ExorcismRuntimeSetup {
   runtime: BossMechanicRuntime;
   phaseConfig: BossPhaseRuntimeConfig;
 }
+
+const ALWAYS_START_FROM_FIRST_PHASE_BOSS_IDS = new Set(['exorcism_wuchang']);
 
 function getPhaseTransitionEffect(phase: number): BossPhaseTransitionEffect {
   return phase <= 2 ? 'phase1to2' : 'phase2to3';
@@ -52,10 +54,16 @@ export function createExorcismRuntimeSetup(params: {
   defaultClimaxLimit: number;
   getEnemyPortraitUrl: (enemyName: string) => string;
 }): ExorcismRuntimeSetup | null {
-  const definition = getExorcismBossDefinition(params.enemyName);
+  const match = getExorcismBossDefinitionMatch(params.enemyName);
+  const definition = match?.definition;
   if (!definition || definition.status === 'blocked') return null;
 
   const runtime = createBossMechanicRuntime(definition);
+  if (match.phase && !ALWAYS_START_FROM_FIRST_PHASE_BOSS_IDS.has(definition.id)) {
+    runtime.currentPhase = match.phase.phase;
+    runtime.skillPoolKey = match.phase.skillPoolKey;
+  }
+
   const phaseConfig = createExorcismPhaseRuntimeConfig({
     definition,
     phase: runtime.currentPhase,

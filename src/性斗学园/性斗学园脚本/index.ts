@@ -23,14 +23,372 @@ import { getDailyTalentEffect } from './data/talentDatabase';
 import { installBackstreetMainPromptInjector } from './phone/mainPromptInjector';
 
 /**
- * 规范化名字：去除中间点等特殊字符
+ * 规范化名字：去除中间点、空白等不影响身份的字符
  * 例如："雪莉·克里姆希尔德" -> "雪莉克里姆希尔德"
  * @param name 原始名称
  * @returns 去除特殊字符后的名称
  */
 function normalizeName(name: string): string {
-  // 去除中间点（·、・、‧等变体）
-  return name.replace(/[·・‧]/g, '');
+  return String(name || '')
+    .trim()
+    .replace(/[·・‧•\s\u3000._\-\u2014]/g, '');
+}
+
+type CharacterAliasTarget = string | string[];
+
+const CANONICAL_CHARACTER_NAMES = [
+  '伊甸阿斯莫德',
+  '白石响子',
+  '弗洛拉梅斯梅尔',
+  '布伦希尔德',
+  '维多利亚戈德温',
+  '艾丽卡施耐德',
+  '雪莉克里姆希尔德',
+  '白川千夏',
+  '艾米丽威廉姆斯',
+  '安娜科兹洛娃',
+  '克劳迪娅威斯特',
+  '中岛诗织',
+  '黑塔小姐',
+  '露娜拉克缇丝',
+  '伊丽莎白夜羽',
+  '樱岛麻衣',
+  '潘多拉小姐',
+  '阿米莉亚安斯华斯',
+  '森莉花',
+  '如月诗乃',
+  '樱井结衣',
+  '角楯花凛',
+  '月城遥',
+  '上杉亚衣',
+  '天宫院抚子',
+  '索亚伊万诺娃',
+  '九条凛音',
+  '赤城朱音',
+  '蓝原结衣',
+  '橘美玲',
+  '克里奥佩特拉七世',
+  '星野光',
+  '望月静',
+  '早坂蕾娜',
+  '伊尼亚德瓦卢瓦',
+  '小鸟游雏子',
+  '猫宫宁宁',
+  '犬饲真子',
+  '娜塔莎斯迈尔',
+  '铃木惠美',
+  '山田花子',
+  '佐藤幸子',
+  '沐芯兰',
+  '伊甸芙宁',
+  '艾格妮丝',
+  '绫濑川',
+  '维纳斯',
+  '索菲亚',
+  '莉莉安',
+  '加藤鹰',
+  '佐藤健',
+  '艾琳海德',
+  '神崎凛',
+  '爱丽丝温特',
+  '莎拉斯通',
+  '明日香',
+  '赵婷婷',
+  '李小云',
+  '月下香',
+  '蝶',
+  '雪',
+  '风',
+  '田中勇',
+  '李强',
+  '安琪',
+  '美咲绫',
+  '零',
+  '桃乃爱',
+  '风音',
+  '铃音',
+  '凰天羽',
+  '娜拉',
+  '芙莲',
+  '克莉丝汀',
+  '伽拉娜',
+  '露美',
+  '墨柒',
+  '缪斯',
+  '响木天音',
+  '维斯伊尔',
+  '米莉',
+  '梅朵',
+  '玄霜',
+  '青鸢',
+  '云溪',
+  '梅菲丝',
+  '贝阿切丝特',
+  '特蕾莎',
+  '玛利亚',
+  '赛莲',
+  '夏洛特',
+  '柳烟霞',
+  '菲奥娜',
+  '贝尔芬格',
+  '淫蛇女妖',
+  '淫虎娘',
+  '女吊',
+  '夜叉娘',
+  '霜凝',
+  '无常',
+  '堕落人偶',
+  '狼娘',
+  '恶灵娘',
+  '南瓜头娘',
+  '希思',
+  '阿曼达',
+  '薇尔',
+  '僵尸天羽',
+  '阿娜温',
+  '黑暗史莱姆',
+  '石像鬼娘',
+  '暗精灵娘',
+  '八尺夫人',
+  '克洛伊',
+  '万魔之母',
+  '鬼巫女椿',
+  '鬼樱',
+  '玉藻前',
+  '灵樱',
+  '猫又',
+  '天狗',
+  '络新妇',
+  '雪女',
+] as const;
+
+const CHARACTER_NAME_ALIASES: Record<string, CharacterAliasTarget> = {
+  阿斯莫德: '伊甸阿斯莫德',
+  白石: '白石响子',
+  响子: '白石响子',
+  弗洛拉: '弗洛拉梅斯梅尔',
+  梅斯梅尔: '弗洛拉梅斯梅尔',
+  布伦: '布伦希尔德',
+  女武神: '布伦希尔德',
+  维多利亚: '维多利亚戈德温',
+  戈德温: '维多利亚戈德温',
+  艾丽卡: '艾丽卡施耐德',
+  施耐德: '艾丽卡施耐德',
+  雪莉: '雪莉克里姆希尔德',
+  克里姆: '雪莉克里姆希尔德',
+  克里姆希尔德: '雪莉克里姆希尔德',
+  白川: '白川千夏',
+  千夏: '白川千夏',
+  艾米丽: '艾米丽威廉姆斯',
+  威廉姆斯: '艾米丽威廉姆斯',
+  安娜: '安娜科兹洛娃',
+  科兹洛娃: '安娜科兹洛娃',
+  克劳迪娅: '克劳迪娅威斯特',
+  威斯特: '克劳迪娅威斯特',
+  中岛: '中岛诗织',
+  诗织: '中岛诗织',
+  黑塔: '黑塔小姐',
+  露娜: '露娜拉克缇丝',
+  拉克缇丝: '露娜拉克缇丝',
+  伊丽莎白: '伊丽莎白夜羽',
+  夜羽: '伊丽莎白夜羽',
+  樱岛: '樱岛麻衣',
+  麻衣: '樱岛麻衣',
+  潘多拉: '潘多拉小姐',
+  阿米莉亚: '阿米莉亚安斯华斯',
+  安斯华斯: '阿米莉亚安斯华斯',
+  森: '森莉花',
+  莉花: '森莉花',
+  如月: '如月诗乃',
+  诗乃: '如月诗乃',
+  樱井: '樱井结衣',
+  结衣: '樱井结衣',
+  角楯: '角楯花凛',
+  花凛: '角楯花凛',
+  月城: '月城遥',
+  遥: '月城遥',
+  上杉: '上杉亚衣',
+  亚衣: '上杉亚衣',
+  天宫院: '天宫院抚子',
+  抚子: '天宫院抚子',
+  索亚: '索亚伊万诺娃',
+  伊万诺娃: '索亚伊万诺娃',
+  九条: '九条凛音',
+  凛音: '九条凛音',
+  赤城: '赤城朱音',
+  朱音: '赤城朱音',
+  蓝原: '蓝原结衣',
+  橘: '橘美玲',
+  美玲: '橘美玲',
+  克里奥: '克里奥佩特拉七世',
+  克里奥佩特拉: '克里奥佩特拉七世',
+  佩特拉: '克里奥佩特拉七世',
+  七世: '克里奥佩特拉七世',
+  星野: '星野光',
+  光: '星野光',
+  望月: '望月静',
+  静: '望月静',
+  早坂: '早坂蕾娜',
+  蕾娜: '早坂蕾娜',
+  伊尼亚: '伊尼亚德瓦卢瓦',
+  德瓦卢瓦: '伊尼亚德瓦卢瓦',
+  小鸟游: '小鸟游雏子',
+  雏子: '小鸟游雏子',
+  猫宫: '猫宫宁宁',
+  宁宁: '猫宫宁宁',
+  犬饲: '犬饲真子',
+  真子: '犬饲真子',
+  娜塔莎: '娜塔莎斯迈尔',
+  斯迈尔: '娜塔莎斯迈尔',
+  铃木: '铃木惠美',
+  惠美: '铃木惠美',
+  山田: '山田花子',
+  花子: '山田花子',
+  茉莉: '沐芯兰',
+  芙宁: '伊甸芙宁',
+  蔷薇: '艾格妮丝',
+  神崎: '神崎凛',
+  莎拉: '莎拉斯通',
+  斯通: '莎拉斯通',
+  桃乃: '桃乃爱',
+  天羽: '凰天羽',
+  风音和铃音: ['风音', '铃音'],
+  风音与铃音: ['风音', '铃音'],
+  双子巫女: ['风音', '铃音'],
+  无常姐妹: '无常',
+  黑白无常: '无常',
+  黑无常: '无常',
+  白无常: '无常',
+  无常_小黑: '无常',
+  无常_小白: '无常',
+  无常_双人: '无常',
+  鬼童子: '夜叉娘',
+  蛛娘: '络新妇',
+};
+
+const COMBAT_ENEMY_NAME_ALIASES: Record<string, string> = {
+  无常: '无常',
+  无常姐妹: '无常',
+  黑白无常: '无常',
+  黑无常: '无常',
+  白无常: '无常',
+  无常_小黑: '无常',
+  无常_小白: '无常',
+  无常_双人: '无常',
+};
+
+const CANONICAL_CHARACTER_NAME_MAP = new Map(CANONICAL_CHARACTER_NAMES.map(name => [normalizeName(name), name]));
+const CHARACTER_ALIAS_MAP = new Map(
+  Object.entries(CHARACTER_NAME_ALIASES).map(([alias, target]) => [normalizeName(alias), target] as const),
+);
+const COMBAT_ENEMY_ALIAS_MAP = new Map(
+  Object.entries(COMBAT_ENEMY_NAME_ALIASES).map(([alias, target]) => [normalizeName(alias), target] as const),
+);
+
+function splitCharacterNameList(value: unknown): string[] {
+  const rawItems = Array.isArray(value) ? value : [value];
+  return rawItems
+    .flatMap(item => String(item || '').split(/[，,、|/；;]+/))
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function resolveCanonicalCharacterTargets(name: unknown): string[] {
+  const normalizedName = normalizeName(String(name || ''));
+  if (!normalizedName) return [];
+
+  const canonicalName = CANONICAL_CHARACTER_NAME_MAP.get(normalizedName);
+  if (canonicalName) return [canonicalName];
+
+  const aliasTarget = CHARACTER_ALIAS_MAP.get(normalizedName);
+  if (!aliasTarget) return [String(name || '').trim()].filter(Boolean);
+
+  return Array.isArray(aliasTarget) ? aliasTarget : [aliasTarget];
+}
+
+function resolveCanonicalCharacterName(name: unknown): string {
+  return resolveCanonicalCharacterTargets(name)[0] || String(name || '').trim();
+}
+
+function resolveCanonicalCombatEnemyName(name: unknown): string {
+  const normalizedName = normalizeName(String(name || ''));
+  if (!normalizedName) return '';
+
+  return COMBAT_ENEMY_ALIAS_MAP.get(normalizedName) || resolveCanonicalCharacterName(name);
+}
+
+function uniqueCharacterNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const name of names) {
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    result.push(name);
+  }
+
+  return result;
+}
+
+function areStringArraysEqual(lhs: string[], rhs: string[]): boolean {
+  return lhs.length === rhs.length && lhs.every((value, index) => value === rhs[index]);
+}
+
+function mergeRelationshipData(existingData: any, incomingData: any): any {
+  if (!existingData || typeof existingData !== 'object') return incomingData;
+  if (!incomingData || typeof incomingData !== 'object') return existingData;
+
+  const merged = { ...existingData, ...incomingData };
+  merged.好感度 = Math.max(Number(existingData.好感度 || 0), Number(incomingData.好感度 || 0));
+  return merged;
+}
+
+function normalizeCharacterNamesInMvuData(mvuData: Mvu.MvuData): { changed: boolean; logs: string[] } {
+  const statData = mvuData?.stat_data as Record<string, any> | undefined;
+  if (!statData) return { changed: false, logs: [] };
+
+  let changed = false;
+  const logs: string[] = [];
+  const relationships = get(statData, '关系系统', {}) as Record<string, any>;
+
+  if (relationships && typeof relationships === 'object') {
+    for (const key of Object.keys(relationships)) {
+      if (key === '在场人物') continue;
+
+      const canonicalKey = resolveCanonicalCharacterName(key);
+      if (canonicalKey && canonicalKey !== key) {
+        relationships[canonicalKey] = mergeRelationshipData(relationships[canonicalKey], relationships[key]);
+        delete relationships[key];
+        changed = true;
+        logs.push(`关系系统 "${key}" -> "${canonicalKey}"`);
+      }
+    }
+
+    const presentCharacters = relationships['在场人物'];
+    const normalizedCharacters = uniqueCharacterNames(
+      splitCharacterNameList(presentCharacters).flatMap(name => resolveCanonicalCharacterTargets(name)),
+    );
+
+    if (!Array.isArray(presentCharacters) || !areStringArraysEqual(presentCharacters, normalizedCharacters)) {
+      relationships['在场人物'] = normalizedCharacters;
+      changed = true;
+      logs.push(`在场人物 -> ${normalizedCharacters.join(', ') || '空'}`);
+    }
+
+    set(statData, '关系系统', relationships);
+  }
+
+  const enemyName = get(statData, '性斗系统.对手名称', '');
+  if (typeof enemyName === 'string' && enemyName.trim()) {
+    const canonicalEnemyName = resolveCanonicalCombatEnemyName(enemyName);
+    if (canonicalEnemyName && canonicalEnemyName !== enemyName) {
+      set(statData, '性斗系统.对手名称', canonicalEnemyName);
+      changed = true;
+      logs.push(`对手名称 "${enemyName}" -> "${canonicalEnemyName}"`);
+    }
+  }
+
+  return { changed, logs };
 }
 
 // 等待 MVU 初始化（带安全检查和超时）
@@ -139,11 +497,43 @@ await enforcePotentialCapOnStartup();
 
 // 防止重复更新的标志
 let isUpdating = false;
+let isNormalizingCharacterNames = false;
 
 // 状态栏相关
 let statusBarApp: any = null;
 let statusBarContainer: JQuery<HTMLDivElement> | null = null;
 let statusBarVisible = false;
+
+async function normalizeLatestCharacterNames(reason: string) {
+  if (isNormalizingCharacterNames) {
+    return false;
+  }
+
+  try {
+    isNormalizingCharacterNames = true;
+    const mvuData = await getLatestMvuData();
+    if (!mvuData || !mvuData.stat_data) {
+      console.warn(`[性斗学园脚本] 无法获取 MVU 数据，跳过角色名规范化（${reason}）`);
+      return false;
+    }
+
+    const result = normalizeCharacterNamesInMvuData(mvuData);
+    if (!result.changed) {
+      return false;
+    }
+
+    await replaceLatestMvuData(mvuData);
+    console.info(`[性斗学园脚本] 角色名规范化完成（${reason}）：${result.logs.join('；')}`);
+    return true;
+  } catch (error) {
+    console.error('[性斗学园脚本] 角色名规范化时出错:', error);
+    return false;
+  } finally {
+    isNormalizingCharacterNames = false;
+  }
+}
+
+await normalizeLatestCharacterNames('脚本启动');
 
 /**
  * 从 MVU 数据中获取变量值（安全获取）
@@ -461,60 +851,12 @@ function registerMvuEventListeners() {
     eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, async (variables, variables_before_update) => {
       console.info('[性斗学园脚本] 检测到 MVU 变量更新事件');
 
-      // ==================== 去除关系系统中名字的中间点 ====================
-      const relationships = get(variables, 'stat_data.关系系统', {}) as Record<string, any>;
-      if (relationships && typeof relationships === 'object') {
-        const keysToNormalize: { oldKey: string; newKey: string }[] = [];
-
-        // 遍历关系系统的所有键（人物名字）
-        for (const key of Object.keys(relationships)) {
-          // 跳过非人物键（如在场人物数组）
-          if (key === '在场人物') continue;
-
-          const normalizedKey = normalizeName(key);
-          // 如果名字包含中间点，需要规范化
-          if (normalizedKey !== key) {
-            keysToNormalize.push({ oldKey: key, newKey: normalizedKey });
-          }
-        }
-
-        // 如果有需要规范化的名字
-        if (keysToNormalize.length > 0) {
-          for (const { oldKey, newKey } of keysToNormalize) {
-            // 如果规范化后的键已存在，合并数据（保留更高的好感度）
-            if (relationships[newKey]) {
-              const oldData = relationships[oldKey];
-              const existingData = relationships[newKey];
-              // 保留好感度更高的关系数据
-              if ((oldData?.好感度 || 0) > (existingData?.好感度 || 0)) {
-                relationships[newKey] = oldData;
-              }
-            } else {
-              // 直接使用规范化后的键
-              relationships[newKey] = relationships[oldKey];
-            }
-            // 删除旧键
-            delete relationships[oldKey];
-            console.info(`[性斗学园脚本] 关系系统名字规范化: "${oldKey}" → "${newKey}"`);
-          }
-          // 更新变量
-          set(variables, 'stat_data.关系系统', relationships);
-        }
-
-        // 同时规范化在场人物数组中的名字
-        const presentCharacters = relationships['在场人物'] as string[] | undefined;
-        if (Array.isArray(presentCharacters)) {
-          const normalizedCharacters = presentCharacters.map((name: string) => normalizeName(name));
-          // 检查是否有变化
-          const hasChange = presentCharacters.some((name: string, i: number) => name !== normalizedCharacters[i]);
-          if (hasChange) {
-            relationships['在场人物'] = normalizedCharacters;
-            set(variables, 'stat_data.关系系统', relationships);
-            console.info(
-              `[性斗学园脚本] 在场人物名字规范化: ${presentCharacters.join(', ')} → ${normalizedCharacters.join(', ')}`,
-            );
-          }
-        }
+      const normalizePreview = normalizeCharacterNamesInMvuData(variables);
+      if (normalizePreview.changed) {
+        console.info(`[性斗学园脚本] 检测到角色名需要规范化：${normalizePreview.logs.join('；')}`);
+        setTimeout(async () => {
+          await normalizeLatestCharacterNames('MVU变量更新');
+        }, 50);
       }
 
       // 检查会影响持久派生事务的变量变化：高潮处理、升级、段位、满好感CG。
@@ -561,6 +903,7 @@ function registerMvuEventListeners() {
      */
     eventOn(Mvu.events.VARIABLE_INITIALIZED, async () => {
       await enforcePotentialCapOnStartup();
+      await normalizeLatestCharacterNames('变量初始化');
       await updateDependentVariables();
     });
 
@@ -636,6 +979,7 @@ if (typeof tavern_events !== 'undefined' && tavern_events.MESSAGE_RECEIVED) {
     console.info('[性斗学园脚本] 检测到消息接收事件，开始更新对话后的状态');
     // 延迟一点执行，确保消息已完全更新
     setTimeout(async () => {
+      await normalizeLatestCharacterNames('AI回复后');
       await handleConversationUpdate();
       // 对话后也需要重新计算依赖变量
       await updateDependentVariables();
