@@ -719,7 +719,7 @@ export const EXORCISM_ENEMY_SKILL_MAP: Record<string, string[]> = {
   黑无常: pool('无常_小黑'),
   wuchang_black: pool('无常_小黑'),
   无常_小白: pool('无常_小白'),
-  白无常: pool('无常_小黑'),
+  白无常: pool('无常_小白'),
   wuchang_white: pool('无常_小白'),
   无常_双人: pool('无常_双人'),
   无常: pool('无常_小黑'),

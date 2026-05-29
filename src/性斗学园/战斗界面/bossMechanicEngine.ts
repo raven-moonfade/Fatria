@@ -52,6 +52,7 @@ export type BossActionType =
   | 'addProgress'
   | 'setProgress'
   | 'resetPleasure'
+  | 'resetCombatResources'
   | 'setFlag'
   | 'queueDialogue'
   | 'log'
@@ -71,6 +72,7 @@ export type BossActionType =
   | 'none';
 
 export type BossActorState = 'active' | 'downed' | 'defeated' | 'purified';
+export type BossResourceResetTarget = 'player' | 'enemy' | 'both';
 
 export interface BossMechanicTrigger {
   type: BossTriggerType;
@@ -118,6 +120,9 @@ export interface BossMechanicAction {
   actorId?: string;
   counterKey?: string;
   actorState?: BossActorState;
+  resourceTarget?: BossResourceResetTarget;
+  resetPleasure?: boolean;
+  resetClimaxCount?: boolean;
 }
 
 export interface BossMechanicDefinition {

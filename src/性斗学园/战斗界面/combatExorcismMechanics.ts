@@ -29,6 +29,23 @@ function getPhaseDisplayName(definition: DeclarativeBossDefinition, phase: BossP
   return `${definition.displayName}·${phaseName}`;
 }
 
+function hasClimaxPhaseTransition(definition: DeclarativeBossDefinition): boolean {
+  return definition.mechanics.some(
+    mechanic =>
+      mechanic.triggers.some(trigger => trigger.type === 'climaxCountAtLeast') &&
+      mechanic.actions.some(action => action.type === 'setPhase'),
+  );
+}
+
+function getClimaxPhaseLimit(definition: DeclarativeBossDefinition, phase: BossPhaseDefinition, fallback: number): number {
+  if (!hasClimaxPhaseTransition(definition)) {
+    return phase.climaxLimit ?? fallback;
+  }
+
+  const finalPhase = Math.max(...definition.phases.map(item => item.phase));
+  return phase.phase === finalPhase ? 3 : 1;
+}
+
 export function createExorcismPhaseRuntimeConfig(params: {
   definition: DeclarativeBossDefinition;
   phase: number;
@@ -44,7 +61,7 @@ export function createExorcismPhaseRuntimeConfig(params: {
     dataKey,
     skillPoolKey: phase.skillPoolKey,
     avatarUrl: params.getEnemyPortraitUrl(dataKey),
-    climaxLimit: phase.climaxLimit ?? params.defaultClimaxLimit,
+    climaxLimit: getClimaxPhaseLimit(params.definition, phase, params.defaultClimaxLimit),
     transitionEffect: getPhaseTransitionEffect(phase.phase),
   };
 }

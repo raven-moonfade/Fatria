@@ -1288,6 +1288,41 @@ async function applyExorcismMechanicActions(actions: BossMechanicAction[], resul
       case 'resetPleasure':
         enemy.value.stats.currentPleasure = 0;
         break;
+      case 'resetCombatResources': {
+        const target = action.resourceTarget ?? 'both';
+        const resetPleasure = action.resetPleasure !== false;
+        const resetClimaxCount = action.resetClimaxCount !== false;
+        const shouldResetPlayer = target === 'player' || target === 'both';
+        const shouldResetEnemy = target === 'enemy' || target === 'both';
+
+        if (!resetPleasure && !resetClimaxCount) break;
+
+        if (shouldResetPlayer) {
+          if (resetPleasure) {
+            player.value.stats.currentPleasure = 0;
+            await syncPlayerPleasureToMvu(0);
+          }
+          if (resetClimaxCount) {
+            player.value.stats.climaxCount = 0;
+          }
+        }
+
+        if (shouldResetEnemy) {
+          if (resetPleasure) {
+            syncEnemyPleasureToRuntime(0);
+          }
+          if (resetClimaxCount) {
+            enemy.value.stats.climaxCount = 0;
+          }
+        }
+
+        const resetTargetName = target === 'both' ? '双方' : target === 'player' ? player.value.name : enemy.value.name;
+        const resetParts: string[] = [];
+        if (resetPleasure) resetParts.push('快感');
+        if (resetClimaxCount) resetParts.push('高潮次数');
+        addLog(`【驱魔机制】${resetTargetName}${resetParts.join('与')}已重置。`, 'system', 'info');
+        break;
+      }
       case 'log':
         if (action.message) {
           addLog(`【驱魔机制】${action.message}`, 'system', 'info');
@@ -2478,6 +2513,44 @@ async function clearTemporaryStatus() {
   }
 }
 
+function createExorcismDefeatStatus(statusName: '战败' | '沦陷'): TimedStatusEffect {
+  const fallen = statusName === '沦陷';
+  return {
+    加成: {
+      魅力加成: 0,
+      幸运加成: 0,
+      基础性斗力加成: 0,
+      基础性斗力成算: fallen ? -10 : 0,
+      基础忍耐力加成: 0,
+      基础忍耐力成算: fallen ? -10 : -5,
+      闪避率加成: 0,
+      暴击率加成: 0,
+    },
+    剩余回合: 99,
+    描述: fallen ? '完全失去战斗力，即将被恶堕' : '首次战败，战斗力下降',
+  };
+}
+
+async function applyExorcismDefeatStatus(statusListBeforeClear: Record<string, unknown>) {
+  if (turnState.phase !== 'defeat' || !exorcismBossDefinition.value) {
+    return;
+  }
+
+  const alreadyDefeated = Boolean(statusListBeforeClear.战败 || statusListBeforeClear.沦陷);
+  const statusName = alreadyDefeated ? '沦陷' : '战败';
+  const statusEffect = createExorcismDefeatStatus(statusName);
+
+  await setPlayerTemporaryStatusList({ [statusName]: statusEffect });
+  player.value.statusEffects = statusListToEffects({ [statusName]: statusEffect });
+  addLog(
+    statusName === '沦陷'
+      ? '【驱魔战败】战败状态加深为「沦陷」，完全失去战斗力，即将被恶堕。'
+      : '【驱魔战败】获得「战败」状态，战斗力下降。',
+    'system',
+    'critical',
+  );
+}
+
 function addLog(message: string, source: string, type: CombatLogEntry['type'] = 'info') {
   const logEntry: CombatLogEntry = {
     id: Math.random().toString(36).substr(2, 9),
@@ -2521,12 +2594,15 @@ async function finishCombatAfterResult() {
 
   combatResultFinalized = true;
   const finalPhase = turnState.phase;
+  const playerStatusListBeforeClear =
+    finalPhase === 'defeat' && exorcismBossDefinition.value ? await readPlayerTemporaryStatusList() : {};
 
   selectAndDisplayCG();
   turnState.enemyIntention = null;
   turnState.climaxTarget = null;
   await clearTemporaryStatus();
   turnState.phase = finalPhase;
+  await applyExorcismDefeatStatus(playerStatusListBeforeClear);
   await saveToMvu();
 }
 

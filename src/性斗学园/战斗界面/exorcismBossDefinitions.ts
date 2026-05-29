@@ -475,6 +475,18 @@ function phaseByClimax(params: {
   message: string;
   notes?: string;
 }): BossMechanicDefinition {
+  const actions: BossMechanicAction[] = [
+    { type: 'setPhase', phase: params.phase },
+    { type: 'setSkillPool', skillPoolKey: params.skillPoolKey },
+    {
+      type: 'resetCombatResources',
+      resourceTarget: 'both',
+      resetPleasure: true,
+      resetClimaxCount: true,
+    },
+  ];
+  actions.push(logAction(params.message));
+
   return {
     id: params.id,
     kind: 'phaseTransition',
@@ -483,11 +495,7 @@ function phaseByClimax(params: {
     reusable: true,
     once: true,
     triggers: [{ type: 'climaxCountAtLeast', climaxCounterKey: params.climaxCounterKey, threshold: params.threshold }],
-    actions: [
-      { type: 'setPhase', phase: params.phase },
-      { type: 'setSkillPool', skillPoolKey: params.skillPoolKey },
-      logAction(params.message),
-    ],
+    actions,
     notes: params.notes,
   };
 }
@@ -1325,9 +1333,9 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     category: 'exorcism',
     status: 'draft',
     phases: [
-      { phase: 1, displayName: '小黑单独出战', dataKey: '无常_小黑', skillPoolKey: 'wuchang_black' },
-      { phase: 2, displayName: '小白接替出战', dataKey: '无常_小白', skillPoolKey: 'wuchang_white' },
-      { phase: 3, displayName: '黑白双人联战', dataKey: '无常_双人', skillPoolKey: 'wuchang_dual' },
+      { phase: 1, displayName: '小黑单独出战', dataKey: '无常_小黑', skillPoolKey: 'wuchang_black', climaxLimit: 1 },
+      { phase: 2, displayName: '小白接替出战', dataKey: '无常_小白', skillPoolKey: 'wuchang_white', climaxLimit: 1 },
+      { phase: 3, displayName: '黑白双人联战', dataKey: '无常_双人', skillPoolKey: 'wuchang_dual', climaxLimit: 3 },
     ],
     mechanics: [
       phaseByClimax({
