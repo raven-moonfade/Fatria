@@ -49,7 +49,6 @@
       <h3 class="mb-3 text-xl font-bold text-white">温馨提示</h3>
       <div class="space-y-4 text-sm leading-relaxed text-gray-200">
         <p>你好，这里是前端作者“𝒱𝒾𝓃 ”，本卡𝒱𝒾𝓃”共同创作，仅在类脑与旅程免费发布/更新。</p>
-        underline
         <div class="flex flex-col gap-2">
           <a
             class="text-secondary decoration-secondary/40 underline underline-offset-4 hover:decoration-secondary"
@@ -57,7 +56,7 @@
             target="_blank"
             rel="noreferrer"
           >
-            类脑发布帖 underline
+            类脑发布帖
           </a>
           <a
             class="text-secondary decoration-secondary/40 underline underline-offset-4 hover:decoration-secondary"
