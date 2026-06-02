@@ -726,6 +726,8 @@ const logs = combatRuntime.logs;
 const activeMenu = ref<'main' | 'skills' | 'items'>('main');
 const allowSurrender = ref<boolean>(true); // 允许认输：true时不可认输，false时允许认输
 const showSurrenderMenu = ref<boolean>(false);
+let hasLoggedMissingPlayerSkills = false;
+let lastMissingEnemySkillKey = '';
 const playerBoundTurns = combatRuntime.playerBoundTurns; // 玩家被束缚的回合数
 const enemyBoundTurns = combatRuntime.enemyBoundTurns; // 敌人被束缚的回合数
 const playerBindSource = combatRuntime.playerBindSource; // 玩家束缚的施加者
@@ -1502,11 +1504,24 @@ async function loadEnemyRuntimeSkills(enemyName: string, data: any) {
   const { enemySkillDbModule } = await loadDatabaseModules();
   const skillLookupName = getEnemySkillLookupName(enemyName, data);
   const dedicatedSkills = enemySkillDbModule.getEnemySkills(enemyName, skillLookupName) || [];
-  const skillDataList =
-    dedicatedSkills.length > 0 ? dedicatedSkills : enemySkillDbModule.getFallbackEnemySkills(enemyName, 5) || [];
+  const skillDataList = dedicatedSkills;
 
   enemyRuntimeSkillCooldowns.value = {};
   enemyRuntimeSkillEffects.value = {};
+
+  if (skillDataList.length === 0) {
+    enemy.value.skills = [];
+    const missingKey = `${enemyName}:${skillLookupName}`;
+    const message = `未读取到对手技能系统：${enemyName} 没有匹配到可用技能池，请检查最新楼层变量。尝试删除性斗楼层并重新点击性斗按钮。`;
+    console.warn(`[战斗界面] ${message}`, { enemyName, skillLookupName });
+    if (lastMissingEnemySkillKey !== missingKey) {
+      addLog(message, 'system', 'critical');
+      lastMissingEnemySkillKey = missingKey;
+    }
+    return;
+  }
+
+  lastMissingEnemySkillKey = '';
   enemy.value.skills = skillDataList.map((skillData: any) => {
     enemyRuntimeSkillCooldowns.value[skillData.id] = 0;
     enemyRuntimeSkillEffects.value[skillData.id] = enemySkillDbModule.convertToMvuSkillFormat(skillData);
@@ -1522,14 +1537,10 @@ async function loadEnemyRuntimeSkills(enemyName: string, data: any) {
     };
   });
 
-  if (enemy.value.skills.length === 0) {
-    console.warn(`[战斗界面] 未能为 ${enemyName} 读取到运行时技能`);
-  } else {
-    console.info(
-      `[战斗界面] 已加载对手运行时技能: ${enemyName}`,
-      enemy.value.skills.map(skill => skill.name),
-    );
-  }
+  console.info(
+    `[战斗界面] 已加载对手运行时技能: ${enemyName}`,
+    enemy.value.skills.map(skill => skill.name),
+  );
 }
 
 async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
@@ -1896,10 +1907,28 @@ async function loadFromMvu() {
         })
         .filter(skill => skill !== null) as any;
 
-      console.info(
-        '[战斗界面] 已加载玩家技能:',
-        player.value.skills.map((s: any) => s.name),
-      );
+      if (player.value.skills.length === 0) {
+        const message = '读取到技能系统.主动技能，但没有任何技能能转换为战斗技能，请检查技能结构。';
+        console.warn(`[战斗界面] ${message}`, { skillIds });
+        if (!hasLoggedMissingPlayerSkills) {
+          addLog(message, 'system', 'critical');
+          hasLoggedMissingPlayerSkills = true;
+        }
+      } else {
+        hasLoggedMissingPlayerSkills = false;
+        console.info(
+          '[战斗界面] 已加载玩家技能:',
+          player.value.skills.map((s: any) => s.name),
+        );
+      }
+    } else {
+      player.value.skills = [];
+      const message = '未读取到玩家技能系统：技能系统.主动技能为空或不存在，请检查变量写入。尝试删除性斗楼层并重新点击性斗按钮。';
+      console.warn(`[战斗界面] ${message}`);
+      if (!hasLoggedMissingPlayerSkills) {
+        addLog(message, 'system', 'critical');
+        hasLoggedMissingPlayerSkills = true;
+      }
     }
 
     // 获取对手名称

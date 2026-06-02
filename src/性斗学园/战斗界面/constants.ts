@@ -1,4 +1,4 @@
-import { SkillType, type Character, type CombatLogEntry, type Item, type Skill } from './types';
+import { type Character, type CombatLogEntry, type Item } from './types';
 import {
   clearStoredPlayerAvatar,
   getStoredPlayerAvatarSyncUrl,
@@ -86,96 +86,6 @@ const createLog = (msg: string, source: string, type: CombatLogEntry['type'] = '
   type,
 });
 
-// --- 玩家技能 ---
-export const PLAYER_SKILLS: Skill[] = [
-  {
-    id: 's1',
-    name: '挑逗言语',
-    description: '轻声细语，攻击敌方精神，造成少量快感伤害。',
-    cost: 5,
-    type: SkillType.ATTACK,
-    cooldown: 0,
-    currentCooldown: 0,
-    effect: (user: Character, target: Character) => {
-      const dmg = Math.floor(user.stats.charm * 1.5 + user.stats.sexPower * 0.5);
-      target.stats.currentPleasure += dmg;
-      return createLog(`${user.name} 使用 [挑逗言语]，消耗体力，造成了 ${dmg} 点快感！`, 'player', 'damage');
-    },
-  },
-  {
-    id: 's2',
-    name: '绝对领域',
-    description: '调整姿态，大幅提升本回合闪避率。',
-    cost: 15,
-    type: SkillType.BUFF,
-    cooldown: 3,
-    currentCooldown: 0,
-    effect: (user: Character, _target: Character) => {
-      return createLog(`${user.name} 展开 [绝对领域]，消耗体力提升闪避！`, 'player', 'info');
-    },
-  },
-  {
-    id: 's3',
-    name: '必杀·纯爱战神',
-    description: '消耗大量体力，造成基于性斗力的巨额伤害。',
-    cost: 40,
-    type: SkillType.ULTIMATE,
-    cooldown: 5,
-    currentCooldown: 0,
-    effect: (user: Character, target: Character) => {
-      const dmg = Math.floor(user.stats.sexPower * 3.5);
-      target.stats.currentPleasure += dmg;
-      return createLog(`${user.name} 发动 [必杀·纯爱战神]，造成 ${dmg} 点暴击快感！`, 'player', 'critical');
-    },
-  },
-];
-
-// --- 敌人技能 ---
-export const ENEMY_SKILLS: Skill[] = [
-  {
-    id: 'e1',
-    name: '强硬手段',
-    description: '无视防御的粗暴攻击，削减耐力。',
-    cost: 0,
-    type: SkillType.ATTACK,
-    cooldown: 0,
-    currentCooldown: 0,
-    effect: (user: Character, target: Character) => {
-      const dmg = 15;
-      target.stats.currentEndurance -= dmg;
-      return createLog(`${user.name} 使用 [强硬手段]，你的耐力减少了 ${dmg}！`, 'enemy', 'damage');
-    },
-  },
-  {
-    id: 'e2',
-    name: '深渊凝视',
-    description: '降低对手的耐力。',
-    cost: 0,
-    type: SkillType.DEBUFF,
-    cooldown: 2,
-    currentCooldown: 0,
-    effect: (user: Character, target: Character) => {
-      const dmg = 10;
-      target.stats.currentEndurance -= dmg;
-      return createLog(`${user.name} 施展 [深渊凝视]，你的耐力被削弱了 ${dmg} 点。`, 'enemy', 'damage');
-    },
-  },
-  {
-    id: 'e3',
-    name: '触手纠缠',
-    description: '造成持续快感。',
-    cost: 0,
-    type: SkillType.ATTACK,
-    cooldown: 3,
-    currentCooldown: 0,
-    effect: (user: Character, target: Character) => {
-      const dmg = 25;
-      target.stats.currentPleasure += dmg;
-      return createLog(`${user.name} 使用 [触手纠缠]，快感上升了 ${dmg} 点！`, 'enemy', 'damage');
-    },
-  },
-];
-
 // --- 玩家物品 ---
 export const PLAYER_ITEMS: Item[] = [
   {
@@ -215,7 +125,7 @@ export function createDefaultPlayer(): Character {
     isPlayer: true,
     statusEffects: [],
     items: PLAYER_ITEMS.map(i => ({ ...i })),
-    skills: PLAYER_SKILLS.map(s => ({ ...s })),
+    skills: [],
     stats: {
       maxEndurance: 100,
       currentEndurance: 100,
@@ -242,7 +152,7 @@ export function createDefaultEnemy(): Character {
     isPlayer: false,
     statusEffects: [],
     items: [],
-    skills: ENEMY_SKILLS.map(s => ({ ...s })),
+    skills: [],
     stats: {
       maxEndurance: 150,
       currentEndurance: 150,

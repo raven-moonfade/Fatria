@@ -349,8 +349,9 @@ const triggerFight = () => {
 
     let $input: JQuery | null = null;
     for (const selector of inputSelectors) {
-      $input = $parent(selector);
-      if ($input.length > 0) {
+      const $candidate = $parent(selector) as JQuery;
+      if ($candidate.length > 0) {
+        $input = $candidate;
         break;
       }
     }
@@ -389,8 +390,9 @@ const triggerFight = () => {
 
       let $sendButton: JQuery | null = null;
       for (const selector of sendButtonSelectors) {
-        $sendButton = $parent(selector);
-        if ($sendButton.length > 0 && !$sendButton.prop('disabled')) {
+        const $candidate = $parent(selector) as JQuery;
+        if ($candidate.length > 0 && !$candidate.prop('disabled')) {
+          $sendButton = $candidate;
           break;
         }
       }
@@ -426,7 +428,7 @@ const selectOption = (optionText: string) => {
   try {
     // 使用 window.parent 访问父窗口
     const parentWindow = window.parent;
-    const $parent = (parentWindow as any).$ || parentWindow.jQuery;
+    const $parent = (parentWindow as any).$ || (parentWindow as any).jQuery;
 
     if (!$parent) {
       console.warn('[选项美化] 无法访问父窗口的jQuery');
@@ -446,8 +448,9 @@ const selectOption = (optionText: string) => {
 
     let $input: JQuery | null = null;
     for (const selector of inputSelectors) {
-      $input = $parent(selector);
-      if ($input.length > 0) {
+      const $candidate = $parent(selector) as JQuery;
+      if ($candidate.length > 0) {
+        $input = $candidate;
         break;
       }
     }
