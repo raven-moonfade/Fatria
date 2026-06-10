@@ -17,6 +17,21 @@ import {
   resolveEnemyName,
 } from '../战斗界面/enemyDatabase';
 
+const FALLBACK_ENEMY_BASE_DATA: EnemyBaseData = {
+  对手等级: 1,
+  对手魅力: 10,
+  对手幸运: 5,
+  对手闪避率: 5,
+  对手暴击率: 10,
+  对手耐力: 150,
+  对手最大耐力: 150,
+  对手快感: 0,
+  对手最大快感: 100,
+  对手高潮次数: 0,
+  对手性斗力: 20,
+  对手忍耐力: 20,
+};
+
 export interface CombatResources {
   stamina: number;
   maxStamina: number;
@@ -138,10 +153,7 @@ export function getResolvedEnemyBaseData(statData: any): EnemyBaseData | null {
     return null;
   }
 
-  const baseData = getEnemyBaseDataByName(enemyName);
-  if (!baseData) {
-    return null;
-  }
+  const baseData = getEnemyBaseDataByName(enemyName) ?? FALLBACK_ENEMY_BASE_DATA;
 
   const userLevel = readNumber(statData, '角色基础._等级', 1);
   const difficulty = readString(statData, '角色基础.难度', '普通');

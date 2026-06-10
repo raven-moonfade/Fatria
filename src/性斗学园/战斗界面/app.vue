@@ -1504,7 +1504,11 @@ async function loadEnemyRuntimeSkills(enemyName: string, data: any) {
   const { enemySkillDbModule } = await loadDatabaseModules();
   const skillLookupName = getEnemySkillLookupName(enemyName, data);
   const dedicatedSkills = enemySkillDbModule.getEnemySkills(enemyName, skillLookupName) || [];
-  const skillDataList = dedicatedSkills;
+  const fallbackSkills =
+    dedicatedSkills.length === 0 && typeof enemySkillDbModule.getFallbackEnemySkills === 'function'
+      ? enemySkillDbModule.getFallbackEnemySkills(enemyName)
+      : [];
+  const skillDataList = dedicatedSkills.length > 0 ? dedicatedSkills : fallbackSkills;
 
   enemyRuntimeSkillCooldowns.value = {};
   enemyRuntimeSkillEffects.value = {};
@@ -1522,6 +1526,13 @@ async function loadEnemyRuntimeSkills(enemyName: string, data: any) {
   }
 
   lastMissingEnemySkillKey = '';
+  if (dedicatedSkills.length === 0) {
+    console.info(`[战斗界面] 对手未命中专属技能池，使用通用NPC技能池: ${enemyName}`, {
+      enemyName,
+      skillLookupName,
+      skills: skillDataList.map((skill: any) => skill.name),
+    });
+  }
   enemy.value.skills = skillDataList.map((skillData: any) => {
     enemyRuntimeSkillCooldowns.value[skillData.id] = 0;
     enemyRuntimeSkillEffects.value[skillData.id] = enemySkillDbModule.convertToMvuSkillFormat(skillData);
