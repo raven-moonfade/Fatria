@@ -37,6 +37,7 @@
         :is-enemy="false"
         :turn-state="turnState"
         :enemy-intention="turnState.enemyIntention"
+        :resource-popups="playerResourcePopups"
       />
 
       <!-- VS 分隔线 -->
@@ -52,6 +53,7 @@
         :is-enemy="true"
         :turn-state="turnState"
         :enemy-intention="turnState.enemyIntention"
+        :resource-popups="enemyResourcePopups"
       />
 
       <!-- 伊甸芙宁沉睡图标 (只保留zzz图标) -->
@@ -769,6 +771,21 @@ const phaseTransitionEffect = ref<'phase1to2' | 'phase2to3' | 'eden-game-over' |
 const effectType = ref<'critical' | 'dodge' | 'climax' | 'victory' | 'defeat' | null>(null);
 const showEffect = ref(false);
 const companionAssistEffect = ref<{ name: string; avatarUrl: string; skillName: string } | null>(null);
+type ResourcePopupTarget = 'player' | 'enemy';
+type ResourcePopupKind = 'stamina' | 'pleasure';
+interface ResourcePopup {
+  id: number;
+  target: ResourcePopupTarget;
+  resource: ResourcePopupKind;
+  delta: number;
+  delay: number;
+  offset: number;
+}
+
+const resourcePopups = ref<ResourcePopup[]>([]);
+let resourcePopupId = 0;
+const playerResourcePopups = computed(() => resourcePopups.value.filter(popup => popup.target === 'player'));
+const enemyResourcePopups = computed(() => resourcePopups.value.filter(popup => popup.target === 'enemy'));
 const cooperationTriggerChance = ref(0);
 const unusableSkillFeedbackId = ref<string | null>(null);
 let companionAssistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2499,6 +2516,46 @@ function triggerEffect(type: 'critical' | 'dodge' | 'climax' | 'victory' | 'defe
   }, 1500);
 }
 
+function pushResourcePopup(
+  target: ResourcePopupTarget,
+  resource: ResourcePopupKind,
+  delta: number,
+  options: { allowSplit?: boolean; index?: number; total?: number } = {},
+) {
+  if (!Number.isFinite(delta) || delta === 0) {
+    return;
+  }
+
+  if (options.allowSplit !== false && resource === 'pleasure' && Math.abs(delta) >= 2) {
+    const splitCount = Math.min(4, Math.max(2, Math.ceil(Math.abs(delta) / 35)));
+    const sign = delta > 0 ? 1 : -1;
+    const base = Math.floor(Math.abs(delta) / splitCount);
+    let remaining = Math.abs(delta);
+    for (let index = 0; index < splitCount; index++) {
+      const amount = index === splitCount - 1 ? remaining : base;
+      remaining -= amount;
+      pushResourcePopup(target, resource, amount * sign, { allowSplit: false, index, total: splitCount });
+    }
+    return;
+  }
+
+  const total = Math.max(1, options.total ?? 1);
+  const index = Math.max(0, options.index ?? 0);
+  const popup: ResourcePopup = {
+    id: ++resourcePopupId,
+    target,
+    resource,
+    delta,
+    delay: index * 85,
+    offset: total > 1 ? (index - (total - 1) / 2) * 22 : 0,
+  };
+
+  resourcePopups.value.push(popup);
+  setTimeout(() => {
+    resourcePopups.value = resourcePopups.value.filter(item => item.id !== popup.id);
+  }, 1400 + popup.delay);
+}
+
 function triggerCompanionAssistVisual(companion: CooperationCompanion, skill: Skill) {
   if (companionAssistTimer) {
     clearTimeout(companionAssistTimer);
@@ -2991,6 +3048,7 @@ function applyTurnStartActions(actions: TurnStartAction[]) {
         break;
       case 'setPlayerEndurance':
         player.value.stats.currentEndurance = action.value;
+        syncPlayerStaminaToMvu(player.value.stats.currentEndurance);
         break;
       case 'changePlayerPleasure':
         player.value.stats.currentPleasure = Math.min(
@@ -4095,6 +4153,7 @@ async function startNewTurn() {
 
   // 回合开始回复（双方各回复 3+最大耐力*0.03 点体力，向上取整）
   applyTurnStartActions(createTurnStartRecoveryActions(player.value, enemy.value));
+  await saveToMvu();
 
   // 冷却递减
   addTurnFlowLogs(createReadySkillCooldownLogs(decrementSkillCooldowns(player.value.skills).readySkills));
@@ -5128,6 +5187,36 @@ async function refreshPlayerCustomAvatar() {
     console.warn('[战斗界面] 玩家头像加载失败:', error);
   }
 }
+
+watch(
+  [
+    () => player.value.stats.currentEndurance,
+    () => player.value.stats.currentPleasure,
+    () => enemy.value.stats.currentEndurance,
+    () => enemy.value.stats.currentPleasure,
+  ],
+  ([playerStamina, playerPleasure, enemyStamina, enemyPleasure], oldValues) => {
+    if (!oldValues) {
+      return;
+    }
+
+    const changes: Array<{
+      target: ResourcePopupTarget;
+      resource: ResourcePopupKind;
+      current: number;
+      previous: number;
+    }> = [
+      { target: 'player', resource: 'stamina', current: playerStamina, previous: oldValues[0] },
+      { target: 'player', resource: 'pleasure', current: playerPleasure, previous: oldValues[1] },
+      { target: 'enemy', resource: 'stamina', current: enemyStamina, previous: oldValues[2] },
+      { target: 'enemy', resource: 'pleasure', current: enemyPleasure, previous: oldValues[3] },
+    ];
+
+    changes.forEach(change => {
+      pushResourcePopup(change.target, change.resource, change.current - change.previous);
+    });
+  },
+);
 
 // ================= 初始化 =================
 onMounted(async () => {

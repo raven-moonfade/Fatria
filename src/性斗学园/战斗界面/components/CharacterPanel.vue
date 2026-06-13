@@ -37,22 +37,52 @@
 
       <!-- 状态条 -->
       <div class="bars-container">
-        <ProgressBar
-          :value="character.stats.currentEndurance"
-          :max="character.stats.maxEndurance"
-          color="green"
-          label="体力"
-          :show-value="true"
-          :icon="activityIcon"
-        />
-        <ProgressBar
-          :value="character.stats.currentPleasure"
-          :max="character.stats.maxPleasure"
-          color="pink"
-          label="快感"
-          :show-value="true"
-          :icon="heartIcon"
-        />
+        <div class="resource-bar-slot">
+          <ProgressBar
+            :value="character.stats.currentEndurance"
+            :max="character.stats.maxEndurance"
+            color="green"
+            label="体力"
+            :show-value="true"
+            :icon="activityIcon"
+          />
+          <span
+            v-for="popup in staminaPopups"
+            :key="popup.id"
+            class="resource-popup stamina"
+            :class="popup.delta > 0 ? 'gain' : 'loss'"
+            :style="{
+              '--popup-offset': `${popup.offset}px`,
+              '--popup-delay': `${popup.delay}ms`,
+            }"
+            aria-hidden="true"
+          >
+            {{ popup.delta > 0 ? '+' : '' }}{{ popup.delta }}
+          </span>
+        </div>
+        <div class="resource-bar-slot">
+          <ProgressBar
+            :value="character.stats.currentPleasure"
+            :max="character.stats.maxPleasure"
+            color="pink"
+            label="快感"
+            :show-value="true"
+            :icon="heartIcon"
+          />
+          <span
+            v-for="popup in pleasurePopups"
+            :key="popup.id"
+            class="resource-popup pleasure"
+            :class="popup.delta > 0 ? 'gain' : 'loss'"
+            :style="{
+              '--popup-offset': `${popup.offset}px`,
+              '--popup-delay': `${popup.delay}ms`,
+            }"
+            aria-hidden="true"
+          >
+            {{ popup.delta > 0 ? '+' : '' }}{{ popup.delta }}
+          </span>
+        </div>
         <div class="climax-bar">
           <ProgressBar
             :value="character.stats.climaxCount"
@@ -69,18 +99,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { getRandomImageUrl } from '../constants';
 import type { Character, Skill, TurnState } from '../types';
 import ProgressBar from './ProgressBar.vue';
 import StatsPanel from './StatsPanel.vue';
+
+interface ResourcePopup {
+  id: number;
+  resource: 'stamina' | 'pleasure';
+  delta: number;
+  delay: number;
+  offset: number;
+}
 
 const props = defineProps<{
   character: Character;
   isEnemy: boolean;
   turnState: TurnState;
   enemyIntention: Skill | null;
+  resourcePopups?: ResourcePopup[];
 }>();
+
+const staminaPopups = computed(() => (props.resourcePopups ?? []).filter(popup => popup.resource === 'stamina'));
+const pleasurePopups = computed(() => (props.resourcePopups ?? []).filter(popup => popup.resource === 'pleasure'));
 
 // 图片加载失败标记
 const imageLoadError = ref(false);
@@ -388,10 +430,67 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
   }
 }
 
+.resource-bar-slot {
+  position: relative;
+  width: 100%;
+}
+
+.resource-popup {
+  position: absolute;
+  left: 50%;
+  bottom: 0.45rem;
+  z-index: 8;
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  opacity: 0;
+  transform: translate(calc(-50% + var(--popup-offset)), 8px) scale(0.72);
+  animation: resource-popup-bounce 1.2s cubic-bezier(0.16, 1, 0.3, 1) var(--popup-delay) forwards;
+  will-change: transform, opacity;
+
+  &.stamina {
+    color: #86efac;
+    text-shadow:
+      0 0 5px rgba(22, 163, 74, 0.95),
+      0 0 14px rgba(34, 197, 94, 0.75),
+      0 1px 2px rgba(0, 0, 0, 0.9);
+  }
+
+  &.pleasure {
+    color: #fb7185;
+    text-shadow:
+      0 0 5px rgba(225, 29, 72, 0.95),
+      0 0 14px rgba(244, 63, 94, 0.78),
+      0 1px 2px rgba(0, 0, 0, 0.9);
+  }
+}
+
 .climax-bar {
   width: 100%;
   display: flex;
   gap: 0.5rem;
+}
+
+@keyframes resource-popup-bounce {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--popup-offset)), 8px) scale(0.72);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--popup-offset)), -9px) scale(1.18);
+  }
+  38% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--popup-offset)), -3px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--popup-offset)), -46px) scale(0.88);
+  }
 }
 
 @keyframes pulse {
