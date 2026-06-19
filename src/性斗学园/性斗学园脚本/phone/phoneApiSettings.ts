@@ -20,6 +20,8 @@ export interface SecondaryGenerateOptions {
 const SECONDARY_API_STORAGE_KEY = 'fatria-backstreet-secondary-api-v1';
 const SECONDARY_API_GLOBAL_KEY = '__fatriaBackstreetSecondaryApiSettings';
 export const SECONDARY_PHONE_API_UPDATED_EVENT = 'fatria-backstreet-secondary-api-updated';
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const MAX_OUTPUT_TOKENS_LIMIT = 8192;
 
 export const DEFAULT_SECONDARY_PHONE_API_SETTINGS: SecondaryPhoneApiSettings = {
   enabled: false,
@@ -83,6 +85,12 @@ function buildHeaders(apiKey: string, json = false): HeadersInit {
   if (key) headers.Authorization = key.toLowerCase().startsWith('bearer ') ? key : `Bearer ${key}`;
   if (json) headers['Content-Type'] = 'application/json';
   return headers;
+}
+
+function normalizeMaxOutputTokens(value: unknown): number {
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(parsed, MAX_OUTPUT_TOKENS_LIMIT);
 }
 
 async function readErrorMessage(response: Response): Promise<string> {
@@ -189,7 +197,7 @@ export async function generateWithSecondaryPhoneApi(
   const settings = normalizeSettings(settingsOverride || loadSecondaryPhoneApiSettings());
   if (!isSecondaryPhoneApiReady(settings)) throw new Error('第二 API 未启用或尚未选择模型');
 
-  const maxTokens = Math.max(200000, Number(options.maxTokens || 0));
+  const maxTokens = normalizeMaxOutputTokens(options.maxTokens);
   const response = await fetch(buildEndpoint(settings.baseUrl, '/chat/completions'), {
     method: 'POST',
     headers: buildHeaders(settings.apiKey, true),

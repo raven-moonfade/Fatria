@@ -15,6 +15,9 @@ interface GenerateRawOptions {
   maxTokens?: number;
 }
 
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const MAX_OUTPUT_TOKENS_LIMIT = 8192;
+
 function getHostWindow(): any {
   const current = window as any;
   try {
@@ -58,6 +61,12 @@ function extractGeneratedText(result: unknown): string {
   );
 }
 
+function normalizeMaxOutputTokens(value: unknown): number {
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(parsed, MAX_OUTPUT_TOKENS_LIMIT);
+}
+
 export class PhoneApiManager {
   async generateRaw(messages: RawMessage[], options: GenerateRawOptions = {}): Promise<GenerateRawResult> {
     const secondaryApiStatus = getSecondaryPhoneApiStatus();
@@ -92,7 +101,7 @@ export class PhoneApiManager {
     try {
       const userInput = messages.findLast(message => message.role === 'user')?.content || '';
       const rolePrompts = messages.filter(message => message.role !== 'user');
-      const maxTokens = Math.max(200000, Number(options.maxTokens || 0));
+      const maxTokens = normalizeMaxOutputTokens(options.maxTokens);
       const result = await generateRaw({
         user_input: userInput,
         should_stream: false,
