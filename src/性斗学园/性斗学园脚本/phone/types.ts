@@ -5,6 +5,7 @@ export interface BackstreetMessage {
   sender: BackstreetMessageSender;
   contact: string;
   type: 'text' | 'system';
+  date?: string;
   time: string;
   text: string;
   createdAt: number;

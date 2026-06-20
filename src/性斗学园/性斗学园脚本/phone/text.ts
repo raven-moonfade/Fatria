@@ -58,12 +58,16 @@ export function getMessageText(message: unknown): string {
   return '';
 }
 
-export function formatMessagesForPrompt(messages: { sender: string; time: string; text: string }[], maxItems = 30): string {
+export function formatMessagesForPrompt(
+  messages: { sender: string; date?: string; time: string; text: string }[],
+  maxItems = 30,
+): string {
   return messages
     .slice(-maxItems)
     .map(message => {
       const speaker = message.sender === 'user' ? '玩家' : message.sender === 'contact' ? '对方' : '系统';
-      return `[${message.time || '--:--'}] ${speaker}: ${message.text}`;
+      const timestamp = [message.date, message.time || '--:--'].filter(Boolean).join(' ');
+      return `[${timestamp || '--:--'}] ${speaker}: ${message.text}`;
     })
     .join('\n');
 }

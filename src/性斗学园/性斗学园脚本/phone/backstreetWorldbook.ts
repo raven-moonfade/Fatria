@@ -14,6 +14,7 @@ import { clipText, normalizeName, safeString, uniqueStrings } from './text';
 import { parseJsonBlock } from './xmlToolCall';
 
 const META_ENTRY = '[PHONE_META]';
+const GUIDE_ENTRY = '[BACKSTREET_GUIDE]';
 const MAX_HEAD_MESSAGES = 80;
 
 interface PhoneMetaData {
@@ -36,6 +37,15 @@ function getCoreMemoryEntryName(contact: string): string {
 
 function getBridgeMemoryEntryName(contact: string): string {
   return `[BACKSTREET_BRIDGE::${contact}::MAIN]`;
+}
+
+function getGuideContent(): string {
+  return `【后街说明】
+后街是<user>手机中的私聊应用，用来记录<user>与各角色在正文之外发生的消息交流。
+后街聊天属于真实发生过的私下交流，会影响角色对<user>的态度、承诺、秘密、暗号、约定和未完成事项。
+这些内容默认不是公开信息；只有私聊双方知道，除非正文剧情明确让其他人得知。
+当正文中出现相关人物、地点、关键词或承接事项时，应把对应后街记忆作为角色行动与反应的依据。
+后街记忆中的“记录时间/涉及时间段”表示该私聊信息发生或整理的时间，判断新旧信息时应参考这个时间。`;
 }
 
 function wrapJson(tag: string, value: unknown): string {
@@ -63,6 +73,47 @@ function normalizeThread(contact: string, value: Partial<BackstreetThreadData> |
 function normalizeStringArray(value: unknown, maxItems = 12): string[] {
   if (!Array.isArray(value)) return [];
   return uniqueStrings(value.map(item => safeString(item)).filter(Boolean)).slice(0, maxItems);
+}
+
+function formatMessageTimestamp(message: Partial<BackstreetMessage>): string {
+  return uniqueStrings([message.date, message.time || '--:--']).join(' ') || '--:--';
+}
+
+function formatMemoryTimestamp(updatedAt: unknown): string {
+  const value = Number(updatedAt);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function getThreadTimeRange(messages: BackstreetMessage[]): string {
+  const validMessages = messages.filter(message => safeString(message.date) || safeString(message.time));
+  const first = validMessages[0];
+  const last = validMessages.at(-1);
+  const start = first ? formatMessageTimestamp(first) : '';
+  const end = last ? formatMessageTimestamp(last) : '';
+  if (start && end && start !== end) return `${start} 至 ${end}`;
+  return end || start;
+}
+
+function prependRecordTime(text: string, timestamp: string): string {
+  const content = safeString(text);
+  const time = safeString(timestamp);
+  if (!content || !time || /^【(?:记录时间|涉及时间段)：/.test(content)) return content;
+  return `【记录时间：${time}】\n${content}`;
+}
+
+function prependTimeRange(text: string, timeRange: string): string {
+  const content = safeString(text);
+  const range = safeString(timeRange);
+  if (!content || !range || /^【(?:记录时间|涉及时间段)：/.test(content)) return content;
+  return `【涉及时间段：${range}】\n${content}`;
 }
 
 function collectShortBridgeKeywordCandidates(values: unknown[], fallbackText = ''): string[] {
@@ -169,7 +220,9 @@ function normalizeBridgeMemory(contact: string, value: Partial<BackstreetBridgeM
 }
 
 function formatCoreMemory(memory: Partial<BackstreetCoreMemory>): string {
+  const timestamp = formatMemoryTimestamp(memory.updatedAt);
   const lines = [
+    timestamp ? `记录时间：${timestamp}` : '',
     safeString(memory.summary) ? `长期摘要：${safeString(memory.summary)}` : '',
     safeString(memory.relationship) ? `关系状态：${safeString(memory.relationship)}` : '',
     safeString(memory.recentTone) ? `最近语气：${safeString(memory.recentTone)}` : '',
@@ -182,7 +235,11 @@ function formatCoreMemory(memory: Partial<BackstreetCoreMemory>): string {
 }
 
 function formatBridgeMemory(memory: Partial<BackstreetBridgeMemory>): string {
-  const lines = [safeString(memory.summary) ? `正文可消化摘要：${safeString(memory.summary)}` : ''].filter(Boolean);
+  const timestamp = formatMemoryTimestamp(memory.updatedAt);
+  const lines = [
+    timestamp ? `记录时间：${timestamp}` : '',
+    safeString(memory.summary) ? `正文可消化摘要：${safeString(memory.summary)}` : '',
+  ].filter(Boolean);
   const items = Array.isArray(memory.items)
     ? memory.items
         .map(item => normalizeBridgeItem(item, Number(memory.updatedAt || Date.now())))
@@ -193,7 +250,7 @@ function formatBridgeMemory(memory: Partial<BackstreetBridgeMemory>): string {
   if (items.length) {
     lines.push(
       `桥接总结：\n${items
-        .map(item => `- 关键词：${item.keywords.join('、') || '无'}\n  ${item.text}`)
+        .map(item => `- 记录时间：${formatMemoryTimestamp(item.updatedAt) || timestamp || '未知'}\n  关键词：${item.keywords.join('、') || '无'}\n  ${item.text}`)
         .join('\n')}`,
     );
   }
@@ -254,7 +311,7 @@ function renderBridgeMemory(memory: BackstreetBridgeMemory): string {
   const itemBlocks = items
     .map(
       (item, index) => `<%_ if (bstBridgeShouldShow(${index})) { _%>
-${escapeEjsLiteralText(item.text)}
+${escapeEjsLiteralText(prependRecordTime(item.text, formatMemoryTimestamp(item.updatedAt) || formatMemoryTimestamp(memory.updatedAt)))}
 <%_ } _%>`,
     )
     .join('\n\n');
@@ -333,7 +390,7 @@ function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit 
   const messageLines = Array.isArray(thread?.messages)
     ? thread.messages
         .slice(-12)
-        .map(message => `${message.time || '--:--'} ${message.sender === 'user' ? '玩家' : contact || '对方'}: ${message.text}`)
+        .map(message => `${formatMessageTimestamp(message)} ${message.sender === 'user' ? '玩家' : contact || '对方'}: ${message.text}`)
         .join('\n')
     : '';
   const readableContent = formatBridgeMemory(bridge || {}) || formatCoreMemory(memory || {}) || messageLines || rawContent;
@@ -354,6 +411,20 @@ export class BackstreetWorldbookStore {
 
   async ensureReady(): Promise<void> {
     await worldbookClient.ensureWorldbook(this.worldName);
+    await this.ensureGuideEntry();
+  }
+
+  async ensureGuideEntry(): Promise<void> {
+    await worldbookClient.upsertEntry(this.worldName, GUIDE_ENTRY, getGuideContent(), {
+      enabled: true,
+      constant: true,
+      selective: false,
+      key: [],
+      position: 4,
+      role: 0,
+      depth: 0,
+      order: 800,
+    });
   }
 
   async hasAnyMemory(): Promise<boolean> {
@@ -439,6 +510,7 @@ export class BackstreetWorldbookStore {
   }
 
   async appendMessages(contact: string, messages: BackstreetMessage[]): Promise<BackstreetThreadData> {
+    await this.ensureGuideEntry();
     const thread = await this.getThread(contact);
     thread.messages.push(...messages);
     thread.updatedAt = Date.now();
@@ -588,11 +660,12 @@ export class BackstreetWorldbookStore {
   private async updateCoreMemory(thread: BackstreetThreadData): Promise<void> {
     const recentLines = thread.messages
       .slice(-20)
-      .map(message => `${message.time || '--:--'} ${message.sender === 'user' ? '玩家' : thread.contact}: ${message.text}`);
+      .map(message => `${formatMessageTimestamp(message)} ${message.sender === 'user' ? '玩家' : thread.contact}: ${message.text}`);
+    const timeRange = getThreadTimeRange(thread.messages);
     const content = wrapJson('backstreet_memory', {
       contact: thread.contact,
       updatedAt: thread.updatedAt,
-      summary: `最近后街聊天快照：\n${recentLines.join('\n')}`,
+      summary: prependTimeRange(`最近后街聊天快照：\n${recentLines.join('\n')}`, timeRange),
       relationship: '',
       knownFacts: [],
       openLoops: [],

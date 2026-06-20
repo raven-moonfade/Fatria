@@ -27,6 +27,10 @@ function getCurrentTime(characterData: any): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
+function getCurrentDate(characterData: any): string {
+  return safeString(characterData?.时间系统?.日期);
+}
+
 function getPlayerName(characterData: any): string {
   return safeString(characterData?.角色基础?._姓名) || '玩家';
 }
@@ -91,6 +95,27 @@ function normalizeBridgeKeywords(value: unknown, maxItems = 8, fallbackText = ''
     .slice(0, maxItems);
 }
 
+function formatMessageTimestamp(message: Partial<BackstreetMessage>): string {
+  return uniqueStrings([message.date, message.time || '--:--']).join(' ') || '--:--';
+}
+
+function getMessageTimeRange(messages: BackstreetMessage[]): string {
+  const validMessages = messages.filter(message => safeString(message.date) || safeString(message.time));
+  const first = validMessages[0];
+  const last = validMessages.at(-1);
+  const start = first ? formatMessageTimestamp(first) : '';
+  const end = last ? formatMessageTimestamp(last) : '';
+  if (start && end && start !== end) return `${start} 至 ${end}`;
+  return end || start;
+}
+
+function prependTimeRange(text: string, timeRange: string): string {
+  const content = safeString(text);
+  const range = safeString(timeRange);
+  if (!content || !range || /^【(?:记录时间|涉及时间段)：/.test(content)) return content;
+  return `【涉及时间段：${range}】\n${content}`;
+}
+
 function normalizeBridgeItem(value: Partial<BackstreetBridgeMemoryItem>, fallbackUpdatedAt: number): BackstreetBridgeMemoryItem | null {
   const text = safeString(value.text);
   if (!text) return null;
@@ -135,11 +160,12 @@ function normalizeCoreMemory(
   contact: string,
   value: Partial<BackstreetCoreMemory> | undefined,
   recentText: string,
+  timeRange: string,
 ): BackstreetCoreMemory {
   return {
     contact,
     updatedAt: Date.now(),
-    summary: safeString(value?.summary) || `最近后街聊天：\n${clipText(recentText, 700)}`,
+    summary: prependTimeRange(safeString(value?.summary) || `最近后街聊天：\n${clipText(recentText, 700)}`, timeRange),
     relationship: safeString(value?.relationship),
     knownFacts: normalizeList(value?.knownFacts, 16),
     openLoops: normalizeList(value?.openLoops, 10),
@@ -152,21 +178,25 @@ function normalizeBridgeMemory(
   contact: string,
   value: Partial<BackstreetBridgeMemory> | undefined,
   recentText: string,
+  timeRange: string,
   existing?: BackstreetBridgeMemory | null,
 ): BackstreetBridgeMemory {
   const updatedAt = Date.now();
   const generatedItems = Array.isArray(value?.items)
     ? value.items
-        .map(item => normalizeBridgeItem(item, updatedAt))
+        .map(item => normalizeBridgeItem({ ...item, text: prependTimeRange(safeString(item.text), timeRange) }, updatedAt))
         .filter((item): item is BackstreetBridgeMemoryItem => !!item)
     : [];
   const summaryItem =
     generatedItems.length === 0
       ? normalizeBridgeItem(
           {
-            text: [safeString(value?.summary), ...normalizeList(value?.facts, 16), ...normalizeList(value?.openLoops, 10)]
-              .filter(Boolean)
-              .join('\n'),
+            text: prependTimeRange(
+              [safeString(value?.summary), ...normalizeList(value?.facts, 16), ...normalizeList(value?.openLoops, 10)]
+                .filter(Boolean)
+                .join('\n'),
+              timeRange,
+            ),
             keywords: normalizeBridgeKeywords(value?.keywords, 16, `${safeString(value?.summary)}\n${recentText}`),
             updatedAt,
           },
@@ -178,7 +208,7 @@ function normalizeBridgeMemory(
   return {
     contact,
     updatedAt,
-    summary: safeString(value?.summary) || `苏菲最近通过后街与${contact}有过交流。`,
+    summary: prependTimeRange(safeString(value?.summary) || `苏菲最近通过后街与${contact}有过交流。`, timeRange),
     facts: normalizeList(value?.facts, 16),
     openLoops: normalizeList(value?.openLoops, 10),
     keywords: collectKeywords(contact, `${safeString(value?.summary)}\n${recentText}`, [
@@ -313,12 +343,14 @@ export class BackstreetService {
   }
 
   async appendUserMessage(contact: string, text: string, characterData: any): Promise<BackstreetMessage> {
+    const currentDate = getCurrentDate(characterData);
     const currentTime = getCurrentTime(characterData);
     const userMessage: BackstreetMessage = {
       id: makeId('bst_user'),
       sender: 'user',
       contact,
       type: 'text',
+      date: currentDate,
       time: currentTime,
       text: safeString(text),
       createdAt: Date.now(),
@@ -362,9 +394,10 @@ export class BackstreetService {
     if (roleplayMessages.length === 0) return;
 
     const recentText = formatMessagesForPrompt(
-      roleplayMessages.map(message => ({ sender: message.sender, time: message.time, text: message.text })),
+      roleplayMessages.map(message => ({ sender: message.sender, date: message.date, time: message.time, text: message.text })),
       36,
     );
+    const timeRange = getMessageTimeRange(roleplayMessages);
     const [existingCore, existingBridge] = await Promise.all([
       backstreetWorldbookStore.getCoreMemory(contact).catch(() => null),
       backstreetWorldbookStore.getBridgeMemory(contact).catch(() => null),
@@ -376,6 +409,7 @@ export class BackstreetService {
 1. core：给后街本人继续聊天用，保留关系、已知事实、未了事项、最近语气。
 2. bridge：给主线正文世界书蓝灯条目使用，只保留会影响正文互动的私聊事实、暗号、约定、承诺、秘密或未完成事项。
 bridge.items[].text 必须是正文可自然消化的自然语言总结，不要写 JSON、世界书、提示词、插件、EJS、蓝灯等机制词。
+bridge.items[].text 必须写明该总结对应的后街聊天日期与时间；如果涉及多条消息，写清时间段。
 bridge.items[].keywords 必须写 4-8 个用于最近两楼正文触发该总结的短关键词。中文关键词必须为 2-3 个字，不要写“地脉波动”“底下的东西”这类长词，要拆成“地脉”“波动”“底下”“东西”；英文/数字暗号可保留原文。不要写整句话，不要写泛词。
 只输出 XML 包裹的 JSON，不要解释：
 <backstreet_memory_update>
@@ -391,7 +425,7 @@ bridge.items[].keywords 必须写 4-8 个用于最近两楼正文触发该总结
   "bridge": {
     "items": [
       {
-        "text": "1-3句自然语言总结，例如：苏菲与凰天羽曾在后街私聊中约定暗号。当苏菲说“巴山楚水凄凉地”时，凰天羽应知道回应是“responsibility”。这是两人的私下约定，旁人默认不知道。",
+        "text": "1-3句自然语言总结，例如：【涉及时间段：2025-3-17 20:10 至 2025-3-17 20:18】苏菲与凰天羽曾在后街私聊中约定暗号。当苏菲说“巴山楚水凄凉地”时，凰天羽应知道回应是“responsibility”。这是两人的私下约定，旁人默认不知道。",
         "keywords": ["暗号", "巴山", "楚水", "凄凉", "responsibility"]
       }
     ],
@@ -413,6 +447,7 @@ ${formatStoredMemory('旧 bridge', existingBridge)}
 
 【最近后街聊天】
 ${recentText}
+${timeRange ? `\n本次整理涉及时间段：${timeRange}` : ''}
 
 请更新「${contact}」的后街 core 与正文 bridge 记忆。`;
 
@@ -424,8 +459,8 @@ ${recentText}
       { maxTokens: 1500 },
     );
     const payload = parseMemoryUpdate(result.text);
-    const core = normalizeCoreMemory(contact, payload?.core, recentText);
-    const bridge = normalizeBridgeMemory(contact, payload?.bridge, recentText, existingBridge);
+    const core = normalizeCoreMemory(contact, payload?.core, recentText, timeRange);
+    const bridge = normalizeBridgeMemory(contact, payload?.bridge, recentText, timeRange, existingBridge);
 
     const latestThread = await backstreetWorldbookStore.getThread(contact, { force: true }).catch(() => null);
     if (
@@ -462,7 +497,7 @@ ${recentText}
 
     const historyMessages = messages.filter(message => message.sender !== 'system');
     const historyText = formatMessagesForPrompt(
-      historyMessages.map(message => ({ sender: message.sender, time: message.time, text: message.text })),
+      historyMessages.map(message => ({ sender: message.sender, date: message.date, time: message.time, text: message.text })),
       24,
     );
 
@@ -502,6 +537,7 @@ ${latestUserMessage}
 请生成「${contact}」接下来的后街回复。`;
 
     const fallbackTime = getCurrentTime(characterData);
+    const fallbackDate = getCurrentDate(characterData);
     const parsedReplies = await requestBackstreetReplyWithRecovery(
       contact,
       [
@@ -516,6 +552,7 @@ ${latestUserMessage}
       sender: reply.type === 'system' ? 'system' : 'contact',
       contact,
       type: reply.type,
+      date: fallbackDate,
       time: fallbackTime,
       text: reply.text,
       createdAt: Date.now(),
