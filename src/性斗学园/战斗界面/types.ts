@@ -12,7 +12,7 @@ export interface CombatStats {
   maxPleasure: number; // 核心状态.$最大快感
   currentPleasure: number; // 核心状态.$快感
   climaxCount: number; // 本次战斗运行态
-  maxClimaxCount: number; // 性斗系统.胜负规则.高潮次数上限
+  maxClimaxCount: number; // 性斗系统.胜负规则.高潮次数上限，战斗内最高 5
 
   // 派生属性
   sexPower: number;

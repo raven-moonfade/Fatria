@@ -1,6 +1,7 @@
 import _ from 'lodash';
 import { getLatestMvuData, replaceLatestMvuData } from '../shared/mvuStore';
 import type { TimedStatusEffect } from '../shared/statusEngine';
+import { normalizeCombatClimaxLimit } from '../shared/combatLimits';
 import type { Item } from './types';
 
 const PLAYER_STATUS_LIST_PATH = '临时状态.状态列表';
@@ -13,7 +14,7 @@ const BACKPACK_PATH = '物品系统.背包';
 const PLAYER_GENDER_PATH = '角色基础.性别';
 
 export function normalizeClimaxLimit(value: unknown): number {
-  return Math.max(1, Number(value) || 0);
+  return normalizeCombatClimaxLimit(value);
 }
 
 export async function updateCombatStatData(

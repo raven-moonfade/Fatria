@@ -16,6 +16,7 @@ import {
   getEnemyBaseDataByName,
   resolveEnemyName,
 } from '../战斗界面/enemyDatabase';
+import { normalizeCombatClimaxLimit } from './combatLimits';
 
 const FALLBACK_ENEMY_BASE_DATA: EnemyBaseData = {
   对手等级: 1,
@@ -123,7 +124,7 @@ export function getPlayerDerivedStats(statData: any): DerivedCombatStats {
 }
 
 export function getPlayerSnapshot(statData: any, fallbackName = '玩家'): CombatantSnapshot {
-  const maxClimax = Math.max(1, readNumber(statData, '性斗系统.胜负规则.高潮次数上限', 1));
+  const maxClimax = normalizeCombatClimaxLimit(readNumber(statData, '性斗系统.胜负规则.高潮次数上限', 1));
 
   return {
     side: 'player',
@@ -198,7 +199,7 @@ export function getEnemySnapshot(statData: any, runtimeStatuses: StatusList = {}
     return null;
   }
 
-  const maxClimax = Math.max(1, readNumber(statData, '性斗系统.胜负规则.高潮次数上限', 1));
+  const maxClimax = normalizeCombatClimaxLimit(readNumber(statData, '性斗系统.胜负规则.高潮次数上限', 1));
 
   return {
     side: 'enemy',

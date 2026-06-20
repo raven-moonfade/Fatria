@@ -137,6 +137,10 @@ function cloneWorldbookData(data: WorldbookData): WorldbookData {
   return JSON.parse(JSON.stringify(data)) as WorldbookData;
 }
 
+function stripChatFileExtension(value: string): string {
+  return safeString(value).replace(/\.(?:jsonl?|js)$/i, '');
+}
+
 export function isWorldbookEntryEnabled(entry: WorldbookEntry): boolean {
   if (!entry || typeof entry !== 'object') return false;
   return !isTruthyFlag(entry.disable) && !isTruthyFlag(entry.disabled);
@@ -242,13 +246,7 @@ export class WorldbookClient {
   private worldInfoModulePromise: Promise<any> | null = null;
 
   getPhoneWorldbookName(): string {
-    const context = this.getContext();
-    const chatId =
-      safeString(context?.chatMetadata?.file_name) ||
-      safeString(context?.chatId) ||
-      safeString(context?.chat?.[0]?.send_date) ||
-      '默认聊天';
-    return `后街-${safeStorageSegment(chatId || '默认聊天')}`;
+    return `后街-${safeStorageSegment(this.getChatKey() || '默认聊天')}`;
   }
 
   getContext(): any {
@@ -259,12 +257,23 @@ export class WorldbookClient {
   }
 
   private getChatKey(context = this.getContext()): string {
-    return (
+    const rawKey =
       safeString(context?.chatMetadata?.file_name) ||
       safeString(context?.chatId) ||
       safeString(context?.chat?.[0]?.send_date) ||
-      '默认聊天'
-    );
+      '默认聊天';
+    return stripChatFileExtension(rawKey) || '默认聊天';
+  }
+
+  private getLegacyPhoneWorldbookName(context = this.getContext()): string {
+    const rawKey =
+      safeString(context?.chatMetadata?.file_name) ||
+      safeString(context?.chatId) ||
+      safeString(context?.chat?.[0]?.send_date) ||
+      '默认聊天';
+    const safeRawKey = safeStorageSegment(rawKey || '默认聊天');
+    const safeChatKey = safeStorageSegment(this.getChatKey(context) || '默认聊天');
+    return safeRawKey && safeRawKey !== safeChatKey ? `${PHONE_WORLD_PREFIX}${safeRawKey}` : '';
   }
 
   private async loadScriptModule(): Promise<any> {
@@ -456,10 +465,27 @@ export class WorldbookClient {
       return existing;
     }
 
+    const legacyName = this.getLegacyPhoneWorldbookName();
+    const legacy =
+      name === this.getPhoneWorldbookName() && legacyName
+        ? await this.readWorldbook(legacyName, { allowMissing: true, force: true })
+        : null;
+    if (legacy) {
+      await this.saveWorldbook(name, legacy);
+      await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
+      console.info(`[后街] 已将旧聊天世界书「${legacyName}」迁移为「${name}」。`);
+      return legacy;
+    }
+
     await postJson<unknown>(WORLD_INFO_CREATE_ENDPOINT, { name }).catch(() => null);
     const created = await this.readWorldbook(name, { allowMissing: true, force: true });
-    await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
-    return created || { entries: {} };
+    if (created) {
+      await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
+      return created;
+    }
+
+    console.warn(`[后街] 聊天世界书「${name}」创建失败，已跳过自动绑定，避免绑定到不存在的世界书。`);
+    return { entries: {} };
   }
 
   async saveWorldbook(name: string, data: WorldbookData): Promise<void> {
@@ -475,6 +501,7 @@ export class WorldbookClient {
       try {
         await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, payload);
         this.cache.set(worldName, { data, at: Date.now() });
+        await this.bindWorldbookToCurrentChat(worldName).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
         return;
       } catch (error) {
         lastError = error;
@@ -486,6 +513,7 @@ export class WorldbookClient {
       throw lastError instanceof Error ? lastError : new Error('保存世界书失败');
     });
     this.cache.set(worldName, { data, at: Date.now() });
+    await this.bindWorldbookToCurrentChat(worldName).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
   }
 
   async deleteEntry(name: string, comment: string): Promise<boolean> {

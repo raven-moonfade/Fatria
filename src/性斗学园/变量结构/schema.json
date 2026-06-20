@@ -11,16 +11,13 @@
           "type": "number"
         },
         "_姓名": {
-          "default": "",
           "type": "string"
         },
         "经验值": {
-          "default": 0,
           "type": "number",
           "minimum": 0
         },
         "声望": {
-          "default": 0,
           "type": "number"
         },
         "_段位": {
@@ -64,12 +61,10 @@
       "type": "object",
       "properties": {
         "$属性点": {
-          "default": 0,
           "type": "number",
           "minimum": 0
         },
         "$技能点": {
-          "default": 0,
           "type": "number",
           "minimum": 0
         },
@@ -89,12 +84,10 @@
           "minimum": 1
         },
         "$快感": {
-          "default": 0,
           "type": "number",
           "minimum": 0
         },
         "堕落度": {
-          "default": 0,
           "type": "number"
         },
         "_潜力": {
@@ -118,12 +111,10 @@
           "minimum": 0
         },
         "_闪避率": {
-          "default": 0,
           "type": "number",
           "minimum": 0
         },
         "_暴击率": {
-          "default": 0,
           "type": "number"
         }
       }
@@ -146,12 +137,10 @@
                 "$ref": "#/$defs/__schema0"
               },
               "剩余回合": {
-                "default": 0,
                 "type": "number",
                 "minimum": 0
               },
               "描述": {
-                "default": "",
                 "type": "string"
               }
             }
@@ -177,7 +166,6 @@
                 "$ref": "#/$defs/__schema0"
               },
               "描述": {
-                "default": "",
                 "type": "string"
               }
             }
@@ -190,7 +178,6 @@
       "type": "object",
       "properties": {
         "对手名称": {
-          "default": "",
           "type": "string"
         },
         "性斗类型": {
@@ -241,7 +228,6 @@
         "type": "object",
         "properties": {
           "好感度": {
-            "default": 0,
             "type": "number"
           },
           "关系类型": {
@@ -260,11 +246,9 @@
           "type": "object",
           "properties": {
             "名称": {
-              "default": "",
               "type": "string"
             },
             "描述": {
-              "default": "",
               "type": "string"
             },
             "状态": {
@@ -286,7 +270,6 @@
               "additionalProperties": {}
             },
             "奖励": {
-              "default": "",
               "type": "string"
             },
             "期限": {
@@ -306,7 +289,6 @@
             "type": "object",
             "properties": {
               "描述": {
-                "default": "",
                 "type": "string"
               },
               "类型": {
@@ -338,7 +320,6 @@
                 "additionalProperties": {}
               },
               "奖励": {
-                "default": "",
                 "type": "string"
               },
               "期限": {
@@ -362,7 +343,6 @@
       "type": "object",
       "properties": {
         "学园金币": {
-          "default": 0,
           "type": "number",
           "minimum": 0
         },
@@ -439,7 +419,6 @@
                     "type": "number"
                   },
                   "战斗用品": {
-                    "default": false,
                     "type": "boolean"
                   },
                   "数量": {
@@ -542,35 +521,27 @@
       "type": "object",
       "properties": {
         "学生会": {
-          "default": 0,
           "type": "number"
         },
         "女权协会": {
-          "default": 0,
           "type": "number"
         },
         "BF社": {
-          "default": 0,
           "type": "number"
         },
         "体育联盟": {
-          "default": 0,
           "type": "number"
         },
         "研究会": {
-          "default": 0,
           "type": "number"
         },
         "地下联盟": {
-          "default": 0,
           "type": "number"
         },
         "男性自保联盟": {
-          "default": 0,
           "type": "number"
         },
         "雌堕会": {
-          "default": 0,
           "type": "number"
         }
       }
@@ -593,15 +564,12 @@
                 "type": "object",
                 "properties": {
                   "技能名称": {
-                    "default": "",
                     "type": "string"
                   },
                   "技能描述": {
-                    "default": "",
                     "type": "string"
                   },
                   "基础描述": {
-                    "default": "",
                     "type": "string"
                   },
                   "技能等级": {
@@ -626,12 +594,10 @@
                 "type": "object",
                 "properties": {
                   "耐力消耗": {
-                    "default": 0,
                     "type": "number",
                     "minimum": 0
                   },
                   "冷却回合数": {
-                    "default": 0,
                     "type": "number",
                     "minimum": 0
                   }
@@ -670,7 +636,6 @@
                     "type": "number"
                   },
                   "暴击修正": {
-                    "default": 0,
                     "type": "number"
                   },
                   "效果列表": {
@@ -697,15 +662,12 @@
                           ]
                         },
                         "效果值": {
-                          "default": 0,
                           "type": "number"
                         },
                         "是否为百分比": {
-                          "default": false,
                           "type": "boolean"
                         },
                         "持续回合数": {
-                          "default": 0,
                           "type": "number",
                           "minimum": 0
                         },
@@ -723,7 +685,6 @@
                 "type": "object",
                 "properties": {
                   "是否忽视防御": {
-                    "default": false,
                     "type": "boolean"
                   },
                   "是否可被闪避": {
@@ -746,11 +707,9 @@
             "type": "object",
             "properties": {
               "天赋名称": {
-                "default": "",
                 "type": "string"
               },
               "天赋描述": {
-                "default": "",
                 "type": "string"
               },
               "天赋效果": {
@@ -768,35 +727,27 @@
       "type": "object",
       "properties": {
         "魅力加成": {
-          "default": 0,
           "type": "number"
         },
         "幸运加成": {
-          "default": 0,
           "type": "number"
         },
         "基础性斗力加成": {
-          "default": 0,
           "type": "number"
         },
         "基础性斗力成算": {
-          "default": 0,
           "type": "number"
         },
         "基础忍耐力加成": {
-          "default": 0,
           "type": "number"
         },
         "基础忍耐力成算": {
-          "default": 0,
           "type": "number"
         },
         "闪避率加成": {
-          "default": 0,
           "type": "number"
         },
         "暴击率加成": {
-          "default": 0,
           "type": "number"
         }
       }
@@ -813,7 +764,6 @@
       ]
     },
     "__schema2": {
-      "default": "",
       "type": "string"
     },
     "__schema3": {
@@ -821,7 +771,6 @@
       "type": "object",
       "properties": {
         "名称": {
-          "default": "",
           "type": "string"
         },
         "等级": {
@@ -839,7 +788,6 @@
           "$ref": "#/$defs/__schema0"
         },
         "描述": {
-          "default": "",
           "type": "string"
         }
       }
