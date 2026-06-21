@@ -65,7 +65,7 @@ export function formatMessagesForPrompt(
   return messages
     .slice(-maxItems)
     .map(message => {
-      const speaker = message.sender === 'user' ? '玩家' : message.sender === 'contact' ? '对方' : '系统';
+      const speaker = message.sender === 'user' ? '<user>' : message.sender === 'contact' ? '对方' : '系统';
       const timestamp = [message.date, message.time || '--:--'].filter(Boolean).join(' ');
       return `[${timestamp || '--:--'}] ${speaker}: ${message.text}`;
     })

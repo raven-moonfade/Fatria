@@ -1,10 +1,10 @@
 export type BackstreetMessageSender = 'user' | 'contact' | 'system';
+export type BackstreetThreadKind = 'private' | 'group';
 
 export interface BackstreetMessage {
   id: string;
   sender: BackstreetMessageSender;
-  contact: string;
-  type: 'text' | 'system';
+  speaker?: string;
   date?: string;
   time: string;
   text: string;
@@ -16,39 +16,31 @@ export interface BackstreetContact {
   name: string;
   lastMessage: string;
   lastTime: string;
+  type?: BackstreetThreadKind;
+  members?: string[];
+  dissolved?: boolean;
 }
 
 export interface BackstreetThreadData {
   contact: string;
+  kind?: BackstreetThreadKind;
+  groupName?: string;
+  members?: string[];
+  dissolved?: boolean;
+  dissolvedAt?: number;
   updatedAt: number;
   messages: BackstreetMessage[];
 }
 
-export interface BackstreetCoreMemory {
-  contact: string;
+export interface BackstreetGroup {
+  id: string;
+  name: string;
+  members: string[];
+  dissolved?: boolean;
+  dissolvedAt?: number;
+  lastMessage: string;
+  lastTime: string;
   updatedAt: number;
-  summary: string;
-  relationship: string;
-  knownFacts: string[];
-  openLoops: string[];
-  recentTone: string;
-  keywords: string[];
-}
-
-export interface BackstreetBridgeMemoryItem {
-  text: string;
-  keywords: string[];
-  updatedAt: number;
-}
-
-export interface BackstreetBridgeMemory {
-  contact: string;
-  updatedAt: number;
-  summary: string;
-  facts: string[];
-  openLoops: string[];
-  keywords: string[];
-  items: BackstreetBridgeMemoryItem[];
 }
 
 export interface PhoneMemoryQuery {

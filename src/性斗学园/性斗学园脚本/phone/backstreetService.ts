@@ -4,14 +4,13 @@ import { buildMainSceneSnapshot } from './mainSceneSnapshot';
 import { phoneApiManager } from './phoneApiManager';
 import { phoneLoreContextBuilder } from './phoneLoreContext';
 import type {
-  BackstreetBridgeMemory,
-  BackstreetBridgeMemoryItem,
   BackstreetContact,
-  BackstreetCoreMemory,
   BackstreetMessage,
+  BackstreetThreadData,
   PhoneMemoryHit,
   PhoneMemoryQuery,
 } from './types';
+import { getLatestStatData } from '../../shared/mvuStore';
 import { clipText, formatMessagesForPrompt, makeId, normalizeName, safeString, uniqueStrings } from './text';
 import { extractXmlTag, normalizePhoneMemoryQuery, parseJsonBlock } from './xmlToolCall';
 
@@ -19,6 +18,8 @@ interface SendBackstreetResult {
   userMessage: BackstreetMessage;
   replies: BackstreetMessage[];
 }
+
+const PLAYER_NAME_MACRO = '<user>';
 
 function getCurrentTime(characterData: any): string {
   const value = characterData?.时间系统?.时间;
@@ -31,8 +32,29 @@ function getCurrentDate(characterData: any): string {
   return safeString(characterData?.时间系统?.日期);
 }
 
-function getPlayerName(characterData: any): string {
-  return safeString(characterData?.角色基础?._姓名) || '玩家';
+function getThreadDisplayName(thread: Partial<BackstreetThreadData>): string {
+  return thread.kind === 'group' ? safeString(thread.groupName) || '群聊' : safeString(thread.contact);
+}
+
+function getPrivatePromptName(contact: string): string {
+  const name = safeString(contact);
+  return /^bst_group_/i.test(name) ? '群聊' : name;
+}
+
+function getMessageSpeaker(message: Partial<BackstreetMessage>, thread: Partial<BackstreetThreadData>): string {
+  if (message.sender === 'user') return PLAYER_NAME_MACRO;
+  if (message.sender === 'system') return '系统';
+  return safeString(message.speaker) || (thread.kind === 'group' ? '群成员' : getThreadDisplayName(thread) || '对方');
+}
+
+function formatThreadMessagesForPrompt(thread: Partial<BackstreetThreadData>, messages: BackstreetMessage[], maxItems = 30): string {
+  return messages
+    .slice(-maxItems)
+    .map(message => {
+      const timestamp = [message.date, message.time || '--:--'].filter(Boolean).join(' ');
+      return `[${timestamp || '--:--'}] ${getMessageSpeaker(message, thread)}: ${message.text}`;
+    })
+    .join('\n');
 }
 
 function extractFallbackQuery(text: string, limit = 6): PhoneMemoryQuery {
@@ -58,170 +80,185 @@ function normalizeList(value: unknown, maxItems = 12): string[] {
   return uniqueStrings(value.map(item => safeString(item)).filter(Boolean)).slice(0, maxItems);
 }
 
-function collectShortBridgeKeywordCandidates(values: unknown[], fallbackText = ''): string[] {
-  const candidates: string[] = [];
-  const sources = [...values.map(value => safeString(value)), fallbackText].filter(Boolean);
-
-  for (const source of sources) {
-    const chineseRuns = source.match(/[\u4e00-\u9fa5]{2,}/g) || [];
-    for (const run of chineseRuns) {
-      const segments = run.split(/[的了着过和与及或并也都就又再很更最在对把被将从到中里内]/).filter(Boolean);
-      for (const segment of segments.length ? segments : [run]) {
-        if (segment.length >= 2 && segment.length <= 3) {
-          candidates.push(segment);
-          continue;
-        }
-        for (let i = 0; i < segment.length - 1; i += 1) {
-          candidates.push(segment.slice(i, i + 2));
-        }
-        for (let i = 0; i < segment.length - 2; i += 1) {
-          candidates.push(segment.slice(i, i + 3));
-        }
-      }
-    }
-
-    const asciiRuns = source.match(/[A-Za-z0-9_-]{2,24}/g) || [];
-    candidates.push(...asciiRuns);
-  }
-
-  return candidates;
-}
-
-function normalizeBridgeKeywords(value: unknown, maxItems = 8, fallbackText = ''): string[] {
-  const blocked = new Set(['苏菲', '玩家', '后街', '私聊', '记忆', '总结', '对方', '这个', '那个', '什么']);
-  const rawValues = Array.isArray(value) ? value : [];
-  return uniqueStrings(collectShortBridgeKeywordCandidates(rawValues, fallbackText))
-    .filter(keyword => keyword.length >= 2 && !blocked.has(keyword) && !/^\d+$/.test(keyword))
-    .slice(0, maxItems);
-}
-
 function formatMessageTimestamp(message: Partial<BackstreetMessage>): string {
   return uniqueStrings([message.date, message.time || '--:--']).join(' ') || '--:--';
 }
 
-function getMessageTimeRange(messages: BackstreetMessage[]): string {
-  const validMessages = messages.filter(message => safeString(message.date) || safeString(message.time));
-  const first = validMessages[0];
-  const last = validMessages.at(-1);
-  const start = first ? formatMessageTimestamp(first) : '';
-  const end = last ? formatMessageTimestamp(last) : '';
-  if (start && end && start !== end) return `${start} 至 ${end}`;
-  return end || start;
+const PHONE_PREFS_STORAGE_KEY = 'fatria-status-phone-preferences-v1';
+const MAIN_INJECTION_MARKER = '【本轮固定后街聊天记录】';
+
+interface BackstreetMainInjectionSettings {
+  presentPrivateLimit: number;
+  presentGroupLimit: number;
+  globalRecentLimit: number;
 }
 
-function prependTimeRange(text: string, timeRange: string): string {
-  const content = safeString(text);
-  const range = safeString(timeRange);
-  if (!content || !range || /^【(?:记录时间|涉及时间段)：/.test(content)) return content;
-  return `【涉及时间段：${range}】\n${content}`;
+interface BackstreetMessageContext {
+  thread: BackstreetThreadData;
+  message: BackstreetMessage;
 }
 
-function normalizeBridgeItem(value: Partial<BackstreetBridgeMemoryItem>, fallbackUpdatedAt: number): BackstreetBridgeMemoryItem | null {
-  const text = safeString(value.text);
-  if (!text) return null;
-  return {
-    text,
-    keywords: normalizeBridgeKeywords(value.keywords, 8, text),
-    updatedAt: Number(value.updatedAt || fallbackUpdatedAt || Date.now()),
-  };
+const DEFAULT_MAIN_INJECTION_SETTINGS: BackstreetMainInjectionSettings = {
+  presentPrivateLimit: 20,
+  presentGroupLimit: 20,
+  globalRecentLimit: 20,
+};
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numericValue)));
 }
 
-function mergeBridgeItems(items: BackstreetBridgeMemoryItem[]): BackstreetBridgeMemoryItem[] {
-  const result = new Map<string, BackstreetBridgeMemoryItem>();
-  for (const item of items) {
-    const key = normalizeName(item.text);
-    if (!key) continue;
-    const existing = result.get(key);
-    if (!existing || item.updatedAt >= existing.updatedAt) result.set(key, item);
+function readBackstreetMainInjectionSettings(): BackstreetMainInjectionSettings {
+  try {
+    const raw = window.localStorage?.getItem(PHONE_PREFS_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    return {
+      presentPrivateLimit: clampInteger(
+        parsed.backstreetPresentPrivateMessageCount,
+        0,
+        30,
+        DEFAULT_MAIN_INJECTION_SETTINGS.presentPrivateLimit,
+      ),
+      presentGroupLimit: clampInteger(
+        parsed.backstreetPresentGroupMessageCount,
+        0,
+        30,
+        DEFAULT_MAIN_INJECTION_SETTINGS.presentGroupLimit,
+      ),
+      globalRecentLimit: clampInteger(
+        parsed.backstreetGlobalRecentMessageCount,
+        0,
+        50,
+        DEFAULT_MAIN_INJECTION_SETTINGS.globalRecentLimit,
+      ),
+    };
+  } catch {
+    return { ...DEFAULT_MAIN_INJECTION_SETTINGS };
   }
-  return Array.from(result.values()).sort((left, right) => left.updatedAt - right.updatedAt);
 }
 
-function extractJsonObject(text: string): string {
-  const tagged = extractXmlTag(text, 'backstreet_memory_update');
-  if (tagged) return tagged;
-  const match = safeString(text).match(/\{[\s\S]*\}/);
-  return match?.[0] || text;
+function normalizeCharacterName(value: string): string {
+  return safeString(value).replace(/[·・‧•\s\u3000._\-—]/g, '');
 }
 
-function parseMemoryUpdate(text: string): { core?: Partial<BackstreetCoreMemory>; bridge?: Partial<BackstreetBridgeMemory> } | null {
-  return parseJsonBlock<{ core?: Partial<BackstreetCoreMemory>; bridge?: Partial<BackstreetBridgeMemory> }>(extractJsonObject(text));
+function isSameCharacter(left: string, right: string): boolean {
+  const normalizedLeft = normalizeCharacterName(left);
+  const normalizedRight = normalizeCharacterName(right);
+  return Boolean(
+    normalizedLeft &&
+      normalizedRight &&
+      (normalizedLeft === normalizedRight || normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)),
+  );
 }
 
-function collectKeywords(contact: string, text: string, extra: unknown[] = []): string[] {
-  return uniqueStrings([
-    contact,
-    ...extra,
-    ...(safeString(text).match(/[\u4e00-\u9fa5A-Za-z0-9]{2,10}/g) || []).slice(-36),
-  ]).slice(0, 40);
+function getPresentNames(statData: Record<string, any> | null): string[] {
+  const value = statData?.关系系统?.在场人物;
+  const names = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[、,，|/\s]+/)
+      : [];
+  return uniqueStrings(names.map(name => safeString(name)).filter(name => name && !['无', '暂无', '未知'].includes(name)));
 }
 
-function normalizeCoreMemory(
-  contact: string,
-  value: Partial<BackstreetCoreMemory> | undefined,
-  recentText: string,
-  timeRange: string,
-): BackstreetCoreMemory {
-  return {
-    contact,
-    updatedAt: Date.now(),
-    summary: prependTimeRange(safeString(value?.summary) || `最近后街聊天：\n${clipText(recentText, 700)}`, timeRange),
-    relationship: safeString(value?.relationship),
-    knownFacts: normalizeList(value?.knownFacts, 16),
-    openLoops: normalizeList(value?.openLoops, 10),
-    recentTone: safeString(value?.recentTone),
-    keywords: collectKeywords(contact, recentText, value?.keywords || []),
-  };
+function getThreadParticipantMatches(thread: BackstreetThreadData, presentNames: string[]): string[] {
+  const targets = thread.kind === 'group' ? thread.members || [] : [thread.contact];
+  return presentNames.filter(name => targets.some(target => isSameCharacter(name, target)));
 }
 
-function normalizeBridgeMemory(
-  contact: string,
-  value: Partial<BackstreetBridgeMemory> | undefined,
-  recentText: string,
-  timeRange: string,
-  existing?: BackstreetBridgeMemory | null,
-): BackstreetBridgeMemory {
-  const updatedAt = Date.now();
-  const generatedItems = Array.isArray(value?.items)
-    ? value.items
-        .map(item => normalizeBridgeItem({ ...item, text: prependTimeRange(safeString(item.text), timeRange) }, updatedAt))
-        .filter((item): item is BackstreetBridgeMemoryItem => !!item)
-    : [];
-  const summaryItem =
-    generatedItems.length === 0
-      ? normalizeBridgeItem(
-          {
-            text: prependTimeRange(
-              [safeString(value?.summary), ...normalizeList(value?.facts, 16), ...normalizeList(value?.openLoops, 10)]
-                .filter(Boolean)
-                .join('\n'),
-              timeRange,
-            ),
-            keywords: normalizeBridgeKeywords(value?.keywords, 16, `${safeString(value?.summary)}\n${recentText}`),
-            updatedAt,
-          },
-          updatedAt,
-        )
-      : null;
-  const items = mergeBridgeItems([...(existing?.items || []), ...generatedItems, ...(summaryItem ? [summaryItem] : [])]);
-
-  return {
-    contact,
-    updatedAt,
-    summary: prependTimeRange(safeString(value?.summary) || `苏菲最近通过后街与${contact}有过交流。`, timeRange),
-    facts: normalizeList(value?.facts, 16),
-    openLoops: normalizeList(value?.openLoops, 10),
-    keywords: collectKeywords(contact, `${safeString(value?.summary)}\n${recentText}`, [
-      ...normalizeBridgeKeywords(value?.keywords, 16, `${safeString(value?.summary)}\n${recentText}`),
-      ...items.flatMap(item => item.keywords),
-    ]),
-    items,
-  };
+function getDisplayName(thread: BackstreetThreadData): string {
+  return thread.kind === 'group' ? safeString(thread.groupName) || '群聊' : safeString(thread.contact);
 }
 
-function formatStoredMemory(title: string, memory: BackstreetCoreMemory | BackstreetBridgeMemory | null): string {
-  if (!memory) return `${title}：暂无`;
-  return `${title}：\n${JSON.stringify(memory, null, 2)}`;
+function getRoleplayMessages(thread: BackstreetThreadData): BackstreetMessage[] {
+  return thread.messages.filter(message => safeString(message.text));
+}
+
+function getMessageSortTime(message: BackstreetMessage): number {
+  return Number(message.createdAt || 0);
+}
+
+function formatRawMessageLine(thread: BackstreetThreadData, message: BackstreetMessage, includeThreadName = false): string {
+  const threadLabel = includeThreadName
+    ? thread.kind === 'group'
+      ? `群聊「${getDisplayName(thread)}」`
+      : `私聊「${getDisplayName(thread)}」`
+    : '';
+  const label = threadLabel ? `${threadLabel} ` : '';
+  return `[${formatMessageTimestamp(message)}] ${label}${getMessageSpeaker(message, thread)}：${safeString(message.text)}`;
+}
+
+function formatThreadBlock(thread: BackstreetThreadData, messages: BackstreetMessage[], extra = ''): string {
+  const title =
+    thread.kind === 'group'
+      ? `【群聊：${getDisplayName(thread)}｜成员：${(thread.members || []).join('、') || '未知'}${thread.dissolved ? '｜已解散' : ''}${extra ? `｜${extra}` : ''}】`
+      : `【私聊：${getDisplayName(thread)}${extra ? `｜${extra}` : ''}】`;
+  return `${title}\n${messages.map(message => formatRawMessageLine(thread, message)).join('\n')}`;
+}
+
+function buildFixedMainInjection(
+  threads: BackstreetThreadData[],
+  presentNames: string[],
+  settings: BackstreetMainInjectionSettings,
+): string {
+  const sections: string[] = [];
+  const sortedThreads = [...threads].sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
+
+  if (settings.presentPrivateLimit > 0 && presentNames.length > 0) {
+    const privateBlocks = sortedThreads
+      .filter(thread => thread.kind !== 'group')
+      .map(thread => ({ thread, matches: getThreadParticipantMatches(thread, presentNames) }))
+      .filter(item => item.matches.length > 0)
+      .map(item => {
+        const messages = getRoleplayMessages(item.thread).slice(-settings.presentPrivateLimit);
+        return messages.length > 0 ? formatThreadBlock(item.thread, messages, `在场：${item.matches.join('、')}`) : '';
+      })
+      .filter(Boolean);
+    if (privateBlocks.length > 0) {
+      sections.push(`【在场人物相关私聊｜每人最近 ${settings.presentPrivateLimit} 条】\n${privateBlocks.join('\n\n')}`);
+    }
+  }
+
+  if (settings.presentGroupLimit > 0 && presentNames.length > 0) {
+    const groupBlocks = sortedThreads
+      .filter(thread => thread.kind === 'group')
+      .map(thread => ({ thread, matches: getThreadParticipantMatches(thread, presentNames) }))
+      .filter(item => item.matches.length > 0)
+      .map(item => {
+        const messages = getRoleplayMessages(item.thread).slice(-settings.presentGroupLimit);
+        return messages.length > 0 ? formatThreadBlock(item.thread, messages, `涉及在场：${item.matches.join('、')}`) : '';
+      })
+      .filter(Boolean);
+    if (groupBlocks.length > 0) {
+      sections.push(`【在场人物相关群聊｜每群最近 ${settings.presentGroupLimit} 条】\n${groupBlocks.join('\n\n')}`);
+    }
+  }
+
+  if (settings.globalRecentLimit > 0) {
+    const globalMessages = threads
+      .flatMap(thread => getRoleplayMessages(thread).map(message => ({ thread, message } satisfies BackstreetMessageContext)))
+      .sort((left, right) => getMessageSortTime(right.message) - getMessageSortTime(left.message))
+      .slice(0, settings.globalRecentLimit)
+      .reverse();
+    if (globalMessages.length > 0) {
+      sections.push(
+        `【全局最近 ${settings.globalRecentLimit} 条后街记录｜不要求相关角色在场】\n${globalMessages
+          .map(item => formatRawMessageLine(item.thread, item.message, true))
+          .join('\n')}`,
+      );
+    }
+  }
+
+  if (sections.length === 0) return '';
+
+  return `${MAIN_INJECTION_MARKER}
+以下内容是后街手机中已经发生过的原始聊天记录，不是总结；请按日期时间判断新旧。
+私聊默认只有<user>与该联系人知情；群聊默认只有群成员知情，除非正文明确传播。
+这些记录用于帮助正文角色记住后街私下交流、承诺、暗号、秘密和未完成事项。
+
+${sections.join('\n\n')}`;
 }
 
 type BackstreetRawMessage = {
@@ -248,7 +285,7 @@ function hasCompleteBackstreetEnvelope(content: string): boolean {
   return /<backstreet[^>]*>/i.test(text) && /<\/backstreet>/i.test(text);
 }
 
-function validateBackstreetReply(content: string, replies: ParsedBackstreetReply[]): string {
+function validateBackstreetReply(content: string, replies: ParsedBackstreetReply[], allowedSpeakers: string[] = []): string {
   if (!safeString(content)) return '空回复';
   if (!hasCompleteBackstreetEnvelope(content)) return '缺少完整 backstreet 标签';
   const payload = extractXmlTag(content, 'backstreet');
@@ -261,6 +298,7 @@ function validateBackstreetReply(content: string, replies: ParsedBackstreetReply
   const textReplies = replies.filter(reply => reply.type !== 'system' && safeString(reply.text));
   if (textReplies.length === 0) return '没有角色消息';
   if (textReplies.length > 4) return '消息数量超出协议';
+  const normalizedAllowedSpeakers = allowedSpeakers.map(normalizeName).filter(Boolean);
 
   for (const reply of textReplies) {
     const text = safeString(reply.text);
@@ -269,20 +307,29 @@ function validateBackstreetReply(content: string, replies: ParsedBackstreetReply
     if (/<\/?(?:backstreet|phone_memory_query|backstreet_memory_update|main_task|content)\b/i.test(text)) {
       return '消息内混入控制标签';
     }
+    if (normalizedAllowedSpeakers.length > 0 && !normalizedAllowedSpeakers.includes(normalizeName(safeString(reply.speaker)))) {
+      return '群聊消息缺少有效发言人';
+    }
   }
 
   return '';
 }
 
-function buildBackstreetRepairPrompt(contact: string, reason: string): string {
+function buildBackstreetRepairPrompt(contact: string, reason: string, allowedSpeakers: string[] = []): string {
+  const speakerRule =
+    allowedSpeakers.length > 0
+      ? `每条消息必须包含 "speaker"，且 speaker 只能从这些群成员中选择：${allowedSpeakers.join('、')}。`
+      : '';
+  const sample = allowedSpeakers.length > 0 ? `{"speaker":"${allowedSpeakers[0]}","type":"text","text":"消息内容"}` : '{"type":"text","text":"消息内容"}';
   return `上一次后街回复不可用：${reason}。
 不要解释，不要复述规则，不要输出代码块。
 只补发「${contact}」接下来 1-2 条真实手机消息。
 不要生成时间字段，消息时间由系统自动写入。
+${speakerRule}
 必须严格输出：
 <backstreet>
 [
-  {"type":"text","text":"消息内容"}
+  ${sample}
 ]
 </backstreet>`;
 }
@@ -291,8 +338,10 @@ async function requestBackstreetReplyWithRecovery(
   contact: string,
   promptMessages: BackstreetRawMessage[],
   fallbackTime: string,
+  options: { allowedSpeakers?: string[] } = {},
 ): Promise<ParsedBackstreetReply[]> {
   let lastReason = '未知错误';
+  const allowedSpeakers = options.allowedSpeakers || [];
 
   for (let attempt = 0; attempt < BACKSTREET_REPLY_MAX_ATTEMPTS; attempt += 1) {
     const messages =
@@ -302,14 +351,14 @@ async function requestBackstreetReplyWithRecovery(
             ...promptMessages,
             {
               role: 'user' as const,
-              content: buildBackstreetRepairPrompt(contact, lastReason),
+              content: buildBackstreetRepairPrompt(contact, lastReason, allowedSpeakers),
             },
           ];
 
     try {
       const result = await phoneApiManager.generateRaw(messages, { maxTokens: 900 });
       const parsedReplies = parseBackstreetReply(result.text);
-      const invalidReason = validateBackstreetReply(result.text, parsedReplies);
+      const invalidReason = validateBackstreetReply(result.text, parsedReplies, allowedSpeakers);
       if (!invalidReason) {
         return parsedReplies.filter(reply => reply.type !== 'system' && safeString(reply.text)).slice(0, 4);
       }
@@ -332,9 +381,43 @@ async function requestBackstreetReplyWithRecovery(
 }
 
 export class BackstreetService {
+  async ensureReady(): Promise<void> {
+    await backstreetWorldbookStore.ensureReady();
+  }
+
   async listContacts(characterData: any): Promise<BackstreetContact[]> {
     await backstreetWorldbookStore.ensureReady();
     return backstreetWorldbookStore.listContacts(characterData);
+  }
+
+  async createGroup(name: string, members: string[]): Promise<BackstreetContact> {
+    await backstreetWorldbookStore.ensureReady();
+    return backstreetWorldbookStore.createGroup(name, members);
+  }
+
+  async addGroupMembers(contact: string, members: string[], characterData: any): Promise<BackstreetMessage[]> {
+    const thread = await backstreetWorldbookStore.addGroupMembers(
+      contact,
+      members,
+      getCurrentDate(characterData),
+      getCurrentTime(characterData),
+    );
+    return thread.messages;
+  }
+
+  async removeGroupMember(contact: string, member: string, characterData: any): Promise<BackstreetMessage[]> {
+    const thread = await backstreetWorldbookStore.removeGroupMember(
+      contact,
+      member,
+      getCurrentDate(characterData),
+      getCurrentTime(characterData),
+    );
+    return thread.messages;
+  }
+
+  async dissolveGroup(contact: string, characterData: any): Promise<BackstreetMessage[]> {
+    const thread = await backstreetWorldbookStore.dissolveGroup(contact, getCurrentDate(characterData), getCurrentTime(characterData));
+    return thread.messages;
   }
 
   async getMessages(contact: string): Promise<BackstreetMessage[]> {
@@ -343,13 +426,13 @@ export class BackstreetService {
   }
 
   async appendUserMessage(contact: string, text: string, characterData: any): Promise<BackstreetMessage> {
+    const thread = await backstreetWorldbookStore.getThread(contact);
+    if (thread.kind === 'group' && thread.dissolved) throw new Error('群聊已解散，不能继续发送消息');
     const currentDate = getCurrentDate(characterData);
     const currentTime = getCurrentTime(characterData);
     const userMessage: BackstreetMessage = {
       id: makeId('bst_user'),
       sender: 'user',
-      contact,
-      type: 'text',
       date: currentDate,
       time: currentTime,
       text: safeString(text),
@@ -362,17 +445,25 @@ export class BackstreetService {
 
   async generateContactReply(contact: string, characterData: any): Promise<BackstreetMessage[]> {
     const thread = await backstreetWorldbookStore.getThread(contact);
-    const replies = await this.generateReply(contact, thread.messages, characterData);
+    if (thread.kind === 'group' && thread.dissolved) throw new Error('群聊已解散，不能继续生成回复');
+    const replies =
+      thread.kind === 'group'
+        ? await this.generateGroupReply(thread, characterData)
+        : await this.generateReply(contact, thread.messages, characterData);
     const contactReplies = replies.filter(reply => reply.sender === 'contact');
     if (contactReplies.length > 0) {
       await backstreetWorldbookStore.appendMessages(contact, contactReplies);
-      this.refreshThreadMemory(contact, characterData).catch(error => console.warn('[后街] 记忆摘要更新失败:', error));
     }
     return replies;
   }
 
   async deleteMessage(contact: string, messageId: string): Promise<BackstreetMessage[]> {
     const thread = await backstreetWorldbookStore.deleteMessage(contact, messageId);
+    return thread.messages;
+  }
+
+  async deleteMessagesAfter(contact: string, messageId: string): Promise<BackstreetMessage[]> {
+    const thread = await backstreetWorldbookStore.deleteMessagesAfter(contact, messageId);
     return thread.messages;
   }
 
@@ -383,116 +474,120 @@ export class BackstreetService {
   }
 
   async buildMainChatInjection(_promptMessages: unknown[]): Promise<string> {
-    return '';
-  }
-
-  private async refreshThreadMemory(contact: string, characterData: any): Promise<void> {
-    const thread = await backstreetWorldbookStore.getThread(contact, { force: true });
-    if (thread.messages.length === 0) return;
-
-    const roleplayMessages = thread.messages.filter(message => message.sender !== 'system');
-    if (roleplayMessages.length === 0) return;
-
-    const recentText = formatMessagesForPrompt(
-      roleplayMessages.map(message => ({ sender: message.sender, date: message.date, time: message.time, text: message.text })),
-      36,
-    );
-    const timeRange = getMessageTimeRange(roleplayMessages);
-    const [existingCore, existingBridge] = await Promise.all([
-      backstreetWorldbookStore.getCoreMemory(contact).catch(() => null),
-      backstreetWorldbookStore.getBridgeMemory(contact).catch(() => null),
-    ]);
-    const mainSnapshot = buildMainSceneSnapshot(characterData, { includeRecentChat: true });
-    const systemPrompt = `【后街记忆压缩任务】
-你只整理已经发生的后街聊天，不创作新剧情，不添加未出现的事实。
-把聊天压缩成两层记忆：
-1. core：给后街本人继续聊天用，保留关系、已知事实、未了事项、最近语气。
-2. bridge：给主线正文世界书蓝灯条目使用，只保留会影响正文互动的私聊事实、暗号、约定、承诺、秘密或未完成事项。
-bridge.items[].text 必须是正文可自然消化的自然语言总结，不要写 JSON、世界书、提示词、插件、EJS、蓝灯等机制词。
-bridge.items[].text 必须写明该总结对应的后街聊天日期与时间；如果涉及多条消息，写清时间段。
-bridge.items[].keywords 必须写 4-8 个用于最近两楼正文触发该总结的短关键词。中文关键词必须为 2-3 个字，不要写“地脉波动”“底下的东西”这类长词，要拆成“地脉”“波动”“底下”“东西”；英文/数字暗号可保留原文。不要写整句话，不要写泛词。
-只输出 XML 包裹的 JSON，不要解释：
-<backstreet_memory_update>
-{
-  "core": {
-    "summary": "长期聊天摘要",
-    "relationship": "该联系人和苏菲当前关系/态度",
-    "knownFacts": ["该联系人已经知道的事实"],
-    "openLoops": ["后续可承接但尚未完成的事项"],
-    "recentTone": "最近聊天语气",
-    "keywords": ["检索关键词"]
-  },
-  "bridge": {
-    "items": [
-      {
-        "text": "1-3句自然语言总结，例如：【涉及时间段：2025-3-17 20:10 至 2025-3-17 20:18】苏菲与凰天羽曾在后街私聊中约定暗号。当苏菲说“巴山楚水凄凉地”时，凰天羽应知道回应是“responsibility”。这是两人的私下约定，旁人默认不知道。",
-        "keywords": ["暗号", "巴山", "楚水", "凄凉", "responsibility"]
-      }
-    ],
-    "summary": "可选：本轮最重要的桥接摘要",
-    "facts": ["可选：正文可回灌的重要事实"],
-    "openLoops": ["可选：正文可承接事项"],
-    "keywords": ["可选：总检索关键词"]
-  }
-}
-</backstreet_memory_update>`;
-    const userPrompt = `联系人：${contact}
-玩家名：${getPlayerName(characterData)}
-
-${mainSnapshot}
-
-${formatStoredMemory('旧 core', existingCore)}
-
-${formatStoredMemory('旧 bridge', existingBridge)}
-
-【最近后街聊天】
-${recentText}
-${timeRange ? `\n本次整理涉及时间段：${timeRange}` : ''}
-
-请更新「${contact}」的后街 core 与正文 bridge 记忆。`;
-
-    const result = await phoneApiManager.generateRaw(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      { maxTokens: 1500 },
-    );
-    const payload = parseMemoryUpdate(result.text);
-    const core = normalizeCoreMemory(contact, payload?.core, recentText, timeRange);
-    const bridge = normalizeBridgeMemory(contact, payload?.bridge, recentText, timeRange, existingBridge);
-
-    const latestThread = await backstreetWorldbookStore.getThread(contact, { force: true }).catch(() => null);
-    if (
-      !latestThread ||
-      latestThread.updatedAt !== thread.updatedAt ||
-      latestThread.messages.length !== thread.messages.length
-    ) {
-      console.info(`[后街] ${contact} 的聊天记录已变化，跳过过期记忆摘要写入。`);
-      return;
+    const settings = readBackstreetMainInjectionSettings();
+    if (settings.presentPrivateLimit <= 0 && settings.presentGroupLimit <= 0 && settings.globalRecentLimit <= 0) {
+      return '';
     }
 
-    await backstreetWorldbookStore.saveCoreMemory(core);
-    await backstreetWorldbookStore.saveBridgeMemory(bridge);
+    const statData = await getLatestStatData().catch(() => null);
+    const presentNames = getPresentNames(statData);
+    const threads = await backstreetWorldbookStore.listRawThreads({ force: true });
+    return buildFixedMainInjection(threads, presentNames, settings);
+  }
+
+  private normalizeGroupSpeaker(speaker: string, members: string[]): string {
+    const normalizedSpeaker = normalizeName(speaker);
+    return members.find(member => normalizeName(member) === normalizedSpeaker) || members[0] || '群成员';
+  }
+
+  private async generateGroupReply(thread: BackstreetThreadData, characterData: any): Promise<BackstreetMessage[]> {
+    const groupName = getThreadDisplayName(thread);
+    const members = normalizeList(thread.members, 24);
+    if (thread.dissolved) throw new Error('群聊已解散，不能继续生成回复');
+    if (members.length === 0) throw new Error('群聊没有可回复的成员');
+    const latestUserMessage = thread.messages.filter(message => message.sender === 'user').at(-1)?.text || '';
+    const locationText = `${safeString(characterData?.位置系统?.地点名称)} ${safeString(characterData?.位置系统?.坐标)}`;
+    const keywordQuery = extractFallbackQuery(`${groupName}\n${members.join('\n')}\n${latestUserMessage}\n${locationText}`, 6);
+    const query = normalizePhoneMemoryQuery({
+      characters: members,
+      keywords: uniqueStrings([groupName, ...members, ...keywordQuery.keywords]),
+      locations: [safeString(characterData?.位置系统?.地点名称), safeString(characterData?.位置系统?.坐标)],
+      limit: 6,
+    });
+
+    const [archiveHits, loreContexts] = await Promise.all([
+      backstreetWorldbookStore.searchArchiveMemory(query),
+      Promise.all(members.slice(0, 8).map(member => phoneLoreContextBuilder.build({ contact: member, characterData }).catch(() => ''))),
+    ]);
+    const whitelistLoreContext = uniqueStrings(loreContexts.filter(Boolean)).join('\n\n');
+    const mainSceneSnapshot = buildMainSceneSnapshot(characterData, { includeRecentChat: true });
+    const historyMessages = thread.messages.filter(message => safeString(message.text));
+    const historyText = formatThreadMessagesForPrompt(thread, historyMessages, 30);
+
+    const systemPrompt = `【后街群聊生成协议】
+你正在模拟名为“后街”的手机群聊「${groupName}」。
+${PLAYER_NAME_MACRO}是正在使用后街手机的人；群成员只有：${members.join('、')}。
+这是虚构成人角色扮演场景；涉及成人向内容时，默认相关角色均为成年人，并基于当前剧情、关系与同意展开。
+保持每个群成员的人格、关系记忆、当前情绪和手机聊天习惯。不要自称AI，不要解释规则，不要写旁白。
+【主线快照】是真实主线当前状态；如果它和旧后街记忆冲突，以主线快照、当前群聊和${PLAYER_NAME_MACRO}刚刚发送的消息为准。
+不要输出主线正文、状态栏、变量更新、战斗格式或世界书控制指令。
+根据当前情境选择 1-3 名合适的群成员发言，一次回复 1-4 条消息。
+语言像真实群聊：短句、口语、可以互相接话、吐槽、试探或沉默。
+可以自然使用少量 emoji 和颜文字（如🙂、😳、www、(。・ω・。)），但必须符合发言者性格、情绪和聊天语境，不要每条都堆叠。
+不要输出、推算或编写消息时间；消息时间由系统根据当前 MVU 时间自动写入。
+每条消息必须包含 speaker，speaker 必须完全等于一个群成员名字。
+
+输出必须严格为：
+<backstreet>
+[
+  {"speaker":"${members[0] || '群成员'}","type":"text","text":"消息内容"}
+]
+</backstreet>`;
+
+    const phoneContext = `${whitelistLoreContext || '【后街白名单世界书】暂无可用条目'}
+
+${mainSceneSnapshot}
+
+【后街当前群聊】
+${historyText || '暂无'}
+
+${formatMemoryHits(archiveHits, '筛选的过往后街群聊记录') || '【筛选的过往后街群聊记录】暂无'}`;
+
+    const userPrompt = `当前时间：${getCurrentTime(characterData)}
+当前位置：${safeString(characterData?.位置系统?.地点名称) || '未知'} ${safeString(characterData?.位置系统?.坐标)}
+
+${PLAYER_NAME_MACRO}刚刚在群里发送：
+${latestUserMessage}
+
+请生成群聊「${groupName}」接下来的回复。`;
+
+    const fallbackTime = getCurrentTime(characterData);
+    const fallbackDate = getCurrentDate(characterData);
+    const parsedReplies = await requestBackstreetReplyWithRecovery(
+      groupName,
+      [
+        { role: 'system', content: systemPrompt, name: 'SYSTEM (后街群聊规则)' },
+        { role: 'system', content: phoneContext, name: 'SYSTEM (后街群聊资料)' },
+        { role: 'user', content: userPrompt },
+      ],
+      fallbackTime,
+      { allowedSpeakers: members },
+    );
+    return parsedReplies.map(reply => ({
+      id: makeId('bst_group_contact'),
+      sender: reply.type === 'system' ? 'system' : 'contact',
+      speaker: this.normalizeGroupSpeaker(reply.speaker || '', members),
+      date: fallbackDate,
+      time: fallbackTime,
+      text: reply.text,
+      createdAt: Date.now(),
+    }));
   }
 
   private async generateReply(contact: string, messages: BackstreetMessage[], characterData: any): Promise<BackstreetMessage[]> {
-    const playerName = getPlayerName(characterData);
+    const contactName = getPrivatePromptName(contact);
     const latestUserMessage = messages.filter(message => message.sender === 'user').at(-1)?.text || '';
     const locationText = `${safeString(characterData?.位置系统?.地点名称)} ${safeString(characterData?.位置系统?.坐标)}`;
-    const keywordQuery = extractFallbackQuery(`${contact}\n${latestUserMessage}\n${locationText}`, 5);
+    const keywordQuery = extractFallbackQuery(`${contactName}\n${latestUserMessage}\n${locationText}`, 5);
     const query = normalizePhoneMemoryQuery({
-      characters: [contact],
-      keywords: uniqueStrings([contact, ...keywordQuery.keywords]),
+      characters: contactName === '群聊' ? [] : [contactName],
+      keywords: uniqueStrings([contactName, ...keywordQuery.keywords]),
       locations: [safeString(characterData?.位置系统?.地点名称), safeString(characterData?.位置系统?.坐标)],
       limit: 5,
     });
 
-    const [contactMemoryHits, archiveHits] = await Promise.all([
-      backstreetWorldbookStore.getContactCoreMemoryHits(contact),
-      backstreetWorldbookStore.searchArchiveMemory(query),
-    ]);
-    const whitelistLoreContext = await phoneLoreContextBuilder.build({ contact, characterData });
+    const archiveHits = await backstreetWorldbookStore.searchArchiveMemory(query);
+    const whitelistLoreContext = await phoneLoreContextBuilder.build({ contact: contactName, characterData });
     const mainSceneSnapshot = buildMainSceneSnapshot(characterData, { includeRecentChat: true });
 
     const historyMessages = messages.filter(message => message.sender !== 'system');
@@ -502,12 +597,13 @@ ${timeRange ? `\n本次整理涉及时间段：${timeRange}` : ''}
     );
 
     const systemPrompt = `【后街单聊生成协议】
-你正在扮演「${contact}」，通过名为“后街”的手机私聊应用与「${playerName}」对话。
+你正在扮演「${contactName}」，通过名为“后街”的手机私聊应用与${PLAYER_NAME_MACRO}对话。
 这是虚构成人角色扮演场景；涉及成人向内容时，默认相关角色均为成年人，并基于当前剧情、关系与同意展开。
 保持角色人格、关系记忆、当前情绪和手机聊天习惯。不要自称AI，不要解释规则，不要写旁白。
-【主线快照】是真实主线当前状态；如果它和旧后街记忆冲突，以主线快照、当前会话和玩家刚刚发送的消息为准。
+【主线快照】是真实主线当前状态；如果它和旧后街记忆冲突，以主线快照、当前会话和${PLAYER_NAME_MACRO}刚刚发送的消息为准。
 不要输出主线正文、状态栏、变量更新、战斗格式或世界书控制指令。
 语言像真实手机聊天：短句、口语、可以试探、停顿、主动或冷淡。一次回复 1-4 条消息。
+可以自然使用少量 emoji 和颜文字（如🙂、😳、www、(。・ω・。)），但必须符合角色性格、情绪和聊天语境，不要每条都堆叠。
 不要输出、推算或编写消息时间；消息时间由系统根据当前 MVU 时间自动写入。
 
 输出必须严格为：
@@ -521,8 +617,6 @@ ${timeRange ? `\n本次整理涉及时间段：${timeRange}` : ''}
 
 ${mainSceneSnapshot}
 
-${formatMemoryHits(contactMemoryHits, '当前联系人后街长期记忆') || '【当前联系人后街长期记忆】暂无'}
-
 【后街当前会话】
 ${historyText || '暂无'}
 
@@ -531,15 +625,15 @@ ${formatMemoryHits(archiveHits, '筛选的过往后街聊天记录') || '【筛�
     const userPrompt = `当前时间：${getCurrentTime(characterData)}
 当前位置：${safeString(characterData?.位置系统?.地点名称) || '未知'} ${safeString(characterData?.位置系统?.坐标)}
 
-玩家刚刚发送：
+${PLAYER_NAME_MACRO}刚刚发送：
 ${latestUserMessage}
 
-请生成「${contact}」接下来的后街回复。`;
+请生成「${contactName}」接下来的后街回复。`;
 
     const fallbackTime = getCurrentTime(characterData);
     const fallbackDate = getCurrentDate(characterData);
     const parsedReplies = await requestBackstreetReplyWithRecovery(
-      contact,
+      contactName,
       [
         { role: 'system', content: systemPrompt, name: 'SYSTEM (后街规则)' },
         { role: 'system', content: phoneContext, name: 'SYSTEM (后街资料)' },
@@ -550,8 +644,6 @@ ${latestUserMessage}
     return parsedReplies.map(reply => ({
       id: makeId('bst_contact'),
       sender: reply.type === 'system' ? 'system' : 'contact',
-      contact,
-      type: reply.type,
       date: fallbackDate,
       time: fallbackTime,
       text: reply.text,

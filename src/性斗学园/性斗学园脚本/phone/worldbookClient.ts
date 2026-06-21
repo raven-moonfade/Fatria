@@ -239,14 +239,65 @@ function createEntry(comment: string, content: string, optionsValue: boolean | U
   };
 }
 
+function applyStorageEntry(entry: WorldbookEntry, content: string): void {
+  entry.content = content;
+  entry.disable = true;
+  entry.key = [];
+  delete entry.disabled;
+  delete entry.constant;
+  delete entry.selective;
+  delete entry.keysecondary;
+  delete entry.selectiveLogic;
+  delete entry.position;
+  delete entry.role;
+  delete entry.depth;
+  delete entry.order;
+  delete entry.useProbability;
+  delete entry.probability;
+  delete entry.excludeRecursion;
+  delete entry.preventRecursion;
+  delete entry.addMemo;
+}
+
+function createStorageEntry(comment: string, content: string): WorldbookEntry {
+  return {
+    uid: 0,
+    displayIndex: 0,
+    comment,
+    disable: true,
+    key: [],
+    content,
+  };
+}
+
 export class WorldbookClient {
   private cache = new Map<string, { data: WorldbookData; at: number }>();
   private boundChatWorldbooks = new Set<string>();
   private scriptModulePromise: Promise<any> | null = null;
   private worldInfoModulePromise: Promise<any> | null = null;
+  private lastChatKey = '';
 
   getPhoneWorldbookName(): string {
     return `后街-${safeStorageSegment(this.getChatKey() || '默认聊天')}`;
+  }
+
+  getCurrentChatWorldbookName(): string {
+    const globalAny = getHostWindow();
+    const helper = globalAny.getChatWorldbookName || (globalThis as any).getChatWorldbookName;
+    if (typeof helper === 'function') {
+      try {
+        const helperName = safeString(helper('current'));
+        if (helperName) return helperName;
+      } catch {
+        // Fall back to SillyTavern metadata below.
+      }
+    }
+
+    const context = this.getContext();
+    return safeString(
+      context?.chatMetadata?.[CHAT_LOREBOOK_METADATA_KEY] ||
+        (globalAny.chat_metadata && globalAny.chat_metadata[CHAT_LOREBOOK_METADATA_KEY]),
+    );
   }
 
   getContext(): any {
@@ -257,12 +308,21 @@ export class WorldbookClient {
   }
 
   private getChatKey(context = this.getContext()): string {
+    const globalAny = getHostWindow();
     const rawKey =
-      safeString(context?.chatMetadata?.file_name) ||
+      safeString(globalAny.SillyTavern?.getCurrentChatId?.()) ||
+      safeString((globalThis as any).SillyTavern?.getCurrentChatId?.()) ||
       safeString(context?.chatId) ||
+      safeString(context?.chatMetadata?.file_name) ||
       safeString(context?.chat?.[0]?.send_date) ||
       '默认聊天';
-    return stripChatFileExtension(rawKey) || '默认聊天';
+    const chatKey = stripChatFileExtension(rawKey) || '默认聊天';
+    if (this.lastChatKey && this.lastChatKey !== chatKey) {
+      this.cache.clear();
+      this.boundChatWorldbooks.clear();
+    }
+    this.lastChatKey = chatKey;
+    return chatKey;
   }
 
   private getLegacyPhoneWorldbookName(context = this.getContext()): string {
@@ -404,16 +464,17 @@ export class WorldbookClient {
     const metadataTargets = [chatMetadata, scriptModule?.chat_metadata, getHostWindow().chat_metadata].filter(
       target => target && typeof target === 'object',
     );
-    const existing = safeString(chatMetadata[CHAT_LOREBOOK_METADATA_KEY] || scriptModule?.chat_metadata?.[CHAT_LOREBOOK_METADATA_KEY]);
+    const existing = safeString(chatMetadata[CHAT_LOREBOOK_METADATA_KEY]);
     const chatKey = this.getChatKey(context);
     const bindKey = `${chatKey}::${worldName}::${existing}`;
-    if (this.boundChatWorldbooks.has(bindKey)) return;
+    const alreadyBound = this.boundChatWorldbooks.has(bindKey);
     this.boundChatWorldbooks.add(bindKey);
 
     await this.registerWorldbookName(worldName);
 
     if (existing === worldName) {
       this.setChatLorebookButtonState(true);
+      if (!alreadyBound) await this.saveChatMetadata(context).catch(() => null);
       return;
     }
 
@@ -428,6 +489,33 @@ export class WorldbookClient {
     this.setChatLorebookButtonState(true);
     await this.saveChatMetadata(context);
     console.info(`[后街] 已将聊天世界书「${worldName}」绑定到当前聊天。`);
+  }
+
+  async getChatMetadataValue<T = unknown>(key: string): Promise<T | null> {
+    const context = this.getContext();
+    if (context?.chatMetadata && typeof context.chatMetadata === 'object') {
+      const value = context.chatMetadata[key];
+      return value == null ? null : (value as T);
+    }
+
+    const scriptModule = await this.loadScriptModule();
+    const value = scriptModule?.chat_metadata?.[key] ?? getHostWindow().chat_metadata?.[key];
+    return value == null ? null : (value as T);
+  }
+
+  async setChatMetadataValue(key: string, value: unknown): Promise<void> {
+    const context = this.getContext();
+    const chatMetadata = context?.chatMetadata;
+    if (!chatMetadata || typeof chatMetadata !== 'object') return;
+
+    const scriptModule = await this.loadScriptModule();
+    const metadataTargets = [chatMetadata, scriptModule?.chat_metadata, getHostWindow().chat_metadata].filter(
+      target => target && typeof target === 'object',
+    );
+    for (const metadata of metadataTargets) {
+      metadata[key] = value;
+    }
+    await this.saveChatMetadata(context);
   }
 
   async readWorldbook(name: string, options: { force?: boolean; allowMissing?: boolean } = {}): Promise<WorldbookData | null> {
@@ -450,10 +538,16 @@ export class WorldbookClient {
           // Try the next payload shape.
         }
       }
-      if (options.allowMissing) return null;
+      if (options.allowMissing) {
+        this.cache.delete(worldName);
+        return null;
+      }
       throw new Error(`未找到世界书：${worldName}`);
     } catch (error) {
-      if (options.allowMissing) return null;
+      if (options.allowMissing) {
+        this.cache.delete(worldName);
+        return null;
+      }
       throw error;
     }
   }
@@ -514,6 +608,23 @@ export class WorldbookClient {
     });
     this.cache.set(worldName, { data, at: Date.now() });
     await this.bindWorldbookToCurrentChat(worldName).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
+  }
+
+  async upsertStorageEntry(name: string, comment: string, content: string): Promise<void> {
+    const data = await this.ensureWorldbook(name);
+    const entries = getEntriesArray(data);
+    const existing = entries.find(entry => safeString(entry.comment) === comment);
+
+    if (existing) {
+      applyStorageEntry(existing, content);
+    } else {
+      const entry = createStorageEntry(comment, content);
+      entry.uid = getNextUid(entries);
+      entry.displayIndex = entries.length;
+      entries.push(entry);
+    }
+
+    await this.saveWorldbook(name, replaceEntries(data, entries));
   }
 
   async deleteEntry(name: string, comment: string): Promise<boolean> {

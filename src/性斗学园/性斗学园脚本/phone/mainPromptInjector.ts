@@ -5,14 +5,17 @@ const MAIN_EXTENSION_PROMPT_KEY = 'fatria_backstreet_main_bridge';
 const MAIN_EXTENSION_PROMPT_POSITION = 1;
 const MAIN_EXTENSION_PROMPT_DEPTH = 1;
 const MAIN_EXTENSION_PROMPT_ROLE = 0;
+const EJS_BRIDGE_FUNCTION_NAME = '__fatriaBackstreetMainInjection';
 const INTERNAL_PROMPT_MARKERS = ['后街单聊生成协议', '后街手机记忆检索规划器', '<backstreet>', '<phone_memory_query>'];
-const MAIN_INJECTION_MARKER = '【本轮相关后街桥接记忆】';
+const MAIN_INJECTION_MARKERS = ['【本轮固定后街聊天记录】', '【本轮相关后街桥接记忆】'];
 const BLOCKED_WORLD_INFO_PATTERNS = [
   /\[?mvu_(?:plot|update)\]?/i,
   /正文格式|变量输出格式|变量更新格式|输出格式要求/i,
   /Force_Structured_Output|<UpdateVariable>|<parallel_events>/i,
   /COT/i,
 ];
+
+let ejsPromptArtifactsReady = false;
 
 function getHostWindow(): any {
   const current = window as any;
@@ -22,6 +25,44 @@ function getHostWindow(): any {
     // Cross-frame access can fail in stricter contexts; stay in the current frame.
   }
   return current;
+}
+
+function exposeEjsInjectionBridge(): void {
+  const bridge = async (promptMessages?: unknown[]): Promise<string> => {
+    if (isInternalGeneration()) return '';
+    return backstreetService.buildMainChatInjection(Array.isArray(promptMessages) ? promptMessages : []);
+  };
+  const localAny = window as any;
+  const hostAny = getHostWindow();
+  localAny[EJS_BRIDGE_FUNCTION_NAME] = bridge;
+  hostAny[EJS_BRIDGE_FUNCTION_NAME] = bridge;
+  (globalThis as any)[EJS_BRIDGE_FUNCTION_NAME] = bridge;
+}
+
+function getEjsTemplate(): any {
+  const localAny = window as any;
+  const hostAny = getHostWindow();
+  return hostAny.EjsTemplate || localAny.EjsTemplate || (globalThis as any).EjsTemplate;
+}
+
+function getEjsFeatures(): Record<string, unknown> | null {
+  const ejs = getEjsTemplate();
+  if (!ejs || typeof ejs.getFeatures !== 'function') return null;
+  try {
+    const features = ejs.getFeatures();
+    return features && typeof features === 'object' ? features : null;
+  } catch {
+    return null;
+  }
+}
+
+function isEjsPromptInjectionEnabled(): boolean {
+  const features = getEjsFeatures();
+  return Boolean(features?.enabled && features?.generate_enabled);
+}
+
+function shouldPreferEjsInjection(): boolean {
+  return ejsPromptArtifactsReady && isEjsPromptInjectionEnabled();
 }
 
 function isInternalGeneration(): boolean {
@@ -84,12 +125,14 @@ function removeOldInjection(messages: any[]): any[] {
 
 function removeMainInjection(messages: any[]): any[] {
   return messages.filter(
-    message => message?.name !== INJECTION_MESSAGE_NAME && !safeText(message?.content).includes(MAIN_INJECTION_MARKER),
+    message =>
+      message?.name !== INJECTION_MESSAGE_NAME &&
+      !MAIN_INJECTION_MARKERS.some(marker => safeText(message?.content).includes(marker)),
   );
 }
 
 function hasMainInjection(messages: any[]): boolean {
-  return messages.some(message => safeText(message?.content).includes(MAIN_INJECTION_MARKER));
+  return messages.some(message => MAIN_INJECTION_MARKERS.some(marker => safeText(message?.content).includes(marker)));
 }
 
 function isNonMainGenerationPrompt(messages: any[]): boolean {
@@ -190,6 +233,10 @@ async function refreshMainExtensionPrompt(messages?: any[]): Promise<string> {
     setMainExtensionPrompt('', context);
     return '';
   }
+  if (shouldPreferEjsInjection()) {
+    setMainExtensionPrompt('', context);
+    return '';
+  }
 
   try {
     const sourceMessages = messages?.length ? messages : getCurrentChatMessages(context);
@@ -205,6 +252,10 @@ async function refreshMainExtensionPrompt(messages?: any[]): Promise<string> {
 
 async function injectIntoPrompt(messages: any[]): Promise<any[]> {
   if (isInternalGeneration()) return filterBackstreetInternalPrompt(messages);
+  if (shouldPreferEjsInjection()) {
+    setMainExtensionPrompt('');
+    return removeMainInjection(messages);
+  }
   if (isNonMainGenerationPrompt(messages)) {
     setMainExtensionPrompt('');
     return removeMainInjection(messages);
@@ -243,8 +294,54 @@ async function refreshExtensionPromptFromEventData(eventData: any): Promise<void
   await refreshMainExtensionPrompt(promptArrays[0]);
 }
 
+function ensurePromptArtifacts(reason: string): void {
+  ejsPromptArtifactsReady = false;
+  backstreetService
+    .ensureReady()
+    .then(() => {
+      ejsPromptArtifactsReady = true;
+    })
+    .catch(error => {
+      console.warn(`[后街] EJS 注入桥准备失败（${reason}）:`, error);
+    });
+}
+
+function logEjsInjectionStatus(): boolean {
+  const features = getEjsFeatures();
+  if (!features) return false;
+
+  if (isEjsPromptInjectionEnabled()) {
+    if (!ejsPromptArtifactsReady) {
+      console.info('[后街] EJS 生成处理已开启，蓝灯记忆条目仍在准备；旧 hook 将暂时兜底。');
+      return true;
+    }
+    console.info('[后街] 已启用蓝灯 EJS 主线记忆条目，旧 hook 注入将作为兜底停用。');
+    return true;
+  }
+
+  const missing = [
+    features.enabled ? '' : '插件总开关',
+    features.generate_enabled ? '' : '生成处理',
+  ].filter(Boolean);
+  console.warn(`[后街] 已写入蓝灯 EJS 记忆条目，但提示词模板未开启：${missing.join('、')}。开启后才能通过 EJS 注入正文提示词。`);
+  return true;
+}
+
+function scheduleEjsStatusLog(): void {
+  window.setTimeout(() => {
+    if (logEjsInjectionStatus()) return;
+    window.setTimeout(() => {
+      if (!logEjsInjectionStatus()) {
+        console.warn('[后街] 未检测到 EjsTemplate，正文后街记录将继续使用旧 hook 注入兜底。');
+      }
+    }, 2500);
+  }, 500);
+}
+
 export function installBackstreetMainPromptInjector(): void {
   const globalAny = getHostWindow();
+  exposeEjsInjectionBridge();
+  ensurePromptArtifacts('加载');
   if (isInstalled()) return;
   setInstalledFlag(true);
   let registeredPromptHook = false;
@@ -273,6 +370,16 @@ export function installBackstreetMainPromptInjector(): void {
     console.info('[后街] 已通过 eventSource 注册主线记忆动态注入');
   }
 
+  const refreshArtifactsOnChatChange = () => {
+    setMainExtensionPrompt('');
+    ensurePromptArtifacts('聊天切换');
+  };
+  if (typeof globalAny.eventOn === 'function' && globalAny.tavern_events?.CHAT_CHANGED) {
+    globalAny.eventOn(globalAny.tavern_events.CHAT_CHANGED, refreshArtifactsOnChatChange);
+  } else if (context?.eventSource && context?.event_types?.CHAT_CHANGED) {
+    context.eventSource.on(context.event_types.CHAT_CHANGED, refreshArtifactsOnChatChange);
+  }
+
   if (typeof globalAny.eventOn === 'function' && globalAny.tavern_events?.WORLD_INFO_ACTIVATED) {
     globalAny.eventOn(globalAny.tavern_events.WORLD_INFO_ACTIVATED, (entries: any[]) => {
       if (isInternalGeneration() && Array.isArray(entries)) {
@@ -293,4 +400,6 @@ export function installBackstreetMainPromptInjector(): void {
     setInstalledFlag(false);
     console.warn('[后街] 暂未找到可用的主线生成前 hook');
   }
+
+  scheduleEjsStatusLog();
 }

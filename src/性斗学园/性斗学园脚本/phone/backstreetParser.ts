@@ -3,6 +3,7 @@ import { safeString } from './text';
 
 export interface ParsedBackstreetReply {
   type: 'text' | 'system';
+  speaker?: string;
   time: string;
   text: string;
 }
@@ -15,6 +16,7 @@ function normalizeReplyItem(value: unknown): ParsedBackstreetReply | null {
   const type = item.type === 'system' ? 'system' : 'text';
   return {
     type,
+    speaker: safeString(item.speaker || item.sender),
     time: safeString(item.time),
     text,
   };
@@ -46,11 +48,11 @@ function unescapeJsonString(value: string): string {
 
 function parsePartialTextFields(payload: string): ParsedBackstreetReply[] {
   const replies: ParsedBackstreetReply[] = [];
-  const pattern = /"time"\s*:\s*"((?:\\.|[^"\\])*)"?[\s\S]{0,120}?"text"\s*:\s*"((?:\\.|[^"\\])*)"?/g;
+  const pattern = /(?:"speaker"\s*:\s*"((?:\\.|[^"\\])*)"?[\s\S]{0,120}?)?"time"\s*:\s*"((?:\\.|[^"\\])*)"?[\s\S]{0,120}?"text"\s*:\s*"((?:\\.|[^"\\])*)"?/g;
   for (const match of payload.matchAll(pattern)) {
-    const text = unescapeJsonString(match[2] || '');
+    const text = unescapeJsonString(match[3] || '');
     if (!text) continue;
-    replies.push({ type: 'text', time: unescapeJsonString(match[1] || ''), text });
+    replies.push({ type: 'text', speaker: unescapeJsonString(match[1] || ''), time: unescapeJsonString(match[2] || ''), text });
   }
   if (replies.length > 0) return replies;
 

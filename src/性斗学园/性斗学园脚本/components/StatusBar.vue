@@ -280,7 +280,7 @@
                   <section class="settings-section settings-section-compact">
                     <div class="settings-section-title">
                       <span>后街聊天</span>
-                      <small>显示楼层</small>
+                      <small>显示与正文注入</small>
                     </div>
 
                     <label class="settings-slider-row">
@@ -296,6 +296,56 @@
                         step="1"
                       />
                     </label>
+
+                    <div class="settings-helper">
+                      正文注入会直接写入后街原始聊天记录，不进行总结，也不依赖关键词匹配。
+                    </div>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>在场私聊注入</span>
+                        <strong>{{ phonePrefs.backstreetPresentPrivateMessageCount }} 条/人</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetPresentPrivateMessageCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>在场群聊注入</span>
+                        <strong>{{ phonePrefs.backstreetPresentGroupMessageCount }} 条/群</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetPresentGroupMessageCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>全局最近注入</span>
+                        <strong>{{ phonePrefs.backstreetGlobalRecentMessageCount }} 条</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetGlobalRecentMessageCount"
+                        type="range"
+                        min="0"
+                        max="50"
+                        step="1"
+                      />
+                    </label>
+
+                    <div class="settings-helper">
+                      在场私聊：当前在场角色各自的最近私聊；在场群聊：群成员包含在场角色的群聊；全局最近：不要求角色在场。
+                    </div>
                   </section>
 
                   <section class="settings-section">
@@ -364,6 +414,53 @@
                       {{ secondaryApiStatusText }}
                     </div>
                   </section>
+
+                  <div class="settings-category-heading">
+                    <span>脚本维护</span>
+                    <small>版本更新</small>
+                  </div>
+
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>版本检测</span>
+                      <small>GitHub</small>
+                    </div>
+
+                    <div class="settings-version-grid">
+                      <div>
+                        <span>当前版本</span>
+                        <strong>v{{ scriptUpdateState.currentVersion }}</strong>
+                      </div>
+                      <div>
+                        <span>最新版本</span>
+                        <strong>v{{ scriptUpdateState.latestVersion }}</strong>
+                      </div>
+                    </div>
+
+                    <div class="settings-actions">
+                      <button
+                        class="settings-action-primary"
+                        type="button"
+                        :disabled="isCheckingScriptUpdate"
+                        @click="handleCheckScriptUpdate"
+                      >
+                        <i class="fas fa-rotate"></i>
+                        {{ isCheckingScriptUpdate ? '检查中' : '检查更新' }}
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="!scriptUpdateState.hasUpdate || isCheckingScriptUpdate"
+                        @click="handleShowScriptUpdateGuide"
+                      >
+                        <i class="fas fa-broom"></i>
+                        处理方法
+                      </button>
+                    </div>
+
+                    <div class="settings-helper" :class="{ ready: scriptUpdateHelperReady }">
+                      {{ scriptUpdateStatusText }}
+                    </div>
+                  </section>
                 </div>
               </div>
             </section>
@@ -406,6 +503,13 @@ import {
   saveSecondaryPhoneApiSettings,
   type SecondaryPhoneApiSettings,
 } from '../phone/phoneApiSettings';
+import {
+  checkScriptUpdate,
+  getScriptUpdateState,
+  SCRIPT_UPDATE_EVENT,
+  showScriptUpdateGuide,
+  type ScriptUpdateState,
+} from '../scriptUpdater';
 
 const props = defineProps<{
   isVisible: boolean;
@@ -519,6 +623,9 @@ interface PhonePreferences {
   wallpaperBlur: number;
   tintStrength: number;
   backstreetVisibleMessageCount: number;
+  backstreetPresentPrivateMessageCount: number;
+  backstreetPresentGroupMessageCount: number;
+  backstreetGlobalRecentMessageCount: number;
 }
 
 interface PhoneApp {
@@ -543,7 +650,10 @@ const DEFAULT_PHONE_PREFS: PhonePreferences = {
   wallpaperOpacity: 70,
   wallpaperBlur: 0,
   tintStrength: 15,
-  backstreetVisibleMessageCount: 20,
+  backstreetVisibleMessageCount: 30,
+  backstreetPresentPrivateMessageCount: 20,
+  backstreetPresentGroupMessageCount: 20,
+  backstreetGlobalRecentMessageCount: 20,
 };
 
 const phoneApps: PhoneApp[] = [
@@ -568,6 +678,8 @@ const secondaryPhoneApi = ref<SecondaryPhoneApiSettings>(loadSecondaryPhoneApiSe
 const secondaryApiModelOptions = ref<string[]>([...secondaryPhoneApi.value.models]);
 const secondaryApiStatus = ref('');
 const isSecondaryApiTesting = ref(false);
+const scriptUpdateState = ref<ScriptUpdateState>(getScriptUpdateState());
+const isCheckingScriptUpdate = ref(false);
 let wallpaperSourceRequestId = 0;
 
 const homeApps = computed(() => phoneApps.filter(app => !app.dock));
@@ -603,6 +715,15 @@ const secondaryApiStatusText = computed(() => {
   if (secondaryApiReady.value) return `后街聊天将使用第二 API：${secondaryPhoneApi.value.model}`;
   if (secondaryPhoneApi.value.enabled) return '已启用，请读取模型并选择调用模型。';
   return '关闭时后街聊天继续使用酒馆原 API。';
+});
+const scriptUpdateHelperReady = computed(
+  () => scriptUpdateState.value.status === 'latest',
+);
+const scriptUpdateStatusText = computed(() => {
+  if (scriptUpdateState.value.status === 'available') {
+    return `${scriptUpdateState.value.message}本功能只提示处理方法，不会改写角色卡脚本内容。`;
+  }
+  return scriptUpdateState.value.message;
 });
 
 watch(
@@ -707,6 +828,21 @@ function loadPhonePreferences(): PhonePreferences {
         5,
         100,
       ),
+      backstreetPresentPrivateMessageCount: clampNumber(
+        Number(parsed.backstreetPresentPrivateMessageCount ?? DEFAULT_PHONE_PREFS.backstreetPresentPrivateMessageCount),
+        0,
+        30,
+      ),
+      backstreetPresentGroupMessageCount: clampNumber(
+        Number(parsed.backstreetPresentGroupMessageCount ?? DEFAULT_PHONE_PREFS.backstreetPresentGroupMessageCount),
+        0,
+        30,
+      ),
+      backstreetGlobalRecentMessageCount: clampNumber(
+        Number(parsed.backstreetGlobalRecentMessageCount ?? DEFAULT_PHONE_PREFS.backstreetGlobalRecentMessageCount),
+        0,
+        50,
+      ),
     };
   } catch {
     return { ...DEFAULT_PHONE_PREFS };
@@ -798,6 +934,21 @@ function clearSecondaryApiModel() {
   secondaryPhoneApi.value.models = [];
   secondaryApiModelOptions.value = [];
   secondaryApiStatus.value = '已清除模型选择，关闭开关时会使用酒馆原 API。';
+}
+
+async function handleCheckScriptUpdate() {
+  if (isCheckingScriptUpdate.value) return;
+  isCheckingScriptUpdate.value = true;
+  try {
+    scriptUpdateState.value = await checkScriptUpdate({ force: true });
+  } finally {
+    isCheckingScriptUpdate.value = false;
+  }
+}
+
+function handleShowScriptUpdateGuide() {
+  showScriptUpdateGuide(scriptUpdateState.value.manifest);
+  scriptUpdateState.value = getScriptUpdateState();
 }
 
 function openWallpaperFilePicker() {
@@ -1129,6 +1280,13 @@ function close() {
 // 监听 MVU 变量更新
 let updateInterval: number | null = null;
 
+function handleScriptUpdateStatus(event: Event) {
+  const detail = (event as CustomEvent<ScriptUpdateState>).detail;
+  if (detail) {
+    scriptUpdateState.value = detail;
+  }
+}
+
 onMounted(() => {
   loadMvuData();
   updateTime();
@@ -1159,6 +1317,7 @@ onMounted(() => {
     }
   };
   window.addEventListener('mvu-data-updated', dataUpdateHandler);
+  window.addEventListener(SCRIPT_UPDATE_EVENT, handleScriptUpdateStatus);
 
   // 保存处理器引用以便清理
   (window as any).__statusBarDataUpdateHandler = dataUpdateHandler;
@@ -1175,6 +1334,7 @@ onUnmounted(() => {
     window.removeEventListener('mvu-data-updated', handler);
     delete (window as any).__statusBarDataUpdateHandler;
   }
+  window.removeEventListener(SCRIPT_UPDATE_EVENT, handleScriptUpdateStatus);
 });
 </script>
 
@@ -2266,6 +2426,39 @@ onUnmounted(() => {
     &:hover {
       background: linear-gradient(145deg, #45bdca, #2d8799);
     }
+  }
+}
+
+.settings-version-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  > div {
+    min-width: 0;
+    border: 1px solid rgba(124, 142, 153, 0.16);
+    border-radius: 14px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background: rgba(247, 250, 252, 0.78);
+  }
+
+  span {
+    color: #637684;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #1e7c8b;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
+    font-weight: 950;
   }
 }
 

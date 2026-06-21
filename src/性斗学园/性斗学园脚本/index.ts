@@ -21,6 +21,7 @@ import { shouldTriggerOrgasm } from '../开局/utils/combat-calculator';
 import StatusBarWrapper from './components/StatusBarWrapper.vue';
 import { getDailyTalentEffect } from './data/talentDatabase';
 import { installBackstreetMainPromptInjector } from './phone/mainPromptInjector';
+import { registerScriptUpdateGlobals, scheduleScriptUpdateCheck } from './scriptUpdater';
 
 /**
  * 规范化名字：去除中间点、空白等不影响身份的字符
@@ -1045,6 +1046,8 @@ $(() => {
   initStatusBar();
   removeLegacyStatusBarButton();
   installBackstreetMainPromptInjector();
+  registerScriptUpdateGlobals();
+  scheduleScriptUpdateCheck();
 
   // 兼容旧按钮事件；正常入口已改为悬浮小手机。
   eventOn(getButtonEvent('打开状态栏'), () => {

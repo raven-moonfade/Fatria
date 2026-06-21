@@ -1,8 +1,6 @@
 import type {
-  BackstreetBridgeMemory,
-  BackstreetBridgeMemoryItem,
   BackstreetContact,
-  BackstreetCoreMemory,
+  BackstreetGroup,
   BackstreetMessage,
   BackstreetThreadData,
   PhoneMemoryHit,
@@ -10,16 +8,19 @@ import type {
   WorldbookEntry,
 } from './types';
 import { worldbookClient } from './worldbookClient';
-import { clipText, normalizeName, safeString, uniqueStrings } from './text';
+import { clipText, makeId, normalizeName, safeString, uniqueStrings } from './text';
 import { parseJsonBlock } from './xmlToolCall';
 
 const META_ENTRY = '[PHONE_META]';
 const GUIDE_ENTRY = '[BACKSTREET_GUIDE]';
+const EJS_MEMORY_ENTRY = '[BACKSTREET_EJS_MEMORY]';
+const LEGACY_EJS_INJECT_ENTRY = '@INJECT pos=1,role=system 后街正文记忆';
+const GROUPS_CHAT_METADATA_KEY = 'fatria_backstreet_groups_v1';
 const MAX_HEAD_MESSAGES = 80;
 
 interface PhoneMetaData {
-  version: number;
   contacts: Record<string, { name: string; lastMessage: string; lastTime: string; updatedAt: number }>;
+  groups: Record<string, BackstreetGroup>;
   archiveCounters: Record<string, number>;
 }
 
@@ -31,21 +32,38 @@ function getArchiveEntryName(contact: string, index: number): string {
   return `[BACKSTREET_ARCHIVE::${contact}::${String(index).padStart(4, '0')}]`;
 }
 
-function getCoreMemoryEntryName(contact: string): string {
-  return `[BACKSTREET_MEMORY::${contact}::CORE]`;
-}
-
-function getBridgeMemoryEntryName(contact: string): string {
-  return `[BACKSTREET_BRIDGE::${contact}::MAIN]`;
-}
-
 function getGuideContent(): string {
   return `【后街说明】
-后街是<user>手机中的私聊应用，用来记录<user>与各角色在正文之外发生的消息交流。
+后街是<user>手机中的私聊/群聊应用，用来记录<user>与各角色在正文之外发生的消息交流。
 后街聊天属于真实发生过的私下交流，会影响角色对<user>的态度、承诺、秘密、暗号、约定和未完成事项。
 这些内容默认不是公开信息；只有私聊双方知道，除非正文剧情明确让其他人得知。
-当正文中出现相关人物、地点、关键词或承接事项时，应把对应后街记忆作为角色行动与反应的依据。
-后街记忆中的“记录时间/涉及时间段”表示该私聊信息发生或整理的时间，判断新旧信息时应参考这个时间。`;
+后街聊天会按固定规则把原始私聊/群聊记录注入正文提示词，不进行摘要压缩，也不依赖关键词匹配。
+后街记录中的日期与时间表示该消息发生时间，判断新旧信息时应参考这个时间。`;
+}
+
+function getEjsMemoryContent(): string {
+  return `<%_
+  let __fatriaBackstreetText = '';
+  try {
+    const __root = typeof globalThis !== 'undefined' ? globalThis : this;
+    let __host = __root;
+    if (typeof window !== 'undefined') {
+      __host = window;
+      try {
+        if (window.parent && window.parent !== window) __host = window.parent;
+      } catch (_) {}
+    }
+    const __fn =
+      (__root && __root.__fatriaBackstreetMainInjection) ||
+      (__host && __host.__fatriaBackstreetMainInjection) ||
+      (typeof window !== 'undefined' && window.__fatriaBackstreetMainInjection);
+    if (typeof __fn === 'function') {
+      __fatriaBackstreetText = await __fn();
+    }
+  } catch (_) {
+    __fatriaBackstreetText = '';
+  }
+_%><%- __fatriaBackstreetText _%>`;
 }
 
 function wrapJson(tag: string, value: unknown): string {
@@ -59,15 +77,134 @@ function parseWrappedJson<T>(content: string, tag: string): T | null {
 }
 
 function createEmptyMeta(): PhoneMetaData {
-  return { version: 1, contacts: {}, archiveCounters: {} };
+  return { contacts: {}, groups: {}, archiveCounters: {} };
+}
+
+function normalizeMessage(value: Partial<BackstreetMessage>): BackstreetMessage | null {
+  const text = safeString(value?.text);
+  if (!text) return null;
+  const sender: BackstreetMessage['sender'] =
+    value?.sender === 'contact' || value?.sender === 'system' || value?.sender === 'user' ? value.sender : 'contact';
+  const speaker = safeString(value?.speaker);
+  const date = safeString(value?.date);
+  const time = safeString(value?.time) || '--:--';
+  return {
+    id: safeString(value?.id) || `${sender}::${speaker}::${date}::${time}::${text}`,
+    sender,
+    speaker: speaker || undefined,
+    date: date || undefined,
+    time,
+    text,
+    createdAt: Number(value?.createdAt || 0),
+  };
 }
 
 function normalizeThread(contact: string, value: Partial<BackstreetThreadData> | null): BackstreetThreadData {
+  const kind = value?.kind === 'group' ? 'group' : 'private';
+  const members = Array.isArray(value?.members) ? uniqueStrings(value.members.map(member => safeString(member)).filter(Boolean)) : [];
+  const messages = Array.isArray(value?.messages)
+    ? value.messages.map(message => normalizeMessage(message)).filter((message): message is BackstreetMessage => !!message)
+    : [];
   return {
     contact,
+    kind,
+    groupName: kind === 'group' ? safeString(value?.groupName) : undefined,
+    members,
+    dissolved: kind === 'group' ? Boolean(value?.dissolved) : undefined,
+    dissolvedAt: kind === 'group' ? Number(value?.dissolvedAt || 0) || undefined : undefined,
     updatedAt: Number(value?.updatedAt || Date.now()),
-    messages: Array.isArray(value?.messages) ? value.messages : [],
+    messages,
   };
+}
+
+function parseThreadLikeEntry(entry: WorldbookEntry): BackstreetThreadData | null {
+  const comment = safeString(entry.comment);
+  const contact = comment.match(/BACKSTREET_(?:THREAD|ARCHIVE)::(.+?)::/)?.[1] || '';
+  const content = safeString(entry.content);
+  const parsed =
+    parseWrappedJson<BackstreetThreadData>(content, 'backstreet_thread') ||
+    parseWrappedJson<BackstreetThreadData>(content, 'backstreet_archive');
+  if (!parsed && !contact) return null;
+  return normalizeThread(safeString(parsed?.contact) || contact, parsed);
+}
+
+function mergeThreadParts(parts: BackstreetThreadData[]): BackstreetThreadData[] {
+  const byContact = new Map<string, BackstreetThreadData>();
+
+  for (const part of parts) {
+    const contact = safeString(part.contact);
+    if (!contact) continue;
+
+    const existing = byContact.get(contact);
+    if (!existing) {
+      byContact.set(contact, { ...part, messages: [...part.messages] });
+      continue;
+    }
+
+    const kind = existing.kind === 'group' || part.kind === 'group' ? 'group' : 'private';
+    existing.kind = kind;
+    existing.groupName = safeString(existing.groupName) || safeString(part.groupName);
+    existing.members = uniqueStrings([...(existing.members || []), ...(part.members || [])]);
+    existing.updatedAt = Math.max(Number(existing.updatedAt || 0), Number(part.updatedAt || 0));
+    existing.messages.push(...part.messages);
+  }
+
+  return Array.from(byContact.values()).map(thread => {
+    const byMessageId = new Map<string, BackstreetMessage>();
+    for (const message of thread.messages) {
+      const id =
+        safeString(message.id) ||
+        `${message.sender}::${message.speaker || ''}::${message.date || ''}::${message.time || ''}::${message.text}`;
+      byMessageId.set(id, message);
+    }
+    thread.messages = Array.from(byMessageId.values()).sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
+    return thread;
+  });
+}
+
+function normalizeMeta(value: Partial<PhoneMetaData> | null): PhoneMetaData {
+  const meta = createEmptyMeta();
+  if (!value || typeof value !== 'object') return meta;
+
+  if (value.contacts && typeof value.contacts === 'object') {
+    for (const [id, contact] of Object.entries(value.contacts)) {
+      const name = safeString(contact?.name) || safeString(id);
+      if (!name) continue;
+      meta.contacts[name] = {
+        name,
+        lastMessage: safeString(contact?.lastMessage),
+        lastTime: safeString(contact?.lastTime),
+        updatedAt: Number(contact?.updatedAt || 0),
+      };
+    }
+  }
+
+  if (value.groups && typeof value.groups === 'object') {
+    for (const [id, group] of Object.entries(value.groups)) {
+      const groupId = safeString(group?.id) || safeString(id);
+      const name = safeString(group?.name);
+      const members = normalizeStringArray(group?.members, 24);
+      if (!groupId || !name || members.length === 0) continue;
+      meta.groups[groupId] = {
+        id: groupId,
+        name,
+        members,
+        dissolved: Boolean(group?.dissolved),
+        dissolvedAt: Number(group?.dissolvedAt || 0) || undefined,
+        lastMessage: safeString(group?.lastMessage),
+        lastTime: safeString(group?.lastTime),
+        updatedAt: Number(group?.updatedAt || 0),
+      };
+    }
+  }
+
+  if (value.archiveCounters && typeof value.archiveCounters === 'object') {
+    for (const [id, count] of Object.entries(value.archiveCounters)) {
+      meta.archiveCounters[id] = Number(count || 0);
+    }
+  }
+
+  return meta;
 }
 
 function normalizeStringArray(value: unknown, maxItems = 12): string[] {
@@ -75,281 +212,48 @@ function normalizeStringArray(value: unknown, maxItems = 12): string[] {
   return uniqueStrings(value.map(item => safeString(item)).filter(Boolean)).slice(0, maxItems);
 }
 
+function applyGroupMetaToThread(thread: BackstreetThreadData, group?: BackstreetGroup | null): BackstreetThreadData {
+  if (!group) return thread;
+  const groupId = safeString(group.id) || thread.contact;
+  const threadMembers = normalizeStringArray(thread.members, 24);
+  const groupMembers = normalizeStringArray(group.members, 24);
+  const updatedAt =
+    thread.messages.length > 0
+      ? Math.max(Number(thread.updatedAt || 0), Number(group.updatedAt || 0))
+      : Number(group.updatedAt || thread.updatedAt || Date.now());
+
+  return {
+    ...thread,
+    contact: groupId,
+    kind: 'group',
+    groupName: safeString(thread.groupName) || safeString(group.name) || '群聊',
+    members: threadMembers.length > 0 ? threadMembers : groupMembers,
+    dissolved: Boolean(thread.dissolved || group.dissolved),
+    dissolvedAt: Number(thread.dissolvedAt || group.dissolvedAt || 0) || undefined,
+    updatedAt,
+  };
+}
+
 function formatMessageTimestamp(message: Partial<BackstreetMessage>): string {
   return uniqueStrings([message.date, message.time || '--:--']).join(' ') || '--:--';
 }
 
-function formatMemoryTimestamp(updatedAt: unknown): string {
-  const value = Number(updatedAt);
-  if (!Number.isFinite(value) || value <= 0) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hour = String(date.getHours()).padStart(2, '0');
-  const minute = String(date.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hour}:${minute}`;
+function getMessageSpeaker(message: Partial<BackstreetMessage>, thread?: Partial<BackstreetThreadData> | null): string {
+  if (message.sender === 'user') return '<user>';
+  if (message.sender === 'system') return '系统';
+  return safeString(message.speaker) || (thread?.kind === 'group' ? '群成员' : safeString(thread?.contact) || '对方');
 }
 
-function getThreadTimeRange(messages: BackstreetMessage[]): string {
-  const validMessages = messages.filter(message => safeString(message.date) || safeString(message.time));
-  const first = validMessages[0];
-  const last = validMessages.at(-1);
-  const start = first ? formatMessageTimestamp(first) : '';
-  const end = last ? formatMessageTimestamp(last) : '';
-  if (start && end && start !== end) return `${start} 至 ${end}`;
-  return end || start;
-}
-
-function prependRecordTime(text: string, timestamp: string): string {
-  const content = safeString(text);
-  const time = safeString(timestamp);
-  if (!content || !time || /^【(?:记录时间|涉及时间段)：/.test(content)) return content;
-  return `【记录时间：${time}】\n${content}`;
-}
-
-function prependTimeRange(text: string, timeRange: string): string {
-  const content = safeString(text);
-  const range = safeString(timeRange);
-  if (!content || !range || /^【(?:记录时间|涉及时间段)：/.test(content)) return content;
-  return `【涉及时间段：${range}】\n${content}`;
-}
-
-function collectShortBridgeKeywordCandidates(values: unknown[], fallbackText = ''): string[] {
-  const candidates: string[] = [];
-  const sources = [...values.map(value => safeString(value)), fallbackText].filter(Boolean);
-
-  for (const source of sources) {
-    const chineseRuns = source.match(/[\u4e00-\u9fa5]{2,}/g) || [];
-    for (const run of chineseRuns) {
-      const segments = run.split(/[的了着过和与及或并也都就又再很更最在对把被将从到中里内]/).filter(Boolean);
-      for (const segment of segments.length ? segments : [run]) {
-        if (segment.length >= 2 && segment.length <= 3) {
-          candidates.push(segment);
-          continue;
-        }
-        for (let i = 0; i < segment.length - 1; i += 1) {
-          candidates.push(segment.slice(i, i + 2));
-        }
-        for (let i = 0; i < segment.length - 2; i += 1) {
-          candidates.push(segment.slice(i, i + 3));
-        }
-      }
-    }
-
-    const asciiRuns = source.match(/[A-Za-z0-9_-]{2,24}/g) || [];
-    candidates.push(...asciiRuns);
-  }
-
-  return candidates;
-}
-
-function normalizeBridgeKeywords(value: unknown, maxItems = 8, fallbackText = ''): string[] {
-  const blocked = new Set(['苏菲', '玩家', '后街', '私聊', '记忆', '总结', '对方', '这个', '那个', '什么']);
-  const rawValues = Array.isArray(value) ? value : [];
-  return uniqueStrings(collectShortBridgeKeywordCandidates(rawValues, fallbackText))
-    .filter(keyword => keyword.length >= 2 && !blocked.has(keyword) && !/^\d+$/.test(keyword))
-    .slice(0, maxItems);
-}
-
-function normalizeBridgeItem(value: Partial<BackstreetBridgeMemoryItem>, fallbackUpdatedAt: number): BackstreetBridgeMemoryItem | null {
-  const text = safeString(value.text);
-  if (!text) return null;
-  const keywords = normalizeBridgeKeywords(value.keywords, 8, text);
+function createGroupSystemMessage(text: string, date: string, time: string): BackstreetMessage {
   return {
+    id: makeId('bst_group_event'),
+    sender: 'system',
+    speaker: '群通知',
+    date: safeString(date) || undefined,
+    time: safeString(time) || '--:--',
     text,
-    keywords,
-    updatedAt: Number(value.updatedAt || fallbackUpdatedAt || Date.now()),
+    createdAt: Date.now(),
   };
-}
-
-function mergeBridgeItems(items: BackstreetBridgeMemoryItem[]): BackstreetBridgeMemoryItem[] {
-  const byText = new Map<string, BackstreetBridgeMemoryItem>();
-  for (const item of items) {
-    const normalizedText = normalizeName(item.text);
-    if (!normalizedText) continue;
-    const existing = byText.get(normalizedText);
-    if (!existing || item.updatedAt >= existing.updatedAt) {
-      byText.set(normalizedText, item);
-    }
-  }
-  return Array.from(byText.values()).sort((left, right) => left.updatedAt - right.updatedAt);
-}
-
-function fallbackBridgeItemFromMemory(memory: Partial<BackstreetBridgeMemory>, updatedAt: number): BackstreetBridgeMemoryItem | null {
-  const text = [safeString(memory.summary), ...normalizeStringArray(memory.facts, 16), ...normalizeStringArray(memory.openLoops, 10)]
-    .filter(Boolean)
-    .join('\n');
-  return normalizeBridgeItem({ text, keywords: normalizeStringArray(memory.keywords, 30), updatedAt }, updatedAt);
-}
-
-function normalizeCoreMemory(contact: string, value: Partial<BackstreetCoreMemory> | null): BackstreetCoreMemory | null {
-  if (!value) return null;
-  return {
-    contact,
-    updatedAt: Number(value.updatedAt || Date.now()),
-    summary: safeString(value.summary),
-    relationship: safeString(value.relationship),
-    knownFacts: normalizeStringArray(value.knownFacts, 16),
-    openLoops: normalizeStringArray(value.openLoops, 10),
-    recentTone: safeString(value.recentTone),
-    keywords: uniqueStrings([contact, ...normalizeStringArray(value.keywords, 30)]),
-  };
-}
-
-function normalizeBridgeMemory(contact: string, value: Partial<BackstreetBridgeMemory> | null): BackstreetBridgeMemory | null {
-  if (!value) return null;
-  const updatedAt = Number(value.updatedAt || Date.now());
-  const explicitItems = Array.isArray(value.items)
-    ? value.items
-        .map(item => normalizeBridgeItem(item, updatedAt))
-        .filter((item): item is BackstreetBridgeMemoryItem => !!item)
-    : [];
-  const fallbackItem = explicitItems.length === 0 ? fallbackBridgeItemFromMemory(value, updatedAt) : null;
-  const items = mergeBridgeItems([...explicitItems, ...(fallbackItem ? [fallbackItem] : [])]);
-  return {
-    contact,
-    updatedAt,
-    summary: safeString(value.summary),
-    facts: normalizeStringArray(value.facts, 16),
-    openLoops: normalizeStringArray(value.openLoops, 10),
-    keywords: uniqueStrings([contact, ...normalizeBridgeKeywords(value.keywords, 16, safeString(value.summary)), ...items.flatMap(item => item.keywords)]),
-    items,
-  };
-}
-
-function formatCoreMemory(memory: Partial<BackstreetCoreMemory>): string {
-  const timestamp = formatMemoryTimestamp(memory.updatedAt);
-  const lines = [
-    timestamp ? `记录时间：${timestamp}` : '',
-    safeString(memory.summary) ? `长期摘要：${safeString(memory.summary)}` : '',
-    safeString(memory.relationship) ? `关系状态：${safeString(memory.relationship)}` : '',
-    safeString(memory.recentTone) ? `最近语气：${safeString(memory.recentTone)}` : '',
-  ].filter(Boolean);
-  const knownFacts = normalizeStringArray(memory.knownFacts, 12);
-  const openLoops = normalizeStringArray(memory.openLoops, 8);
-  if (knownFacts.length) lines.push(`已知事实：${knownFacts.join('；')}`);
-  if (openLoops.length) lines.push(`未了事项：${openLoops.join('；')}`);
-  return lines.join('\n');
-}
-
-function formatBridgeMemory(memory: Partial<BackstreetBridgeMemory>): string {
-  const timestamp = formatMemoryTimestamp(memory.updatedAt);
-  const lines = [
-    timestamp ? `记录时间：${timestamp}` : '',
-    safeString(memory.summary) ? `正文可消化摘要：${safeString(memory.summary)}` : '',
-  ].filter(Boolean);
-  const items = Array.isArray(memory.items)
-    ? memory.items
-        .map(item => normalizeBridgeItem(item, Number(memory.updatedAt || Date.now())))
-        .filter((item): item is BackstreetBridgeMemoryItem => !!item)
-    : [];
-  const facts = normalizeStringArray(memory.facts, 12);
-  const openLoops = normalizeStringArray(memory.openLoops, 8);
-  if (items.length) {
-    lines.push(
-      `桥接总结：\n${items
-        .map(item => `- 记录时间：${formatMemoryTimestamp(item.updatedAt) || timestamp || '未知'}\n  关键词：${item.keywords.join('、') || '无'}\n  ${item.text}`)
-        .join('\n')}`,
-    );
-  }
-  if (facts.length) lines.push(`可回灌事实：${facts.join('；')}`);
-  if (openLoops.length) lines.push(`正文可承接事项：${openLoops.join('；')}`);
-  return lines.join('\n');
-}
-
-function parseBridgeTemplateMemory(contact: string, content: string): BackstreetBridgeMemory | null {
-  const text = safeString(content);
-  if (!text.includes('【后街私聊记忆：')) return null;
-
-  const hitDefinitions = new Map<string, string[]>();
-  const hitPattern = /var\s+(bstBridgeHit\d+)\s*=\s*matchChatMessages\((\[[\s\S]*?\])\);/g;
-  let hitMatch: RegExpExecArray | null;
-  while ((hitMatch = hitPattern.exec(text))) {
-    const keywords = parseJsonBlock<string[]>(hitMatch[2]) || [];
-    hitDefinitions.set(hitMatch[1], normalizeStringArray(keywords, 24));
-  }
-
-  const items: BackstreetBridgeMemoryItem[] = [];
-  for (const [hitName, keywords] of hitDefinitions.entries()) {
-    const hitIndex = safeString(hitName.match(/\d+$/)?.[0]);
-    const itemPattern = new RegExp(
-      `<%_\\s*if\\s*\\(\\s*(?:${hitName}|bstBridgeShouldShow\\(\\s*${hitIndex}\\s*\\))\\s*\\)\\s*\\{\\s*_%>\\s*([\\s\\S]*?)\\s*<%_\\s*\\}\\s*_%>`,
-      'm',
-    );
-    const itemMatch = text.match(itemPattern);
-    const item = normalizeBridgeItem({ text: itemMatch?.[1] || '', keywords }, Date.now());
-    if (item) items.push(item);
-  }
-
-  if (items.length === 0) return null;
-  return {
-    contact,
-    updatedAt: Math.max(...items.map(item => item.updatedAt)),
-    summary: items.map(item => item.text).join('\n'),
-    facts: [],
-    openLoops: [],
-    keywords: uniqueStrings([contact, ...items.flatMap(item => item.keywords)]),
-    items: mergeBridgeItems(items),
-  };
-}
-
-function escapeEjsLiteralText(text: string): string {
-  return safeString(text).replace(/<%/g, '&lt;%').replace(/%>/g, '%&gt;');
-}
-
-function renderBridgeMemory(memory: BackstreetBridgeMemory): string {
-  const contact = safeString(memory.contact);
-  const items = mergeBridgeItems(memory.items || []).filter(item => item.keywords.length > 0);
-  if (items.length === 0) return '';
-
-  const hitDefinitions = items
-    .map((item, index) => `  var bstBridgeHit${index} = matchChatMessages(${JSON.stringify(item.keywords)});`)
-    .join('\n');
-  const hitArray = `[${items.map((_, index) => `bstBridgeHit${index}`).join(', ')}]`;
-  const itemBlocks = items
-    .map(
-      (item, index) => `<%_ if (bstBridgeShouldShow(${index})) { _%>
-${escapeEjsLiteralText(prependRecordTime(item.text, formatMemoryTimestamp(item.updatedAt) || formatMemoryTimestamp(memory.updatedAt)))}
-<%_ } _%>`,
-    )
-    .join('\n\n');
-
-  return `<%_
-var bstPresent = getvar('stat_data.关系系统.在场人物') || [];
-var bstNorm = function(value) {
-  return String(value || '').replace(/[·・‧•\\s\\u3000._\\-—]/g, '');
-};
-var bstPresentText = Array.isArray(bstPresent) ? bstPresent.join('|') : String(bstPresent || '');
-var bstIsHere = bstNorm(bstPresentText).includes(bstNorm(${JSON.stringify(contact)}));
-if (bstIsHere) {
-${hitDefinitions}
-  var bstBridgeHits = ${hitArray};
-  var bstBridgeShouldShow = function(index) {
-    var start = Math.max(0, index - 2);
-    var end = Math.min(bstBridgeHits.length - 1, index + 2);
-    for (var i = start; i <= end; i += 1) {
-      if (bstBridgeHits[i]) return true;
-    }
-    return false;
-  };
-  var bstBridgeAnyHit = false;
-  for (var j = 0; j < bstBridgeHits.length; j += 1) {
-    if (bstBridgeHits[j]) {
-      bstBridgeAnyHit = true;
-      break;
-    }
-  }
-  if (bstBridgeAnyHit) {
-_%>
-【后街私聊记忆：${contact}】
-
-${itemBlocks}
-<%_
-  }
-}
-_%>`;
 }
 
 function scorePhoneEntry(entry: WorldbookEntry, query: PhoneMemoryQuery): number {
@@ -370,8 +274,7 @@ function scorePhoneEntry(entry: WorldbookEntry, query: PhoneMemoryQuery): number
   for (const location of query.locations) {
     if (location && normalizeName(joined).includes(normalizeName(location))) score += 8;
   }
-  if (/BACKSTREET_MEMORY/.test(title)) score += 8;
-  if (/BACKSTREET_BRIDGE/.test(title)) score += 14;
+  if (/BACKSTREET_ARCHIVE/.test(title)) score += 8;
   if (/BACKSTREET_THREAD/.test(title)) score += 4;
   return score;
 }
@@ -379,32 +282,31 @@ function scorePhoneEntry(entry: WorldbookEntry, query: PhoneMemoryQuery): number
 function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit {
   const title = safeString(entry.comment) || '后街记忆';
   const rawContent = safeString(entry.content);
-  const contact = title.match(/BACKSTREET_(?:THREAD|ARCHIVE|MEMORY|BRIDGE)::(.+?)::/)?.[1];
-  const memory = parseWrappedJson<BackstreetCoreMemory>(rawContent, 'backstreet_memory');
-  const bridge =
-    parseWrappedJson<BackstreetBridgeMemory>(rawContent, 'backstreet_bridge') ||
-    parseBridgeTemplateMemory(contact || '', rawContent);
+  const contact = title.match(/BACKSTREET_(?:THREAD|ARCHIVE)::(.+?)::/)?.[1];
   const thread =
-    parseWrappedJson<{ messages?: BackstreetMessage[] }>(rawContent, 'backstreet_thread') ||
-    parseWrappedJson<{ messages?: BackstreetMessage[] }>(rawContent, 'backstreet_archive');
-  const messageLines = Array.isArray(thread?.messages)
-    ? thread.messages
-        .slice(-12)
-        .map(message => `${formatMessageTimestamp(message)} ${message.sender === 'user' ? '玩家' : contact || '对方'}: ${message.text}`)
-        .join('\n')
-    : '';
-  const readableContent = formatBridgeMemory(bridge || {}) || formatCoreMemory(memory || {}) || messageLines || rawContent;
+    parseWrappedJson<BackstreetThreadData>(rawContent, 'backstreet_thread') ||
+    parseWrappedJson<BackstreetThreadData>(rawContent, 'backstreet_archive');
+  const normalizedThread = normalizeThread(contact || safeString(thread?.contact), thread);
+  const messageLines =
+    normalizedThread.messages.length > 0
+      ? normalizedThread.messages
+          .slice(-12)
+          .map(message => `${formatMessageTimestamp(message)} ${getMessageSpeaker(message, normalizedThread)}: ${message.text}`)
+          .join('\n')
+      : '';
 
   return {
     title,
     contact,
     source: '后街手机世界书',
     score,
-    content: clipText(readableContent, 900),
+    content: clipText(messageLines || rawContent, 900),
   };
 }
 
 export class BackstreetWorldbookStore {
+  private cleanedGeneratedMemoryWorldbooks = new Set<string>();
+
   private get worldName(): string {
     return worldbookClient.getPhoneWorldbookName();
   }
@@ -412,10 +314,23 @@ export class BackstreetWorldbookStore {
   async ensureReady(): Promise<void> {
     await worldbookClient.ensureWorldbook(this.worldName);
     await this.ensureGuideEntry();
+    await this.ensureEjsInjectionEntries();
+    await this.cleanupGeneratedMemoryEntries();
   }
 
   async ensureGuideEntry(): Promise<void> {
-    await worldbookClient.upsertEntry(this.worldName, GUIDE_ENTRY, getGuideContent(), {
+    const guideContent = getGuideContent();
+    const existing = await worldbookClient.getEntry(this.worldName, GUIDE_ENTRY, { force: true }).catch(() => null);
+    const shouldRefresh =
+      !existing ||
+      safeString(existing.content) !== guideContent ||
+      existing.disable === true ||
+      existing.disabled === true ||
+      existing.constant !== true ||
+      existing.position !== 4 ||
+      existing.order !== 800;
+
+    await worldbookClient.upsertEntry(this.worldName, GUIDE_ENTRY, guideContent, {
       enabled: true,
       constant: true,
       selective: false,
@@ -425,6 +340,47 @@ export class BackstreetWorldbookStore {
       depth: 0,
       order: 800,
     });
+    if (shouldRefresh) await worldbookClient.refreshWorldbookEditor(this.worldName);
+  }
+
+  async ensureEjsInjectionEntries(): Promise<void> {
+    const targets = uniqueStrings([this.worldName, worldbookClient.getCurrentChatWorldbookName()].filter(Boolean));
+    for (const worldName of targets) {
+      await this.ensureEjsInjectionEntry(worldName);
+    }
+  }
+
+  private async ensureEjsInjectionEntry(worldName: string): Promise<void> {
+    const targetWorldName = safeString(worldName);
+    if (!targetWorldName) return;
+
+    const content = getEjsMemoryContent();
+    const legacyDeleted = await worldbookClient.deleteEntry(targetWorldName, LEGACY_EJS_INJECT_ENTRY).catch(() => false);
+
+    const existing = await worldbookClient.getEntry(targetWorldName, EJS_MEMORY_ENTRY, { force: true }).catch(() => null);
+    const shouldRefresh =
+      legacyDeleted ||
+      !existing ||
+      safeString(existing.content) !== content ||
+      existing.disable === true ||
+      existing.disabled === true ||
+      existing.constant !== true ||
+      existing.position !== 4 ||
+      existing.role !== 0 ||
+      existing.depth !== 0 ||
+      existing.order !== 801;
+
+    await worldbookClient.upsertEntry(targetWorldName, EJS_MEMORY_ENTRY, content, {
+      enabled: true,
+      constant: true,
+      selective: false,
+      key: [],
+      position: 4,
+      role: 0,
+      depth: 0,
+      order: 801,
+    });
+    if (shouldRefresh) await worldbookClient.refreshWorldbookEditor(targetWorldName);
   }
 
   async hasAnyMemory(): Promise<boolean> {
@@ -432,93 +388,179 @@ export class BackstreetWorldbookStore {
     return entries.some(entry => /^(\[BACKSTREET_|BACKSTREET_|\[PHONE_META\])/.test(safeString(entry.comment)));
   }
 
+  async cleanupGeneratedMemoryEntries(): Promise<void> {
+    const worldName = this.worldName;
+    if (this.cleanedGeneratedMemoryWorldbooks.has(worldName)) return;
+    this.cleanedGeneratedMemoryWorldbooks.add(worldName);
+
+    const entries = await worldbookClient.listEntries(worldName, { includeDisabled: true, force: true }).catch(() => []);
+    const generatedEntries = entries.filter(entry => /\[?BACKSTREET_(?:MEMORY|BRIDGE)::/.test(safeString(entry.comment)));
+    for (const entry of generatedEntries) {
+      const comment = safeString(entry.comment);
+      if (comment) await worldbookClient.deleteEntry(worldName, comment).catch(() => false);
+    }
+    if (generatedEntries.length > 0) {
+      await worldbookClient.refreshWorldbookEditor(worldName);
+      console.info(`[后街] 已清理 ${generatedEntries.length} 条旧摘要/关键词桥接世界书条目，后续改用原始聊天固定注入。`);
+    }
+  }
+
   async getMeta(): Promise<PhoneMetaData> {
     const entry = await worldbookClient.getEntry(this.worldName, META_ENTRY);
-    return parseWrappedJson<PhoneMetaData>(safeString(entry?.content), 'phone_meta') || createEmptyMeta();
+    const meta = normalizeMeta(parseWrappedJson<PhoneMetaData>(safeString(entry?.content), 'phone_meta'));
+    const chatGroups = await worldbookClient.getChatMetadataValue<Record<string, BackstreetGroup>>(GROUPS_CHAT_METADATA_KEY).catch(() => null);
+    if (chatGroups && typeof chatGroups === 'object') {
+      meta.groups = {
+        ...normalizeMeta({ groups: chatGroups }).groups,
+        ...meta.groups,
+      };
+    }
+    return meta;
   }
 
   async saveMeta(meta: PhoneMetaData): Promise<void> {
-    await worldbookClient.upsertEntry(this.worldName, META_ENTRY, wrapJson('phone_meta', meta), false);
+    const normalized = normalizeMeta(meta);
+    await worldbookClient.upsertStorageEntry(this.worldName, META_ENTRY, wrapJson('phone_meta', normalized));
+    await worldbookClient.setChatMetadataValue(GROUPS_CHAT_METADATA_KEY, normalized.groups).catch(() => null);
+  }
+
+  async createGroup(name: string, members: string[]): Promise<BackstreetContact> {
+    await this.ensureGuideEntry();
+    const groupName = safeString(name);
+    const groupMembers = normalizeStringArray(members, 24);
+    if (!groupName) throw new Error('群聊名称不能为空');
+    if (groupMembers.length < 2) throw new Error('至少选择 2 名群成员');
+
+    const meta = await this.getMeta().catch(() => createEmptyMeta());
+    const id = makeId('bst_group');
+    const group: BackstreetGroup = {
+      id,
+      name: groupName,
+      members: groupMembers,
+      dissolved: false,
+      lastMessage: '',
+      lastTime: '',
+      updatedAt: Date.now(),
+    };
+    meta.groups[id] = group;
+    await this.saveMeta(meta);
+    await this.saveThread({
+      contact: id,
+      kind: 'group',
+      groupName,
+      members: groupMembers,
+      dissolved: false,
+      updatedAt: group.updatedAt,
+      messages: [],
+    });
+    await worldbookClient.refreshWorldbookEditor(this.worldName);
+    return {
+      id,
+      name: groupName,
+      lastMessage: '',
+      lastTime: '',
+      type: 'group',
+      members: groupMembers,
+    };
+  }
+
+  async addGroupMembers(contact: string, members: string[], date: string, time: string): Promise<BackstreetThreadData> {
+    const thread = await this.getThread(contact, { force: true });
+    if (thread.kind !== 'group') throw new Error('只能在群聊中拉入成员');
+    if (thread.dissolved) throw new Error('群聊已解散，不能拉入成员');
+
+    const currentMembers = normalizeStringArray(thread.members, 24);
+    const requestedMembers = normalizeStringArray(members, 24);
+    const nextMembers = uniqueStrings([...currentMembers, ...requestedMembers]).slice(0, 24);
+    const addedMembers = nextMembers.filter(member => !currentMembers.includes(member));
+    if (addedMembers.length === 0) return thread;
+
+    thread.members = nextMembers;
+    thread.updatedAt = Date.now();
+    thread.messages.push(createGroupSystemMessage(`<user>将${addedMembers.join('、')}拉入群聊。`, date, time));
+    await this.archiveIfNeeded(thread);
+    await this.saveThread(thread);
+    await this.updateMetaFromThread(thread);
+    await worldbookClient.refreshWorldbookEditor(this.worldName);
+    return this.getThread(contact, { force: true });
+  }
+
+  async removeGroupMember(contact: string, member: string, date: string, time: string): Promise<BackstreetThreadData> {
+    const thread = await this.getThread(contact, { force: true });
+    if (thread.kind !== 'group') throw new Error('只能在群聊中踢出成员');
+    if (thread.dissolved) throw new Error('群聊已解散，不能踢出成员');
+
+    const currentMembers = normalizeStringArray(thread.members, 24);
+    const normalizedTarget = normalizeName(member);
+    const removedMember = currentMembers.find(name => normalizeName(name) === normalizedTarget);
+    if (!removedMember) return thread;
+    if (currentMembers.length <= 1) throw new Error('至少保留 1 名群成员，若不再使用请解散群聊');
+
+    thread.members = currentMembers.filter(name => name !== removedMember);
+    thread.updatedAt = Date.now();
+    thread.messages.push(createGroupSystemMessage(`<user>将${removedMember}移出群聊。`, date, time));
+    await this.archiveIfNeeded(thread);
+    await this.saveThread(thread);
+    await this.updateMetaFromThread(thread);
+    await worldbookClient.refreshWorldbookEditor(this.worldName);
+    return this.getThread(contact, { force: true });
+  }
+
+  async dissolveGroup(contact: string, date: string, time: string): Promise<BackstreetThreadData> {
+    const thread = await this.getThread(contact, { force: true });
+    if (thread.kind !== 'group') throw new Error('只能解散群聊');
+    if (thread.dissolved) return thread;
+
+    thread.dissolved = true;
+    thread.dissolvedAt = Date.now();
+    thread.updatedAt = thread.dissolvedAt;
+    thread.messages.push(createGroupSystemMessage(`<user>解散了群聊。`, date, time));
+    await this.archiveIfNeeded(thread);
+    await this.saveThread(thread);
+    await this.removeGroupFromMeta(contact);
+    await worldbookClient.refreshWorldbookEditor(this.worldName);
+    return this.getThread(contact, { force: true });
   }
 
   async getThread(contact: string, options: { force?: boolean } = {}): Promise<BackstreetThreadData> {
     const entry = await worldbookClient.getEntry(this.worldName, getThreadEntryName(contact), options);
-    return normalizeThread(contact, parseWrappedJson<BackstreetThreadData>(safeString(entry?.content), 'backstreet_thread'));
+    const thread = normalizeThread(contact, parseWrappedJson<BackstreetThreadData>(safeString(entry?.content), 'backstreet_thread'));
+    const meta = await this.getMeta().catch(() => createEmptyMeta());
+    return applyGroupMetaToThread(thread, meta.groups[contact]);
   }
 
-  async getCoreMemory(contact: string, options: { force?: boolean } = {}): Promise<BackstreetCoreMemory | null> {
-    const entry = await worldbookClient.getEntry(this.worldName, getCoreMemoryEntryName(contact), options);
-    return normalizeCoreMemory(contact, parseWrappedJson<BackstreetCoreMemory>(safeString(entry?.content), 'backstreet_memory'));
-  }
-
-  async getBridgeMemory(contact: string, options: { force?: boolean } = {}): Promise<BackstreetBridgeMemory | null> {
-    const entry = await worldbookClient.getEntry(this.worldName, getBridgeMemoryEntryName(contact), options);
-    const content = safeString(entry?.content);
-    return normalizeBridgeMemory(
-      contact,
-      parseWrappedJson<BackstreetBridgeMemory>(content, 'backstreet_bridge') || parseBridgeTemplateMemory(contact, content),
-    );
+  async listRawThreads(options: { force?: boolean } = {}): Promise<BackstreetThreadData[]> {
+    await this.ensureGuideEntry();
+    await this.cleanupGeneratedMemoryEntries();
+    const entries = await worldbookClient.listEntries(this.worldName, { includeDisabled: true, force: options.force }).catch(() => []);
+    const parts = entries
+      .filter(entry => /\[?BACKSTREET_(?:THREAD|ARCHIVE)::/.test(safeString(entry.comment)))
+      .map(parseThreadLikeEntry)
+      .filter((thread): thread is BackstreetThreadData => !!thread);
+    const meta = await this.getMeta().catch(() => createEmptyMeta());
+    return mergeThreadParts(parts).map(thread => applyGroupMetaToThread(thread, meta.groups[thread.contact]));
   }
 
   async saveThread(thread: BackstreetThreadData): Promise<void> {
-    await worldbookClient.upsertEntry(
+    await worldbookClient.upsertStorageEntry(
       this.worldName,
       getThreadEntryName(thread.contact),
       wrapJson('backstreet_thread', thread),
-      false,
     );
-  }
-
-  async saveCoreMemory(memory: BackstreetCoreMemory): Promise<void> {
-    const normalized = normalizeCoreMemory(memory.contact, memory);
-    if (!normalized) return;
-    await worldbookClient.upsertEntry(
-      this.worldName,
-      getCoreMemoryEntryName(memory.contact),
-      wrapJson('backstreet_memory', normalized),
-      false,
-    );
-    await worldbookClient.refreshWorldbookEditor(this.worldName);
-  }
-
-  async saveBridgeMemory(memory: BackstreetBridgeMemory): Promise<void> {
-    const normalized = normalizeBridgeMemory(memory.contact, memory);
-    if (!normalized || normalized.items.length === 0) return;
-    const content = renderBridgeMemory(normalized);
-    if (!content) return;
-    await worldbookClient.upsertEntry(
-      this.worldName,
-      getBridgeMemoryEntryName(memory.contact),
-      content,
-      {
-        enabled: true,
-        constant: true,
-        selective: false,
-        key: [],
-        position: 4,
-        role: 0,
-        depth: 0,
-        order: 1000,
-      },
-    );
-    await worldbookClient.refreshWorldbookEditor(this.worldName);
-  }
-
-  async deleteBridgeMemory(contact: string): Promise<void> {
-    await worldbookClient.deleteEntry(this.worldName, getBridgeMemoryEntryName(contact));
-    await worldbookClient.refreshWorldbookEditor(this.worldName);
   }
 
   async appendMessages(contact: string, messages: BackstreetMessage[]): Promise<BackstreetThreadData> {
     await this.ensureGuideEntry();
+    await this.cleanupGeneratedMemoryEntries();
     const thread = await this.getThread(contact);
+    if (thread.kind === 'group' && thread.dissolved && messages.some(message => message.sender !== 'system')) {
+      throw new Error('群聊已解散，不能继续发送消息');
+    }
     thread.messages.push(...messages);
     thread.updatedAt = Date.now();
     await this.archiveIfNeeded(thread);
     await this.saveThread(thread);
     await this.updateMetaFromThread(thread);
-    await this.updateCoreMemory(thread);
-    await this.updateBridgeMemory(thread);
     await worldbookClient.refreshWorldbookEditor(this.worldName);
     return this.getThread(contact, { force: true });
   }
@@ -532,8 +574,19 @@ export class BackstreetWorldbookStore {
     thread.updatedAt = Date.now();
     await this.saveThread(thread);
     await this.updateMetaFromThread(thread);
-    await this.updateCoreMemory(thread);
-    await this.deleteBridgeMemory(contact);
+    await worldbookClient.refreshWorldbookEditor(this.worldName);
+    return thread;
+  }
+
+  async deleteMessagesAfter(contact: string, messageId: string): Promise<BackstreetThreadData> {
+    const thread = await this.getThread(contact);
+    const messageIndex = thread.messages.findIndex(message => message.id === messageId);
+    if (messageIndex < 0) return thread;
+
+    thread.messages = thread.messages.slice(0, messageIndex + 1);
+    thread.updatedAt = Date.now();
+    await this.saveThread(thread);
+    await this.updateMetaFromThread(thread);
     await worldbookClient.refreshWorldbookEditor(this.worldName);
     return thread;
   }
@@ -553,56 +606,41 @@ export class BackstreetWorldbookStore {
       .map(([name]) => name);
     const names = uniqueStrings([...Object.values(meta.contacts).map(contact => contact.name), ...presentNames, ...relationNames]);
 
-    return names.map(name => {
+    const privateContacts = names.map(name => {
       const metaContact = meta.contacts[name];
       return {
         id: name,
         name,
         lastMessage: safeString(metaContact?.lastMessage),
         lastTime: safeString(metaContact?.lastTime),
+        type: 'private' as const,
       };
     });
+    const groups = Object.values(meta.groups || {})
+      .filter(group => !group.dissolved)
+      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
+      .map(group => ({
+        id: group.id,
+        name: group.name,
+        lastMessage: safeString(group.lastMessage),
+        lastTime: safeString(group.lastTime),
+        type: 'group' as const,
+        members: normalizeStringArray(group.members, 24),
+        dissolved: Boolean(group.dissolved),
+      }));
+
+    return [...groups, ...privateContacts];
   }
 
   async searchMemory(query: PhoneMemoryQuery): Promise<PhoneMemoryHit[]> {
     const entries = await worldbookClient.listEntries(this.worldName, { includeDisabled: true }).catch(() => []);
     return entries
-      .filter(entry => safeString(entry.comment).includes('BACKSTREET_'))
+      .filter(entry => /\[?BACKSTREET_(?:THREAD|ARCHIVE)::/.test(safeString(entry.comment)))
       .map(entry => ({ entry, score: scorePhoneEntry(entry, query) }))
       .filter(item => item.score > 0)
       .sort((left, right) => right.score - left.score)
       .slice(0, query.limit)
       .map(item => entryToMemoryHit(item.entry, item.score));
-  }
-
-  async searchBridgeMemory(query: PhoneMemoryQuery): Promise<PhoneMemoryHit[]> {
-    const entries = await worldbookClient.listEntries(this.worldName, { includeDisabled: true }).catch(() => []);
-    return entries
-      .filter(entry => /\[?BACKSTREET_BRIDGE::/.test(safeString(entry.comment)))
-      .map(entry => ({ entry, score: scorePhoneEntry(entry, query) }))
-      .filter(item => item.score > 0)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, query.limit)
-      .map(item => entryToMemoryHit(item.entry, item.score));
-  }
-
-  async getRecentBridgeMemoryHits(limit = 3): Promise<PhoneMemoryHit[]> {
-    const entries = await worldbookClient.listEntries(this.worldName, { includeDisabled: true }).catch(() => []);
-    return entries
-      .filter(entry => /\[?BACKSTREET_BRIDGE::/.test(safeString(entry.comment)))
-      .sort((left, right) => {
-        const leftContact = safeString(left.comment).match(/BACKSTREET_BRIDGE::(.+?)::/)?.[1] || '';
-        const rightContact = safeString(right.comment).match(/BACKSTREET_BRIDGE::(.+?)::/)?.[1] || '';
-        const leftMemory =
-          parseWrappedJson<BackstreetBridgeMemory>(safeString(left.content), 'backstreet_bridge') ||
-          parseBridgeTemplateMemory(leftContact, safeString(left.content));
-        const rightMemory =
-          parseWrappedJson<BackstreetBridgeMemory>(safeString(right.content), 'backstreet_bridge') ||
-          parseBridgeTemplateMemory(rightContact, safeString(right.content));
-        return Number(rightMemory?.updatedAt || 0) - Number(leftMemory?.updatedAt || 0);
-      })
-      .slice(0, Math.max(1, limit))
-      .map((entry, index) => entryToMemoryHit(entry, 90 - index));
   }
 
   async searchArchiveMemory(query: PhoneMemoryQuery): Promise<PhoneMemoryHit[]> {
@@ -616,13 +654,6 @@ export class BackstreetWorldbookStore {
       .map(item => entryToMemoryHit(item.entry, item.score));
   }
 
-  async getContactCoreMemoryHits(contact: string): Promise<PhoneMemoryHit[]> {
-    const coreEntry = await worldbookClient.getEntry(this.worldName, getCoreMemoryEntryName(contact)).catch(() => null);
-    return [coreEntry]
-      .filter((entry): entry is WorldbookEntry => !!entry)
-      .map((entry, index) => entryToMemoryHit(entry, 100 - index));
-  }
-
   private async archiveIfNeeded(thread: BackstreetThreadData): Promise<void> {
     if (thread.messages.length <= MAX_HEAD_MESSAGES) return;
 
@@ -632,15 +663,18 @@ export class BackstreetWorldbookStore {
     const nextIndex = (meta.archiveCounters[thread.contact] || 0) + 1;
     meta.archiveCounters[thread.contact] = nextIndex;
 
-    await worldbookClient.upsertEntry(
+    await worldbookClient.upsertStorageEntry(
       this.worldName,
       getArchiveEntryName(thread.contact, nextIndex),
       wrapJson('backstreet_archive', {
         contact: thread.contact,
-        archivedAt: Date.now(),
+        kind: thread.kind,
+        groupName: thread.groupName,
+        members: thread.members,
+        dissolved: thread.dissolved,
+        dissolvedAt: thread.dissolvedAt,
         messages: archivedMessages,
       }),
-      false,
     );
     await this.saveMeta(meta);
   }
@@ -648,39 +682,33 @@ export class BackstreetWorldbookStore {
   private async updateMetaFromThread(thread: BackstreetThreadData): Promise<void> {
     const meta = await this.getMeta().catch(() => createEmptyMeta());
     const last = thread.messages.at(-1);
-    meta.contacts[thread.contact] = {
-      name: thread.contact,
-      lastMessage: safeString(last?.text),
-      lastTime: safeString(last?.time),
-      updatedAt: thread.updatedAt,
-    };
+    if (thread.kind === 'group') {
+      const existing = meta.groups[thread.contact];
+      meta.groups[thread.contact] = {
+        id: thread.contact,
+        name: safeString(thread.groupName) || safeString(existing?.name) || '群聊',
+        members: normalizeStringArray(thread.members?.length ? thread.members : existing?.members, 24),
+        dissolved: Boolean(thread.dissolved || existing?.dissolved),
+        dissolvedAt: Number(thread.dissolvedAt || existing?.dissolvedAt || 0) || undefined,
+        lastMessage: safeString(last?.text),
+        lastTime: safeString(last?.time),
+        updatedAt: thread.updatedAt,
+      };
+    } else {
+      meta.contacts[thread.contact] = {
+        name: thread.contact,
+        lastMessage: safeString(last?.text),
+        lastTime: safeString(last?.time),
+        updatedAt: thread.updatedAt,
+      };
+    }
     await this.saveMeta(meta);
   }
 
-  private async updateCoreMemory(thread: BackstreetThreadData): Promise<void> {
-    const recentLines = thread.messages
-      .slice(-20)
-      .map(message => `${formatMessageTimestamp(message)} ${message.sender === 'user' ? '玩家' : thread.contact}: ${message.text}`);
-    const timeRange = getThreadTimeRange(thread.messages);
-    const content = wrapJson('backstreet_memory', {
-      contact: thread.contact,
-      updatedAt: thread.updatedAt,
-      summary: prependTimeRange(`最近后街聊天快照：\n${recentLines.join('\n')}`, timeRange),
-      relationship: '',
-      knownFacts: [],
-      openLoops: [],
-      recentTone: '',
-      keywords: uniqueStrings([thread.contact, ...(recentLines.join('\n').match(/[\u4e00-\u9fa5A-Za-z0-9]{2,8}/g)?.slice(-30) || [])]),
-    });
-    await worldbookClient.upsertEntry(this.worldName, getCoreMemoryEntryName(thread.contact), content, false);
-  }
-
-  private async updateBridgeMemory(thread: BackstreetThreadData): Promise<void> {
-    const existing = await this.getBridgeMemory(thread.contact, { force: true }).catch(() => null);
-    if (!existing) return;
-
-    existing.updatedAt = thread.updatedAt;
-    await this.saveBridgeMemory(existing);
+  private async removeGroupFromMeta(contact: string): Promise<void> {
+    const meta = await this.getMeta().catch(() => createEmptyMeta());
+    delete meta.groups[contact];
+    await this.saveMeta(meta);
   }
 }
 

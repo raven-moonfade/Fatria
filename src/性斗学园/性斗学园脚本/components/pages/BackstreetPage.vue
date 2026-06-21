@@ -1,15 +1,154 @@
 <template>
   <div class="backstreet-page">
-    <aside v-if="!activeContact" class="contact-panel">
+    <aside v-if="!activeContact" class="contact-panel" :class="{ 'group-mode': activeThreadKind === 'group' }">
       <div class="contact-toolbar">
         <button class="home-back-btn" type="button" title="返回主菜单" aria-label="返回主菜单" @click="emit('backHome')">
           <i class="fas fa-chevron-left"></i>
         </button>
         <div class="search-row">
           <i class="fas fa-magnifying-glass"></i>
-          <input v-model="searchText" type="text" placeholder="搜索联系人" />
+          <input v-model="searchText" type="text" :placeholder="searchPlaceholder" />
         </div>
       </div>
+
+      <section v-if="activeThreadKind === 'group'" class="group-workspace">
+        <button
+          v-if="!showGroupCreator"
+          class="group-launch-card"
+          type="button"
+          title="创建群聊"
+          aria-label="创建群聊"
+          @click="openGroupCreator"
+        >
+          <span class="group-launch-icon">
+            <i class="fas fa-user-group"></i>
+          </span>
+          <span class="group-launch-main">
+            <strong>创建群聊</strong>
+            <span>{{ groupLaunchMeta }}</span>
+          </span>
+          <span class="group-launch-action">
+            <i class="fas fa-plus"></i>
+          </span>
+        </button>
+
+        <form v-else class="group-creator" @submit.prevent="createGroup">
+          <div class="group-creator-header">
+            <span class="group-creator-icon">
+              <i class="fas fa-users"></i>
+            </span>
+            <span class="group-creator-title">
+              <strong>新群聊</strong>
+              <span>{{ selectedGroupMembers.length }} 名成员</span>
+            </span>
+            <button type="button" title="关闭" aria-label="关闭" @click="closeGroupCreator">
+              <i class="fas fa-xmark"></i>
+            </button>
+          </div>
+
+          <label class="group-name-field">
+            <span>群名</span>
+            <input v-model="groupNameDraft" type="text" maxlength="24" placeholder="群聊名称" />
+          </label>
+
+          <div v-if="selectedGroupMembers.length > 0" class="selected-members">
+            <button
+              v-for="member in selectedGroupMembers"
+              :key="member"
+              class="selected-member-chip"
+              type="button"
+              @click="toggleGroupMember(member)"
+            >
+              <span>{{ contactInitial(member) }}</span>
+              <strong>{{ member }}</strong>
+              <i class="fas fa-xmark"></i>
+            </button>
+          </div>
+
+          <div class="member-picker-header">
+            <span>成员</span>
+            <strong>{{ selectedGroupMembers.length }}/{{ privateContactChoices.length }}</strong>
+          </div>
+
+          <div class="member-picker">
+            <button
+              v-for="contact in privateContactChoices"
+              :key="contact.id"
+              class="member-option"
+              :class="{ selected: isGroupMemberSelected(contact.name) }"
+              type="button"
+              @click="toggleGroupMember(contact.name)"
+            >
+              <span class="member-avatar">{{ contactInitial(contact.name) }}</span>
+              <strong>{{ contact.name }}</strong>
+              <i class="fas fa-check"></i>
+            </button>
+
+            <div v-if="privateContactChoices.length === 0" class="member-empty">
+              <i class="fas fa-user-slash"></i>
+              <span>暂无联系人</span>
+            </div>
+          </div>
+
+          <div class="group-actions">
+            <button class="group-cancel" type="button" @click="closeGroupCreator">取消</button>
+            <button class="group-create" type="submit" :disabled="!canCreateGroup">
+              <i class="fas fa-check"></i>
+              <span>创建</span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section v-if="activeThreadKind === 'private'" class="group-workspace contact-workspace">
+        <button
+          v-if="!showContactCreator"
+          class="group-launch-card contact-launch-card"
+          type="button"
+          title="添加联系人"
+          aria-label="添加联系人"
+          @click="openContactCreator"
+        >
+          <span class="group-launch-icon">
+            <i class="fas fa-user-plus"></i>
+          </span>
+          <span class="group-launch-main">
+            <strong>添加联系人</strong>
+            <span>输入完整姓名</span>
+          </span>
+          <span class="group-launch-action">
+            <i class="fas fa-plus"></i>
+          </span>
+        </button>
+
+        <form v-else class="group-creator contact-creator" @submit.prevent="addPrivateContact">
+          <div class="group-creator-header">
+            <span class="group-creator-icon">
+              <i class="fas fa-address-book"></i>
+            </span>
+            <span class="group-creator-title">
+              <strong>新联系人</strong>
+              <span>{{ normalizeContactName(contactNameDraft) || '完整姓名' }}</span>
+            </span>
+            <button type="button" title="关闭" aria-label="关闭" @click="closeContactCreator">
+              <i class="fas fa-xmark"></i>
+            </button>
+          </div>
+
+          <label class="group-name-field">
+            <span>全名</span>
+            <input v-model="contactNameDraft" type="text" maxlength="32" placeholder="完整姓名" autocomplete="off" />
+          </label>
+
+          <div class="group-actions">
+            <button class="group-cancel" type="button" @click="closeContactCreator">取消</button>
+            <button class="group-create" type="submit" :disabled="!canAddPrivateContact">
+              <i class="fas fa-user-plus"></i>
+              <span>添加</span>
+            </button>
+          </div>
+        </form>
+      </section>
 
       <div class="contact-list">
         <button
@@ -17,11 +156,12 @@
           :key="contact.id"
           class="contact-item"
           type="button"
-          @click="selectContact(contact.name)"
+          @click="selectContact(contact)"
         >
           <span class="contact-avatar">
+            <i v-if="contact.type === 'group'" class="fas fa-users"></i>
             <img
-              v-if="shouldUseAvatarImage(contact.name)"
+              v-else-if="shouldUseAvatarImage(contact.name)"
               :src="getAvatarUrl(contact.name)"
               :alt="contact.name"
               @error="markAvatarFailed(contact.name)"
@@ -29,17 +169,54 @@
             <span v-else>{{ contactInitial(contact.name) }}</span>
           </span>
           <span class="contact-main">
-            <span class="contact-name">{{ contact.name }}</span>
-            <span class="contact-last">{{ contact.lastMessage || ' ' }}</span>
+            <span class="contact-name-line">
+              <span class="contact-name">{{ contact.name }}</span>
+              <span v-if="contact.type === 'group'" class="contact-badge" :class="{ dissolved: contact.dissolved }">
+                {{ contact.dissolved ? '已解散' : `${contact.members?.length || 0}人` }}
+              </span>
+            </span>
+            <span class="contact-last">{{ contact.lastMessage || contactSubtitle(contact) || ' ' }}</span>
           </span>
           <span class="contact-time">{{ contact.lastTime }}</span>
         </button>
 
         <div v-if="filteredContacts.length === 0" class="empty-state">
-          <i class="fas fa-user-slash"></i>
-          <span>没有联系人</span>
+          <i :class="activeThreadKind === 'group' ? 'fas fa-user-group' : 'fas fa-user-slash'"></i>
+          <span>{{ emptyContactText }}</span>
         </div>
       </div>
+
+      <div v-if="errorText" class="error-row contact-error">
+        <i class="fas fa-triangle-exclamation"></i>
+        <span>{{ errorText }}</span>
+      </div>
+
+      <nav class="thread-tabs" aria-label="后街分类">
+        <button
+          class="thread-tab"
+          :class="{ active: activeThreadKind === 'private' }"
+          type="button"
+          title="私聊"
+          aria-label="私聊"
+          @click="setThreadKind('private')"
+        >
+          <i class="fas fa-comment"></i>
+          <span>私聊</span>
+          <strong>{{ privateContacts.length }}</strong>
+        </button>
+        <button
+          class="thread-tab"
+          :class="{ active: activeThreadKind === 'group' }"
+          type="button"
+          title="群聊"
+          aria-label="群聊"
+          @click="setThreadKind('group')"
+        >
+          <i class="fas fa-user-group"></i>
+          <span>群聊</span>
+          <strong>{{ groupContacts.length }}</strong>
+        </button>
+      </nav>
     </aside>
 
     <section v-else class="chat-panel">
@@ -49,25 +226,103 @@
         </button>
         <div class="chat-title">
           <span class="chat-title-avatar">
+            <i v-if="activeIsGroup" class="fas fa-users"></i>
             <img
-              v-if="shouldUseAvatarImage(activeContact)"
-              :src="getAvatarUrl(activeContact)"
-              :alt="activeContact"
-              @error="markAvatarFailed(activeContact)"
+              v-else-if="shouldUseAvatarImage(activeDisplayName)"
+              :src="getAvatarUrl(activeDisplayName)"
+              :alt="activeDisplayName"
+              @error="markAvatarFailed(activeDisplayName)"
             />
-            <span v-else>{{ contactInitial(activeContact) }}</span>
+            <span v-else>{{ contactInitial(activeDisplayName) }}</span>
           </span>
           <div class="chat-title-info">
-            <span class="chat-title-name">{{ activeContact }}</span>
-            <span class="chat-title-status"><i class="status-dot"></i>在线</span>
+            <span class="chat-title-name">{{ activeDisplayName }}</span>
+            <span class="chat-title-status" :class="{ dissolved: activeIsDissolved }">
+              <i class="status-dot"></i>{{ activeStatusText }}
+            </span>
           </div>
         </div>
         <div class="header-actions">
+          <button
+            v-if="activeIsGroup"
+            class="header-action-btn"
+            type="button"
+            title="群管理"
+            aria-label="群管理"
+            @click="toggleGroupManager"
+          >
+            <i class="fas fa-user-gear"></i>
+          </button>
           <button class="header-action-btn" type="button" title="刷新" aria-label="刷新" @click="loadThread(activeContact)">
             <i class="fas fa-rotate"></i>
           </button>
         </div>
       </header>
+
+      <section v-if="showGroupManager && activeIsGroup" class="group-manager" :class="{ dissolved: activeIsDissolved }">
+        <div class="group-manager-head">
+          <span>
+            <i class="fas fa-users"></i>
+            <strong>成员</strong>
+            <em>{{ activeMembers.length }}</em>
+          </span>
+          <button type="button" title="关闭" aria-label="关闭" @click="closeGroupManager">
+            <i class="fas fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="managed-members">
+          <div v-for="member in activeMembers" :key="member" class="managed-member">
+            <span>{{ contactInitial(member) }}</span>
+            <strong>{{ member }}</strong>
+            <button
+              type="button"
+              title="踢出"
+              aria-label="踢出"
+              :disabled="isUpdatingGroup || activeIsDissolved || activeMembers.length <= 1"
+              @click="removeGroupMember(member)"
+            >
+              <i class="fas fa-user-minus"></i>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="!activeIsDissolved" class="invite-area">
+          <div class="member-picker-header">
+            <span>拉入</span>
+            <strong>{{ selectedInviteMembers.length }}/{{ inviteMemberChoices.length }}</strong>
+          </div>
+          <div class="member-picker invite-picker">
+            <button
+              v-for="contact in inviteMemberChoices"
+              :key="contact.id"
+              class="member-option"
+              :class="{ selected: isInviteMemberSelected(contact.name) }"
+              type="button"
+              @click="toggleInviteMember(contact.name)"
+            >
+              <span class="member-avatar">{{ contactInitial(contact.name) }}</span>
+              <strong>{{ contact.name }}</strong>
+              <i class="fas fa-check"></i>
+            </button>
+            <div v-if="inviteMemberChoices.length === 0" class="member-empty">
+              <i class="fas fa-user-check"></i>
+              <span>暂无可拉入成员</span>
+            </div>
+          </div>
+          <button class="group-invite-btn" type="button" :disabled="!canInviteMembers" @click="addInviteMembers">
+            <i class="fas fa-user-plus"></i>
+            <span>拉入</span>
+          </button>
+        </div>
+
+        <div class="group-danger-row">
+          <button class="group-dissolve-btn" type="button" :disabled="isUpdatingGroup || activeIsDissolved" @click="dissolveGroup">
+            <i class="fas fa-user-xmark"></i>
+            <span>{{ activeIsDissolved ? '已解散' : '解散' }}</span>
+          </button>
+        </div>
+      </section>
 
       <div ref="messageListRef" class="message-list">
         <template v-for="(message, index) in visibleMessages" :key="message.id">
@@ -78,19 +333,47 @@
           <div class="message-row" :class="message.sender">
             <!-- Contact / system avatar on the left -->
             <span v-if="message.sender === 'contact' || message.sender === 'system'" class="msg-avatar">
+              <template v-if="activeIsGroup && message.sender === 'contact'">
+                <img
+                  v-if="shouldUseAvatarImage(messageSpeaker(message))"
+                  :src="getAvatarUrl(messageSpeaker(message))"
+                  :alt="messageSpeaker(message)"
+                  @error="markAvatarFailed(messageSpeaker(message))"
+                />
+                <span v-else>{{ contactInitial(messageSpeaker(message)) }}</span>
+              </template>
               <img
-                v-if="shouldUseAvatarImage(activeContact)"
-                :src="getAvatarUrl(activeContact)"
-                :alt="activeContact"
-                @error="markAvatarFailed(activeContact)"
+                v-else-if="shouldUseAvatarImage(activeDisplayName)"
+                :src="getAvatarUrl(activeDisplayName)"
+                :alt="activeDisplayName"
+                @error="markAvatarFailed(activeDisplayName)"
               />
-              <span v-else>{{ contactInitial(activeContact) }}</span>
+              <span v-else>{{ contactInitial(activeDisplayName) }}</span>
             </span>
 
             <div class="message-bubble">
-              <button class="message-delete" type="button" title="删除此处及以下消息" aria-label="删除此处及以下消息" @click="deleteMessage(message)">
-                <i class="fas fa-trash-can"></i>
-              </button>
+              <div class="message-actions">
+                <button
+                  v-if="message.sender === 'user'"
+                  class="message-action message-reroll"
+                  type="button"
+                  title="重 roll 此条回复"
+                  aria-label="重 roll 此条回复"
+                  @click="rerollFromUserMessage(message)"
+                >
+                  <i class="fas fa-rotate-right"></i>
+                </button>
+                <button
+                  class="message-action message-delete"
+                  type="button"
+                  title="删除此处及以下消息"
+                  aria-label="删除此处及以下消息"
+                  @click="deleteMessage(message)"
+                >
+                  <i class="fas fa-trash-can"></i>
+                </button>
+              </div>
+              <div v-if="activeIsGroup && message.sender === 'contact'" class="message-speaker">{{ messageSpeaker(message) }}</div>
               <div class="message-text">{{ message.text }}</div>
             </div>
 
@@ -109,13 +392,14 @@
 
         <div v-if="isSending" class="message-row contact">
           <span class="msg-avatar">
+            <i v-if="activeIsGroup" class="fas fa-users"></i>
             <img
-              v-if="shouldUseAvatarImage(activeContact)"
-              :src="getAvatarUrl(activeContact)"
-              :alt="activeContact"
-              @error="markAvatarFailed(activeContact)"
+              v-else-if="shouldUseAvatarImage(activeDisplayName)"
+              :src="getAvatarUrl(activeDisplayName)"
+              :alt="activeDisplayName"
+              @error="markAvatarFailed(activeDisplayName)"
             />
-            <span v-else>{{ contactInitial(activeContact) }}</span>
+            <span v-else>{{ contactInitial(activeDisplayName) }}</span>
           </span>
           <div class="message-bubble typing">
             <span></span>
@@ -131,14 +415,62 @@
       </div>
 
       <form class="composer" @submit.prevent="sendMessage">
+        <div v-if="showMentionPanel" class="mention-panel">
+          <button
+            v-for="(member, index) in mentionCandidates"
+            :key="member"
+            class="mention-option"
+            :class="{ selected: index === selectedMentionIndex }"
+            type="button"
+            @mousedown.prevent="insertMention(member)"
+          >
+            <span class="mention-avatar">
+              <img
+                v-if="shouldUseAvatarImage(member)"
+                :src="getAvatarUrl(member)"
+                :alt="member"
+                @error="markAvatarFailed(member)"
+              />
+              <span v-else>{{ contactInitial(member) }}</span>
+            </span>
+            <span class="mention-name">@{{ member }}</span>
+          </button>
+        </div>
+        <div v-if="showEmojiPanel" class="emoji-panel" aria-label="emoji 列表">
+          <button
+            v-for="emoji in EMOJI_OPTIONS"
+            :key="emoji"
+            class="emoji-option"
+            type="button"
+            @mousedown.prevent="insertEmoji(emoji)"
+          >
+            {{ emoji }}
+          </button>
+        </div>
         <textarea
+          ref="composerInputRef"
           v-model="draft"
-          :disabled="isSending"
+          :disabled="isSending || activeIsDissolved"
           rows="1"
-          placeholder="发送消息…"
-          @keydown.enter.exact.prevent="sendMessage"
+          :placeholder="composerPlaceholder"
+          @click="updateMentionState"
+          @focus="updateMentionState"
+          @input="updateMentionState"
+          @keyup="updateMentionState"
+          @keydown="handleComposerKeydown"
         ></textarea>
-        <button class="composer-send" type="submit" title="发送" aria-label="发送" :disabled="isSending || !draft.trim()">
+        <button
+          class="composer-emoji-toggle"
+          :class="{ active: showEmojiPanel }"
+          type="button"
+          title="emoji"
+          aria-label="emoji"
+          :disabled="isSending || activeIsDissolved"
+          @click="toggleEmojiPanel"
+        >
+          <i class="fas fa-face-smile"></i>
+        </button>
+        <button class="composer-send" type="submit" title="发送" aria-label="发送" :disabled="isSending || activeIsDissolved || !draft.trim()">
           <i class="fas fa-paper-plane"></i>
         </button>
       </form>
@@ -149,9 +481,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { backstreetService } from '../../phone/backstreetService';
-import type { BackstreetContact, BackstreetMessage } from '../../phone/types';
+import type { BackstreetContact, BackstreetMessage, BackstreetThreadKind } from '../../phone/types';
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
 import { PLAYER_AVATAR_UPDATED_EVENT, resolveStoredPlayerAvatar } from '../../../shared/localPreferences';
+import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 
 const props = defineProps<{
   characterData: any;
@@ -163,27 +496,112 @@ const emit = defineEmits<{
 
 const PHONE_PREFS_STORAGE_KEY = 'fatria-status-phone-preferences-v1';
 const PHONE_PREFS_UPDATED_EVENT = 'fatria-status-phone-preferences-updated';
-const DEFAULT_VISIBLE_MESSAGE_COUNT = 20;
+const DEFAULT_VISIBLE_MESSAGE_COUNT = 30;
+const EMOJI_OPTIONS = [
+  '😀',
+  '😄',
+  '😂',
+  '😊',
+  '😉',
+  '🥺',
+  '😳',
+  '😭',
+  '😤',
+  '😏',
+  '🤔',
+  '😎',
+  '👍',
+  '🙏',
+  '👏',
+  '👀',
+  '💢',
+  '💦',
+  '✨',
+  '🔥',
+  '❤️',
+  '💔',
+];
 
 const contacts = ref<BackstreetContact[]>([]);
 const messages = ref<BackstreetMessage[]>([]);
 const activeContact = ref('');
+const activeThreadKind = ref<BackstreetThreadKind>('private');
 const searchText = ref('');
 const draft = ref('');
 const isSending = ref(false);
+const isCreatingGroup = ref(false);
 const errorText = ref('');
 const messageListRef = ref<HTMLElement | null>(null);
+const composerInputRef = ref<HTMLTextAreaElement | null>(null);
 const failedAvatars = ref(new Set<string>());
 const playerAvatarUrl = ref('');
 const visibleMessageCount = ref(readVisibleMessageCount());
+const showContactCreator = ref(false);
+const contactNameDraft = ref('');
+const isAddingContact = ref(false);
+const showGroupCreator = ref(false);
+const groupNameDraft = ref('');
+const selectedGroupMembers = ref<string[]>([]);
+const showGroupManager = ref(false);
+const selectedInviteMembers = ref<string[]>([]);
+const isUpdatingGroup = ref(false);
+const mentionQuery = ref('');
+const mentionStartIndex = ref(-1);
+const selectedMentionIndex = ref(0);
+const showEmojiPanel = ref(false);
+let currentChatId = '';
+let stopChatChangeListener: (() => void) | null = null;
 
+const privateContacts = computed(() => contacts.value.filter(contact => contact.type !== 'group'));
+const groupContacts = computed(() => contacts.value.filter(contact => contact.type === 'group'));
+const currentThreadContacts = computed(() => (activeThreadKind.value === 'group' ? groupContacts.value : privateContacts.value));
+const searchPlaceholder = computed(() => (activeThreadKind.value === 'group' ? '搜索群聊' : '搜索联系人'));
+const emptyContactText = computed(() => (activeThreadKind.value === 'group' ? '没有群聊' : '没有联系人'));
+const groupLaunchMeta = computed(() =>
+  privateContactChoices.value.length > 0 ? `${privateContactChoices.value.length} 位可选联系人` : '暂无可选联系人',
+);
 const filteredContacts = computed(() => {
   const query = searchText.value.trim().toLowerCase();
-  const list = contacts.value;
+  const list = currentThreadContacts.value;
   if (!query) return list.slice(0, 120);
   return list.filter(contact => contact.name.toLowerCase().includes(query)).slice(0, 120);
 });
 const visibleMessages = computed(() => messages.value.slice(-visibleMessageCount.value));
+const activeThread = computed(() => contacts.value.find(contact => contact.id === activeContact.value) || null);
+const activeDisplayName = computed(() => activeThread.value?.name || activeContact.value);
+const activeIsGroup = computed(() => activeThread.value?.type === 'group');
+const activeMembers = computed(() => activeThread.value?.members || []);
+const activeIsDissolved = computed(() => Boolean(activeThread.value?.dissolved));
+const activeMembersText = computed(() => {
+  const members = activeMembers.value;
+  if (!activeIsGroup.value || members.length === 0) return '';
+  return members.join('、');
+});
+const activeStatusText = computed(() => {
+  if (activeIsDissolved.value) return '已解散';
+  return activeMembersText.value || '在线';
+});
+const privateContactChoices = computed(() => privateContacts.value);
+const inviteMemberChoices = computed(() => {
+  const memberSet = new Set(activeMembers.value);
+  return privateContacts.value.filter(contact => !memberSet.has(contact.name));
+});
+const canCreateGroup = computed(() => groupNameDraft.value.trim().length > 0 && selectedGroupMembers.value.length >= 2 && !isCreatingGroup.value);
+const canInviteMembers = computed(
+  () => selectedInviteMembers.value.length > 0 && !isUpdatingGroup.value && !activeIsDissolved.value,
+);
+const canAddPrivateContact = computed(() => normalizeContactName(contactNameDraft.value).length > 0 && !isAddingContact.value);
+const composerPlaceholder = computed(() => (activeIsDissolved.value ? '群聊已解散' : '发送消息…'));
+const mentionCandidates = computed(() => {
+  if (!activeIsGroup.value || activeIsDissolved.value) return [];
+  const query = mentionQuery.value.trim().toLowerCase();
+  const members = activeMembers.value;
+  const matchedMembers = query ? members.filter(member => member.toLowerCase().includes(query)) : members;
+  return matchedMembers.slice(0, 8);
+});
+const showMentionPanel = computed(
+  () => activeIsGroup.value && !activeIsDissolved.value && mentionStartIndex.value >= 0 && mentionCandidates.value.length > 0,
+);
 
 watch(
   () => props.characterData,
@@ -196,12 +614,15 @@ watch(
 onMounted(() => {
   loadContacts();
   void loadPlayerAvatar();
+  setupChatChangeListener();
   window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.addEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.addEventListener('storage', handlePhonePreferencesStorage);
 });
 
 onUnmounted(() => {
+  stopChatChangeListener?.();
+  stopChatChangeListener = null;
   window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.removeEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.removeEventListener('storage', handlePhonePreferencesStorage);
@@ -246,6 +667,49 @@ function handlePhonePreferencesStorage(event: StorageEvent) {
   syncVisibleMessageCount();
 }
 
+function getHostWindow(): any {
+  try {
+    return window.parent && window.parent !== window ? window.parent : window;
+  } catch {
+    return window;
+  }
+}
+
+function readCurrentChatId(): string {
+  const hostWindow = getHostWindow();
+  return String(hostWindow.SillyTavern?.getCurrentChatId?.() || (globalThis as any).SillyTavern?.getCurrentChatId?.() || '').trim();
+}
+
+function resetForChatChange() {
+  activeContact.value = '';
+  messages.value = [];
+  searchText.value = '';
+  errorText.value = '';
+  hideEmojiPanel();
+  closeContactCreator();
+  closeGroupCreator();
+  closeGroupManager();
+  void loadContacts();
+}
+
+function handleChatChanged(nextChatIdValue?: unknown) {
+  const nextChatId = String(nextChatIdValue || readCurrentChatId()).trim();
+  if (!nextChatId || nextChatId === currentChatId) return;
+  currentChatId = nextChatId;
+  resetForChatChange();
+}
+
+function setupChatChangeListener() {
+  currentChatId = readCurrentChatId();
+  const hostWindow = getHostWindow();
+  if (typeof hostWindow.eventOn !== 'function' || !hostWindow.tavern_events?.CHAT_CHANGED) return;
+
+  const eventHandle = hostWindow.eventOn(hostWindow.tavern_events.CHAT_CHANGED, handleChatChanged);
+  if (typeof eventHandle?.stop === 'function') {
+    stopChatChangeListener = () => eventHandle.stop();
+  }
+}
+
 async function loadPlayerAvatar() {
   try {
     const url = await resolveStoredPlayerAvatar();
@@ -259,19 +723,22 @@ function handlePlayerAvatarUpdated() {
   void loadPlayerAvatar();
 }
 
-async function loadContacts() {
+async function loadContacts(characterDataOverride: any = props.characterData || {}) {
   try {
-    contacts.value = await backstreetService.listContacts(props.characterData || {});
+    contacts.value = await backstreetService.listContacts(characterDataOverride);
   } catch (error) {
     console.warn('[后街页面] 联系人加载失败:', error);
     errorText.value = '联系人加载失败';
   }
 }
 
-async function selectContact(name: string) {
-  activeContact.value = name;
+async function selectContact(contact: BackstreetContact) {
+  activeContact.value = contact.id;
+  hideMentionPanel();
+  hideEmojiPanel();
+  closeGroupManager();
   void loadPlayerAvatar();
-  await loadThread(name);
+  await loadThread(contact.id);
 }
 
 async function loadThread(name: string) {
@@ -288,9 +755,11 @@ async function loadThread(name: string) {
 async function sendMessage() {
   const contact = activeContact.value;
   const text = draft.value.trim();
-  if (!contact || !text || isSending.value) return;
+  if (!contact || !text || isSending.value || activeIsDissolved.value) return;
 
   draft.value = '';
+  hideMentionPanel();
+  hideEmojiPanel();
   isSending.value = true;
   errorText.value = '';
 
@@ -327,10 +796,401 @@ async function deleteMessage(message: BackstreetMessage) {
   }
 }
 
+async function rerollFromUserMessage(message: BackstreetMessage) {
+  const contact = activeContact.value;
+  if (!contact || message.sender !== 'user' || isSending.value) return;
+
+  isSending.value = true;
+  errorText.value = '';
+
+  try {
+    messages.value = await backstreetService.deleteMessagesAfter(contact, message.id);
+    await scrollToBottom();
+    await loadContacts();
+
+    const replies = await backstreetService.generateContactReply(contact, props.characterData || {});
+    messages.value = [...messages.value, ...replies];
+    await loadContacts();
+  } catch (error) {
+    console.error('[后街页面] 重 roll 失败:', error);
+    errorText.value = error instanceof Error ? error.message : '重 roll 失败';
+    await loadThread(contact);
+  } finally {
+    isSending.value = false;
+    await scrollToBottom();
+  }
+}
+
 function backToContacts() {
   activeContact.value = '';
   messages.value = [];
+  hideMentionPanel();
+  hideEmojiPanel();
+  closeGroupManager();
   loadContacts();
+}
+
+function setThreadKind(kind: BackstreetThreadKind) {
+  activeThreadKind.value = kind;
+  searchText.value = '';
+  errorText.value = '';
+  hideMentionPanel();
+  hideEmojiPanel();
+  closeGroupManager();
+  if (kind !== 'group') {
+    closeGroupCreator();
+  } else {
+    closeContactCreator();
+  }
+}
+
+function openGroupCreator() {
+  activeThreadKind.value = 'group';
+  closeContactCreator();
+  showGroupCreator.value = true;
+  groupNameDraft.value = '';
+  selectedGroupMembers.value = [];
+  errorText.value = '';
+}
+
+function closeGroupCreator() {
+  showGroupCreator.value = false;
+  groupNameDraft.value = '';
+  selectedGroupMembers.value = [];
+}
+
+function normalizeContactName(rawName: string): string {
+  return String(rawName || '').trim().replace(/\s+/g, ' ');
+}
+
+function openContactCreator() {
+  activeThreadKind.value = 'private';
+  closeGroupCreator();
+  showContactCreator.value = true;
+  contactNameDraft.value = '';
+  errorText.value = '';
+}
+
+function closeContactCreator() {
+  showContactCreator.value = false;
+  contactNameDraft.value = '';
+}
+
+async function addPrivateContact() {
+  const name = normalizeContactName(contactNameDraft.value);
+  if (!name || isAddingContact.value) return;
+
+  isAddingContact.value = true;
+  errorText.value = '';
+  try {
+    const mvuData = await getLatestMvuData();
+    if (!mvuData) throw new Error('无法读取 MVU 变量');
+    if (!mvuData.stat_data) mvuData.stat_data = {};
+
+    const statData = mvuData.stat_data as Record<string, any>;
+    const relationSystem =
+      statData.关系系统 && typeof statData.关系系统 === 'object' && !Array.isArray(statData.关系系统)
+        ? statData.关系系统
+        : {};
+    statData.关系系统 = relationSystem;
+
+    const existingRelation = relationSystem[name];
+    if (existingRelation && typeof existingRelation === 'object' && !Array.isArray(existingRelation)) {
+      relationSystem[name] = { 好感度: 0, 关系类型: '朋友', ...existingRelation };
+      if (!relationSystem[name].关系类型 || relationSystem[name].关系类型 === '陌生人') {
+        relationSystem[name].关系类型 = '朋友';
+      }
+    } else {
+      relationSystem[name] = { 好感度: 0, 关系类型: '朋友' };
+    }
+
+    await replaceLatestMvuData(mvuData);
+    window.dispatchEvent(new CustomEvent('mvu-data-updated', { detail: { source: 'backstreet-add-contact', contact: name } }));
+    await loadContacts(statData);
+    closeContactCreator();
+    const contact = contacts.value.find(item => item.type !== 'group' && item.name === name) || {
+      id: name,
+      name,
+      lastMessage: '',
+      lastTime: '',
+      type: 'private' as const,
+    };
+    await selectContact(contact);
+  } catch (error) {
+    console.error('[后街页面] 添加联系人失败:', error);
+    errorText.value = error instanceof Error ? error.message : '添加联系人失败';
+  } finally {
+    isAddingContact.value = false;
+  }
+}
+
+function toggleGroupManager() {
+  showGroupManager.value = !showGroupManager.value;
+  selectedInviteMembers.value = [];
+  errorText.value = '';
+}
+
+function closeGroupManager() {
+  showGroupManager.value = false;
+  selectedInviteMembers.value = [];
+}
+
+function hideMentionPanel() {
+  mentionQuery.value = '';
+  mentionStartIndex.value = -1;
+  selectedMentionIndex.value = 0;
+}
+
+function hideEmojiPanel() {
+  showEmojiPanel.value = false;
+}
+
+function toggleEmojiPanel() {
+  if (isSending.value || activeIsDissolved.value) return;
+  showEmojiPanel.value = !showEmojiPanel.value;
+  if (showEmojiPanel.value) hideMentionPanel();
+  nextTick(() => {
+    composerInputRef.value?.focus();
+  });
+}
+
+function updateMentionState(event?: Event) {
+  if (!activeIsGroup.value || activeIsDissolved.value || isSending.value) {
+    hideMentionPanel();
+    return;
+  }
+
+  const textarea = (event?.target instanceof HTMLTextAreaElement ? event.target : composerInputRef.value) || null;
+  if (!textarea) {
+    hideMentionPanel();
+    return;
+  }
+
+  const cursor = textarea.selectionStart ?? draft.value.length;
+  const beforeCursor = textarea.value.slice(0, cursor);
+  const atIndex = beforeCursor.lastIndexOf('@');
+  if (atIndex < 0) {
+    hideMentionPanel();
+    return;
+  }
+
+  const fragment = beforeCursor.slice(atIndex + 1);
+  if (/[\s\r\n\t]/.test(fragment)) {
+    hideMentionPanel();
+    return;
+  }
+
+  mentionStartIndex.value = atIndex;
+  hideEmojiPanel();
+  if (mentionQuery.value !== fragment) {
+    mentionQuery.value = fragment;
+    selectedMentionIndex.value = 0;
+  } else if (selectedMentionIndex.value >= mentionCandidates.value.length) {
+    selectedMentionIndex.value = Math.max(0, mentionCandidates.value.length - 1);
+  }
+}
+
+function insertMention(member: string) {
+  const name = member.trim();
+  if (!name) return;
+
+  const textarea = composerInputRef.value;
+  const cursor = textarea?.selectionStart ?? draft.value.length;
+  const start = mentionStartIndex.value >= 0 ? mentionStartIndex.value : cursor;
+  const before = draft.value.slice(0, start);
+  const after = draft.value.slice(cursor);
+  const mentionText = `@${name} `;
+  draft.value = `${before}${mentionText}${after}`;
+  hideMentionPanel();
+
+  nextTick(() => {
+    const nextCursor = before.length + mentionText.length;
+    composerInputRef.value?.focus();
+    composerInputRef.value?.setSelectionRange(nextCursor, nextCursor);
+  });
+}
+
+function insertEmoji(emoji: string) {
+  if (isSending.value || activeIsDissolved.value) return;
+  const text = String(emoji || '');
+  if (!text) return;
+
+  const textarea = composerInputRef.value;
+  const start = textarea?.selectionStart ?? draft.value.length;
+  const end = textarea?.selectionEnd ?? start;
+  const before = draft.value.slice(0, start);
+  const after = draft.value.slice(end);
+  draft.value = `${before}${text}${after}`;
+  hideEmojiPanel();
+  hideMentionPanel();
+
+  nextTick(() => {
+    const nextCursor = before.length + text.length;
+    composerInputRef.value?.focus();
+    composerInputRef.value?.setSelectionRange(nextCursor, nextCursor);
+  });
+}
+
+function handleComposerKeydown(event: KeyboardEvent) {
+  if (showMentionPanel.value) {
+    const candidates = mentionCandidates.value;
+    if (candidates.length === 0) {
+      hideMentionPanel();
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      selectedMentionIndex.value = (selectedMentionIndex.value + 1) % candidates.length;
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      selectedMentionIndex.value = (selectedMentionIndex.value - 1 + candidates.length) % candidates.length;
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault();
+      insertMention(candidates[selectedMentionIndex.value] || candidates[0]);
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideMentionPanel();
+      return;
+    }
+  }
+
+  if (showEmojiPanel.value && event.key === 'Escape') {
+    event.preventDefault();
+    hideEmojiPanel();
+    return;
+  }
+
+  if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
+    event.preventDefault();
+    void sendMessage();
+  }
+}
+
+function isGroupMemberSelected(name: string): boolean {
+  return selectedGroupMembers.value.includes(name);
+}
+
+function toggleGroupMember(name: string) {
+  if (!name) return;
+  if (selectedGroupMembers.value.includes(name)) {
+    selectedGroupMembers.value = selectedGroupMembers.value.filter(member => member !== name);
+    return;
+  }
+  selectedGroupMembers.value = [...selectedGroupMembers.value, name];
+}
+
+function isInviteMemberSelected(name: string): boolean {
+  return selectedInviteMembers.value.includes(name);
+}
+
+function toggleInviteMember(name: string) {
+  if (!name || activeIsDissolved.value) return;
+  if (selectedInviteMembers.value.includes(name)) {
+    selectedInviteMembers.value = selectedInviteMembers.value.filter(member => member !== name);
+    return;
+  }
+  selectedInviteMembers.value = [...selectedInviteMembers.value, name];
+}
+
+async function createGroup() {
+  if (!canCreateGroup.value) return;
+  isCreatingGroup.value = true;
+  errorText.value = '';
+  try {
+    const group = await backstreetService.createGroup(groupNameDraft.value, selectedGroupMembers.value);
+    activeThreadKind.value = 'group';
+    await loadContacts();
+    closeGroupCreator();
+    activeContact.value = group.id;
+    await loadThread(group.id);
+  } catch (error) {
+    console.error('[后街页面] 创建群聊失败:', error);
+    errorText.value = error instanceof Error ? error.message : '创建群聊失败';
+  } finally {
+    isCreatingGroup.value = false;
+  }
+}
+
+async function addInviteMembers() {
+  const contact = activeContact.value;
+  if (!contact || !canInviteMembers.value) return;
+  const membersToInvite = selectedInviteMembers.value.slice();
+  if (!window.confirm(`确认将 ${membersToInvite.join('、')} 拉入群聊？`)) return;
+
+  isUpdatingGroup.value = true;
+  errorText.value = '';
+  try {
+    messages.value = await backstreetService.addGroupMembers(contact, membersToInvite, props.characterData || {});
+    selectedInviteMembers.value = [];
+    await loadContacts();
+    await scrollToBottom();
+  } catch (error) {
+    console.error('[后街页面] 拉入群成员失败:', error);
+    errorText.value = error instanceof Error ? error.message : '拉入失败';
+  } finally {
+    isUpdatingGroup.value = false;
+  }
+}
+
+async function removeGroupMember(member: string) {
+  const contact = activeContact.value;
+  if (!contact || !member || isUpdatingGroup.value || activeIsDissolved.value) return;
+  if (!window.confirm(`确认将 ${member} 移出群聊？`)) return;
+
+  isUpdatingGroup.value = true;
+  errorText.value = '';
+  try {
+    messages.value = await backstreetService.removeGroupMember(contact, member, props.characterData || {});
+    selectedInviteMembers.value = selectedInviteMembers.value.filter(name => name !== member);
+    await loadContacts();
+    await scrollToBottom();
+  } catch (error) {
+    console.error('[后街页面] 踢出群成员失败:', error);
+    errorText.value = error instanceof Error ? error.message : '踢出失败';
+  } finally {
+    isUpdatingGroup.value = false;
+  }
+}
+
+async function dissolveGroup() {
+  const contact = activeContact.value;
+  if (!contact || isUpdatingGroup.value || activeIsDissolved.value) return;
+  const groupName = activeDisplayName.value || '这个群聊';
+  if (!window.confirm(`确认解散「${groupName}」？解散后小手机中不再显示该群聊，但世界书会保留历史记录。`)) return;
+
+  isUpdatingGroup.value = true;
+  errorText.value = '';
+  try {
+    await backstreetService.dissolveGroup(contact, props.characterData || {});
+    selectedInviteMembers.value = [];
+    closeGroupManager();
+    activeContact.value = '';
+    messages.value = [];
+    activeThreadKind.value = 'group';
+    await loadContacts();
+  } catch (error) {
+    console.error('[后街页面] 解散群聊失败:', error);
+    errorText.value = error instanceof Error ? error.message : '解散失败';
+  } finally {
+    isUpdatingGroup.value = false;
+  }
+}
+
+function contactSubtitle(contact: BackstreetContact): string {
+  if (contact.type !== 'group') return '';
+  if (contact.dissolved) return '群聊已解散';
+  const members = contact.members || [];
+  return members.length ? members.join('、') : '群聊';
 }
 
 function resolveAvatarFullName(rawName: string): string {
@@ -364,6 +1224,10 @@ function markAvatarFailed(name: string) {
 
 function contactInitial(name: string): string {
   return name.trim().slice(0, 1) || '后';
+}
+
+function messageSpeaker(message: BackstreetMessage): string {
+  return message.speaker?.trim() || activeDisplayName.value || '对方';
 }
 
 /** Show timestamp divider if first message or time changed from previous */
@@ -434,6 +1298,402 @@ async function scrollToBottom() {
   &:hover {
     background: rgba(255, 255, 255, 0.15);
     transform: translateY(-1px);
+  }
+}
+
+.group-workspace {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-launch-card {
+  width: 100%;
+  min-height: 62px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 16px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, 0.17), rgba(99, 102, 241, 0.18)),
+    rgba(8, 12, 24, 0.5);
+  box-shadow:
+    0 10px 24px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  text-align: left;
+  backdrop-filter: blur(14px);
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+
+  &:hover {
+    border-color: rgba(125, 211, 252, 0.38);
+    background:
+      linear-gradient(135deg, rgba(20, 184, 166, 0.24), rgba(99, 102, 241, 0.23)),
+      rgba(8, 12, 24, 0.56);
+    transform: translateY(-1px);
+  }
+}
+
+.contact-launch-card {
+  border-color: rgba(167, 243, 208, 0.22);
+  background:
+    linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(125, 211, 252, 0.14)),
+    rgba(8, 12, 24, 0.5);
+
+  &:hover {
+    border-color: rgba(167, 243, 208, 0.38);
+    background:
+      linear-gradient(135deg, rgba(16, 185, 129, 0.23), rgba(125, 211, 252, 0.2)),
+      rgba(8, 12, 24, 0.56);
+  }
+}
+
+.group-launch-icon,
+.group-launch-action,
+.group-creator-icon {
+  display: grid;
+  place-items: center;
+  color: #ecfeff;
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.group-launch-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  font-size: 15px;
+}
+
+.group-launch-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-size: 14px;
+  }
+
+  span {
+    color: rgba(224, 242, 254, 0.62);
+    font-size: 12px;
+  }
+}
+
+.group-launch-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  font-size: 12px;
+}
+
+.group-creator {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 18px;
+  padding: 12px;
+  background:
+    linear-gradient(155deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.58)),
+    rgba(10, 14, 28, 0.54);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+}
+
+.group-creator-header {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+
+  button {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.07);
+
+    &:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.13);
+    }
+  }
+}
+
+.group-creator-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  color: #a7f3d0;
+  font-size: 14px;
+}
+
+.group-creator-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-size: 14px;
+  }
+
+  span {
+    color: rgba(186, 230, 253, 0.65);
+    font-size: 11px;
+  }
+}
+
+.group-name-field {
+  min-height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 5px 10px 6px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.07);
+
+  span {
+    color: rgba(224, 242, 254, 0.6);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  input {
+    min-width: 0;
+    height: 34px;
+    border: 0 !important;
+    color: #fff !important;
+    background: transparent !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    font: inherit;
+    font-size: 14px;
+
+    &::placeholder {
+      color: rgba(240, 236, 255, 0.38) !important;
+    }
+  }
+}
+
+.selected-members {
+  max-height: 74px;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.selected-member-chip {
+  max-width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid rgba(94, 234, 212, 0.24);
+  border-radius: 999px;
+  padding: 0 8px 0 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ecfeff;
+  background: rgba(20, 184, 166, 0.17);
+
+  span {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    color: #052e2b;
+    background: #99f6e4;
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  strong {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  i {
+    color: rgba(236, 254, 255, 0.68);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+}
+
+.member-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(224, 242, 254, 0.58);
+  font-size: 12px;
+  font-weight: 700;
+
+  strong {
+    color: #a7f3d0;
+    font-size: 11px;
+  }
+}
+
+.member-picker {
+  max-height: 154px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.member-option {
+  min-width: 0;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  color: rgba(240, 236, 255, 0.76);
+  background: rgba(255, 255, 255, 0.055);
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s;
+
+  .member-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+  }
+
+  strong {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  i {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    color: transparent;
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 9px;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.09);
+    transform: translateY(-1px);
+  }
+
+  &.selected {
+    color: #fff;
+    border-color: rgba(94, 234, 212, 0.44);
+    background: rgba(20, 184, 166, 0.22);
+
+    i {
+      color: #042f2e;
+      background: #5eead4;
+    }
+  }
+}
+
+.member-empty {
+  grid-column: 1 / -1;
+  min-height: 38px;
+  border: 1px dashed rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: rgba(240, 236, 255, 0.42);
+  font-size: 12px;
+}
+
+.group-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.group-cancel,
+.group-create {
+  height: 32px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.group-cancel {
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.group-create {
+  color: #fff;
+  background: linear-gradient(145deg, #14b8a6, #6366f1);
+  box-shadow: 0 8px 18px rgba(20, 184, 166, 0.22);
+
+  &:disabled {
+    opacity: 0.38;
+    box-shadow: none;
   }
 }
 
@@ -532,6 +1792,11 @@ async function scrollToBottom() {
     object-fit: cover;
     display: block;
   }
+
+  i {
+    font-size: 16px;
+    opacity: 0.82;
+  }
 }
 
 .contact-main {
@@ -541,6 +1806,7 @@ async function scrollToBottom() {
   gap: 4px;
 }
 
+.contact-name-line,
 .contact-name,
 .contact-last,
 .contact-time {
@@ -549,10 +1815,32 @@ async function scrollToBottom() {
   white-space: nowrap;
 }
 
+.contact-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .contact-name {
+  min-width: 0;
   font-size: 15px;
   font-weight: 700;
   color: #fff;
+}
+
+.contact-badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 1px 6px;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.24);
+  font-size: 10px;
+  font-weight: 700;
+
+  &.dissolved {
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.2);
+  }
 }
 
 .contact-last {
@@ -565,6 +1853,83 @@ async function scrollToBottom() {
   color: rgba(240, 236, 255, 0.4);
   align-self: flex-start;
   margin-top: 2px;
+}
+
+.thread-tabs {
+  flex-shrink: 0;
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px 18px 0 0;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  background: rgba(10, 14, 28, 0.55);
+  box-shadow:
+    0 -8px 22px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.thread-tab {
+  min-width: 0;
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, auto) minmax(20px, auto);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(240, 236, 255, 0.62);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+
+  i,
+  span,
+  strong {
+    min-width: 0;
+  }
+
+  i {
+    font-size: 13px;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    min-width: 20px;
+    border-radius: 999px;
+    padding: 1px 6px;
+    color: rgba(240, 236, 255, 0.54);
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 10px;
+  }
+
+  &:hover {
+    color: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  &.active {
+    color: #fff;
+    border-color: rgba(94, 234, 212, 0.26);
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.24), rgba(99, 102, 241, 0.2));
+
+    strong {
+      color: #042f2e;
+      background: #99f6e4;
+    }
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -640,6 +2005,11 @@ async function scrollToBottom() {
     object-fit: cover;
     display: block;
   }
+
+  i {
+    font-size: 14px;
+    opacity: 0.82;
+  }
 }
 
 .chat-title-info {
@@ -665,6 +2035,15 @@ async function scrollToBottom() {
   font-size: 11px;
   color: #6ee7b7;
   font-weight: 500;
+
+  &.dissolved {
+    color: #fca5a5;
+
+    .status-dot {
+      background: #f87171;
+      box-shadow: 0 0 6px rgba(248, 113, 113, 0.45);
+    }
+  }
 }
 
 .status-dot {
@@ -700,6 +2079,163 @@ async function scrollToBottom() {
     background: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.9);
   }
+}
+
+.group-manager {
+  flex-shrink: 0;
+  max-height: 315px;
+  overflow-y: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 9px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: rgba(8, 12, 24, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.group-manager-head {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  span {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: rgba(240, 236, 255, 0.82);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  i {
+    color: #99f6e4;
+  }
+
+  em {
+    border-radius: 999px;
+    padding: 1px 7px;
+    color: #042f2e;
+    background: #99f6e4;
+    font-size: 10px;
+    font-style: normal;
+  }
+
+  button {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.managed-members {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.managed-member {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 0 6px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 26px;
+  align-items: center;
+  gap: 6px;
+  color: rgba(240, 236, 255, 0.8);
+  background: rgba(255, 255, 255, 0.055);
+
+  span {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  button {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.16);
+    font-size: 10px;
+
+    &:disabled {
+      opacity: 0.3;
+    }
+  }
+}
+
+.invite-area {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.invite-picker {
+  max-height: 92px;
+}
+
+.group-invite-btn,
+.group-dissolve-btn {
+  height: 32px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+
+  &:disabled {
+    opacity: 0.38;
+  }
+}
+
+.group-invite-btn {
+  align-self: flex-end;
+  background: linear-gradient(145deg, #14b8a6, #6366f1);
+  box-shadow: 0 8px 18px rgba(20, 184, 166, 0.2);
+}
+
+.group-danger-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.group-dissolve-btn {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fecaca;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -841,10 +2377,30 @@ async function scrollToBottom() {
   padding: 10px 13px;
 }
 
-.message-delete {
+.message-speaker {
+  margin-bottom: 3px;
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.message-actions {
   position: absolute;
   top: -8px;
   right: -8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transform: scale(0.8);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  z-index: 2;
+}
+
+.message-action {
   width: 22px;
   height: 22px;
   border: 0;
@@ -854,31 +2410,30 @@ async function scrollToBottom() {
   color: #fff;
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(4px);
-  opacity: 0;
-  transform: scale(0.8);
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease,
     background 0.15s ease;
-  z-index: 2;
 
   i {
     font-size: 10px;
   }
-
-  &:hover {
-    background: #ef4444;
-  }
 }
 
-.message-bubble:hover .message-delete,
-.message-delete:focus-visible {
+.message-delete:hover {
+  background: #ef4444;
+}
+
+.message-reroll:hover {
+  background: #14b8a6;
+}
+
+.message-bubble:hover .message-actions,
+.message-actions:focus-within {
   opacity: 1;
   transform: scale(1);
 }
 
 @media (hover: none) {
-  .message-delete {
+  .message-actions {
     opacity: 0.7;
     transform: scale(1);
   }
@@ -923,6 +2478,7 @@ async function scrollToBottom() {
    ═══════════════════════════════════════════════════════ */
 .composer {
   min-height: 56px;
+  position: relative;
   padding: 8px 10px 8px;
   display: flex;
   align-items: flex-end;
@@ -956,6 +2512,159 @@ async function scrollToBottom() {
       border-color: rgba(99, 102, 241, 0.42) !important;
       background: #fff !important;
     }
+  }
+}
+
+.mention-panel {
+  position: absolute;
+  left: 10px;
+  right: 55px;
+  bottom: calc(100% + 8px);
+  max-height: 176px;
+  overflow-y: auto;
+  border: 1px solid rgba(167, 243, 208, 0.2);
+  border-radius: 16px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background:
+    linear-gradient(155deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.78)),
+    rgba(10, 14, 28, 0.82);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  z-index: 8;
+}
+
+.mention-option {
+  min-height: 38px;
+  border: 0;
+  border-radius: 12px;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: rgba(240, 253, 250, 0.82);
+  background: transparent;
+  text-align: left;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &.selected,
+  &:hover {
+    color: #fff;
+    background: rgba(20, 184, 166, 0.18);
+  }
+}
+
+.mention-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #ecfeff;
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  font-weight: 800;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.mention-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.emoji-panel {
+  position: absolute;
+  right: 55px;
+  bottom: calc(100% + 8px);
+  width: min(244px, calc(100% - 20px));
+  max-height: 156px;
+  overflow-y: auto;
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-radius: 16px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  background:
+    linear-gradient(155deg, rgba(15, 23, 42, 0.94), rgba(42, 31, 55, 0.78)),
+    rgba(10, 14, 28, 0.86);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  z-index: 9;
+}
+
+.emoji-option {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 18px;
+  line-height: 1;
+  transition:
+    background 0.15s,
+    transform 0.15s;
+
+  &:hover {
+    background: rgba(251, 191, 36, 0.18);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.94);
+  }
+}
+
+.composer-emoji-toggle {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: rgba(39, 49, 61, 0.72);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(33, 49, 59, 0.1);
+  transition:
+    color 0.15s,
+    background 0.15s,
+    transform 0.15s;
+
+  &:disabled {
+    opacity: 0.35;
+  }
+
+  &.active,
+  &:not(:disabled):hover {
+    color: #fff;
+    background: linear-gradient(145deg, #f59e0b, #ec4899);
+    transform: translateY(-1px);
   }
 }
 
@@ -1012,6 +2721,12 @@ async function scrollToBottom() {
   border-top: 1px solid rgba(239, 68, 68, 0.12);
   padding: 0 12px;
   backdrop-filter: blur(6px);
+}
+
+.contact-error {
+  flex-shrink: 0;
+  border: 1px solid rgba(239, 68, 68, 0.14);
+  border-radius: 13px;
 }
 
 .empty-state {
