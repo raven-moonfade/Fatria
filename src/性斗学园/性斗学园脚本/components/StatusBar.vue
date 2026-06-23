@@ -480,7 +480,13 @@
                         <span>提示词引导强度</span>
                         <strong>{{ novelAiImage.scale }}</strong>
                       </span>
-                      <input v-model.number="novelAiImage.scale" type="range" min="1" max="20" step="0.5" />
+                      <input
+                        v-model.number="novelAiImage.scale"
+                        type="range"
+                        min="1"
+                        :max="NOVELAI_IMAGE_SCALE_MAX"
+                        step="0.5"
+                      />
                     </label>
 
                     <label class="settings-textarea-field">
@@ -613,6 +619,7 @@ import {
   getNovelAiImageStatus,
   loadNovelAiImageSettings,
   NOVELAI_IMAGE_MODEL_OPTIONS,
+  NOVELAI_IMAGE_SCALE_MAX,
   NOVELAI_IMAGE_SIZE_OPTIONS,
   saveNovelAiImageSettings,
   type NovelAiImageSettings,

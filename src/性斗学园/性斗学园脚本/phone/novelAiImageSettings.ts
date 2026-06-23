@@ -32,6 +32,7 @@ export interface NovelAiIllustrationTemplateContext {
 const NOVELAI_IMAGE_STORAGE_KEY = 'fatria-backstreet-novelai-image-v1';
 const NOVELAI_IMAGE_GLOBAL_KEY = '__fatriaBackstreetNovelAiImageSettings';
 export const NOVELAI_IMAGE_UPDATED_EVENT = 'fatria-backstreet-novelai-image-updated';
+export const NOVELAI_IMAGE_SCALE_MAX = 10;
 
 export const NOVELAI_IMAGE_SIZE_OPTIONS: NovelAiImageSizeOption[] = [
   { value: 'portrait', label: '竖版 (832x1216)', width: 832, height: 1216 },
@@ -141,7 +142,7 @@ function normalizeSettings(settings: Partial<NovelAiImageSettings> | null | unde
     model: NOVELAI_IMAGE_MODEL_OPTIONS.includes(model) ? model : DEFAULT_NOVELAI_IMAGE_SETTINGS.model,
     sizePreset,
     steps: Math.round(clampNumber(settings?.steps, 1, 28, DEFAULT_NOVELAI_IMAGE_SETTINGS.steps)),
-    scale: clampNumber(settings?.scale, 1, 20, DEFAULT_NOVELAI_IMAGE_SETTINGS.scale),
+    scale: clampNumber(settings?.scale, 1, NOVELAI_IMAGE_SCALE_MAX, DEFAULT_NOVELAI_IMAGE_SETTINGS.scale),
     positivePromptPrefix: normalizePositivePromptPrefix(settings?.positivePromptPrefix),
     negativePrompt: safeString(settings?.negativePrompt) || DEFAULT_NOVELAI_IMAGE_SETTINGS.negativePrompt,
     promptTemplate: normalizePromptTemplate(settings?.promptTemplate),

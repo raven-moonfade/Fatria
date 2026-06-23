@@ -6,6 +6,7 @@ import {
   getNovelAiImageSize,
   getNovelAiImageStatus,
   loadNovelAiImageSettings,
+  NOVELAI_IMAGE_SCALE_MAX,
   type NovelAiImageSettings,
 } from './novelAiImageSettings';
 
@@ -163,6 +164,7 @@ export async function generateNovelAiImage(
 
   const size = getNovelAiImageSize(status.settings);
   const negativePrompt = safeString(status.settings.negativePrompt);
+  const scale = Math.min(NOVELAI_IMAGE_SCALE_MAX, Math.max(1, Number(status.settings.scale) || 7));
   const seed = Math.floor(Math.random() * 4294967295);
 
   const response = await fetch(NOVELAI_GENERATE_IMAGE_ENDPOINT, {
@@ -172,7 +174,7 @@ export async function generateNovelAiImage(
       buildNovelAiGenerationBody(status.settings.model, prompt, negativePrompt, {
         width: size.width,
         height: size.height,
-        scale: status.settings.scale,
+        scale,
         steps: status.settings.steps,
         seed,
       }),
