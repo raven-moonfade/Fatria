@@ -6,13 +6,13 @@ import {
   getNovelAiImageSize,
   getNovelAiImageStatus,
   loadNovelAiImageSettings,
+  normalizeNovelAiImageApiBaseUrl,
   NOVELAI_IMAGE_SCALE_MAX,
   type NovelAiImageSettings,
 } from './novelAiImageSettings';
 
-const NOVELAI_IMAGE_API_BASE = 'https://image.novelai.net';
-const NOVELAI_GENERATE_IMAGE_ENDPOINT = `${NOVELAI_IMAGE_API_BASE}/ai/generate-image`;
-const NOVELAI_TAG_SUGGEST_ENDPOINT = `${NOVELAI_IMAGE_API_BASE}/ai/generate-image/suggest-tags`;
+const NOVELAI_GENERATE_IMAGE_PATH = '/ai/generate-image';
+const NOVELAI_TAG_SUGGEST_PATH = '/ai/generate-image/suggest-tags';
 
 export interface NovelAiGeneratedImage {
   ref: string;
@@ -37,6 +37,10 @@ function buildHeaders(apiKey: string, options: { accept: 'json' | 'zip'; json?: 
   return headers;
 }
 
+function buildNovelAiEndpoint(apiBaseUrl: string, path: string): string {
+  return `${normalizeNovelAiImageApiBaseUrl(apiBaseUrl)}${path}`;
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
   const text = await response.text().catch(() => '');
   if (!text) return `${response.status} ${response.statusText}`;
@@ -48,8 +52,35 @@ async function readErrorMessage(response: Response): Promise<string> {
   }
 }
 
+function extractImageUrlFromPayload(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const payload = value as Record<string, any>;
+  return safeString(
+    payload.url ||
+      payload.image ||
+      payload.image_url ||
+      payload.output ||
+      payload.data?.[0]?.url ||
+      payload.data?.[0]?.image ||
+      payload.images?.[0]?.url ||
+      payload.images?.[0],
+  );
+}
+
+function extractPayloadError(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const payload = value as Record<string, any>;
+  return safeString(payload.error?.message || payload.error || payload.message || payload.msg || payload.data?.error);
+}
+
 function pickImageFromZip(buffer: ArrayBuffer): { bytes: Uint8Array; fileName: string; mimeType: string } {
-  const files = unzipSync(new Uint8Array(buffer));
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(new Uint8Array(buffer));
+  } catch {
+    throw new Error('NovelAI 生图接口返回的不是 zip 图片包，请确认接口地址填写的是 NovelAI 兼容地址。');
+  }
+
   for (const [fileName, bytes] of Object.entries(files)) {
     const normalizedName = fileName.toLowerCase();
     if (!bytes.length || normalizedName.endsWith('/')) continue;
@@ -61,6 +92,61 @@ function pickImageFromZip(buffer: ArrayBuffer): { bytes: Uint8Array; fileName: s
     };
   }
   throw new Error('NovelAI 返回的 zip 中没有找到图片');
+}
+
+async function readGeneratedImageFromResponse(
+  response: Response,
+  apiBaseUrl: string,
+): Promise<{ bytes: Uint8Array; fileName: string; mimeType: string }> {
+  const contentType = safeString(response.headers.get('content-type')).toLowerCase();
+  if (contentType.startsWith('image/')) {
+    const mimeType = contentType.split(';')[0] || 'image/png';
+    return {
+      bytes: new Uint8Array(await response.arrayBuffer()),
+      fileName: `image.${mimeType.includes('webp') ? 'webp' : 'png'}`,
+      mimeType,
+    };
+  }
+
+  if (contentType.includes('json')) {
+    const payload = await response.json().catch(() => null);
+    const errorMessage = extractPayloadError(payload);
+    if (errorMessage) {
+      throw new Error(`NovelAI 生图接口返回错误：${errorMessage}`);
+    }
+    const imageUrl = extractImageUrlFromPayload(payload);
+    if (!imageUrl) {
+      throw new Error(`NovelAI 生图接口返回 JSON，但没有找到图片地址：${JSON.stringify(payload).slice(0, 300)}`);
+    }
+    return fetchGeneratedImageUrl(imageUrl, apiBaseUrl);
+  }
+
+  return pickImageFromZip(await response.arrayBuffer());
+}
+
+async function fetchGeneratedImageUrl(
+  imageUrl: string,
+  apiBaseUrl: string,
+): Promise<{ bytes: Uint8Array; fileName: string; mimeType: string }> {
+  const absoluteUrl = new URL(imageUrl, normalizeNovelAiImageApiBaseUrl(apiBaseUrl)).toString();
+  const response = await fetch(absoluteUrl);
+  if (!response.ok) {
+    throw new Error(`读取生成图片失败：${await readErrorMessage(response)}`);
+  }
+
+  const contentType = safeString(response.headers.get('content-type')).toLowerCase();
+  if (!contentType.startsWith('image/')) {
+    throw new Error(`图片地址返回的不是图片：${contentType || response.statusText}`);
+  }
+
+  const mimeType = contentType.split(';')[0] || 'image/png';
+  const fileNameFromUrl = safeString(new URL(absoluteUrl).pathname.split('/').pop());
+  const fileName = fileNameFromUrl || `image.${mimeType.includes('webp') ? 'webp' : 'png'}`;
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    fileName,
+    mimeType,
+  };
 }
 
 function isV4ImageModel(model: string): boolean {
@@ -132,7 +218,7 @@ export async function testNovelAiImageConnection(settingsOverride?: NovelAiImage
   if (!safeString(status.settings.apiKey)) throw new Error('请先填写 NovelAI API Key');
   if (!safeString(status.settings.model)) throw new Error('请先选择 NovelAI 模型');
 
-  const url = new URL(NOVELAI_TAG_SUGGEST_ENDPOINT);
+  const url = new URL(buildNovelAiEndpoint(status.settings.apiBaseUrl, NOVELAI_TAG_SUGGEST_PATH));
   url.searchParams.set('model', status.settings.model);
   url.searchParams.set('prompt', '1g');
   url.searchParams.set('lang', 'en');
@@ -147,7 +233,9 @@ export async function testNovelAiImageConnection(settingsOverride?: NovelAiImage
 
   const payload = await response.json().catch(() => null);
   const suggestions = Array.isArray(payload?.tags) ? payload.tags : Array.isArray(payload?.suggestions) ? payload.suggestions : [];
-  return `连接成功：${status.settings.model}${suggestions.length ? `，标签建议 ${suggestions.length} 条` : ''}`;
+  return `连接成功：${status.settings.model} @ ${normalizeNovelAiImageApiBaseUrl(status.settings.apiBaseUrl)}${
+    suggestions.length ? `，标签建议 ${suggestions.length} 条` : ''
+  }`;
 }
 
 export async function generateNovelAiImage(
@@ -167,7 +255,7 @@ export async function generateNovelAiImage(
   const scale = Math.min(NOVELAI_IMAGE_SCALE_MAX, Math.max(1, Number(status.settings.scale) || 7));
   const seed = Math.floor(Math.random() * 4294967295);
 
-  const response = await fetch(NOVELAI_GENERATE_IMAGE_ENDPOINT, {
+  const response = await fetch(buildNovelAiEndpoint(status.settings.apiBaseUrl, NOVELAI_GENERATE_IMAGE_PATH), {
     method: 'POST',
     headers: buildHeaders(status.settings.apiKey, { accept: 'zip', json: true }),
     body: JSON.stringify(
@@ -185,7 +273,7 @@ export async function generateNovelAiImage(
     throw new Error(`NovelAI 生图失败：${await readErrorMessage(response)}`);
   }
 
-  const image = pickImageFromZip(await response.arrayBuffer());
+  const image = await readGeneratedImageFromResponse(response, status.settings.apiBaseUrl);
   const ref = makeIndexedImageRef(`backstreet-novelai:${makeId('img')}:${image.fileName}`);
   await saveIndexedImageBlob(ref, new Blob([image.bytes], { type: image.mimeType }));
 

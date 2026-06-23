@@ -443,6 +443,15 @@
                     </label>
 
                     <label class="settings-text-field">
+                      <span>接口地址</span>
+                      <input
+                        v-model.trim="novelAiImage.apiBaseUrl"
+                        type="text"
+                        placeholder="https://image.novelai.net"
+                      />
+                    </label>
+
+                    <label class="settings-text-field">
                       <span>API Key</span>
                       <input v-model.trim="novelAiImage.apiKey" type="password" placeholder="NovelAI Persistent API token" />
                     </label>
@@ -844,9 +853,9 @@ const novelAiImageReady = computed(() => getNovelAiImageStatus(novelAiImage.valu
 const novelAiImageStatusText = computed(() => {
   if (novelAiImageStatus.value) return novelAiImageStatus.value;
   const status = getNovelAiImageStatus(novelAiImage.value);
-  if (status.ready) return `NovelAI 将偶尔为后街聊天生成插图：${status.settings.model}`;
+  if (status.ready) return `NovelAI 将偶尔为后街聊天生成插图：${status.settings.model} @ ${status.settings.apiBaseUrl}`;
   if (status.settings.enabled) return status.reason;
-  return '关闭时后街只显示文字消息；API Key 会保存在本地浏览器。';
+  return '关闭时后街只显示文字消息；接口地址与 API Key 会保存在本地浏览器。';
 });
 const hasScriptUpdate = computed(() => scriptUpdateState.value.hasUpdate);
 const scriptUpdateHelperReady = computed(

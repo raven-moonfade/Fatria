@@ -4,6 +4,7 @@ export type NovelAiImageSizePreset = 'portrait' | 'landscape' | 'square' | 'smal
 
 export interface NovelAiImageSettings {
   enabled: boolean;
+  apiBaseUrl: string;
   apiKey: string;
   model: string;
   sizePreset: NovelAiImageSizePreset;
@@ -32,6 +33,7 @@ export interface NovelAiIllustrationTemplateContext {
 const NOVELAI_IMAGE_STORAGE_KEY = 'fatria-backstreet-novelai-image-v1';
 const NOVELAI_IMAGE_GLOBAL_KEY = '__fatriaBackstreetNovelAiImageSettings';
 export const NOVELAI_IMAGE_UPDATED_EVENT = 'fatria-backstreet-novelai-image-updated';
+export const OFFICIAL_NOVELAI_IMAGE_API_BASE_URL = 'https://image.novelai.net';
 export const NOVELAI_IMAGE_SCALE_MAX = 10;
 
 export const NOVELAI_IMAGE_SIZE_OPTIONS: NovelAiImageSizeOption[] = [
@@ -89,6 +91,7 @@ prompt 生成规则：
 
 export const DEFAULT_NOVELAI_IMAGE_SETTINGS: NovelAiImageSettings = {
   enabled: false,
+  apiBaseUrl: OFFICIAL_NOVELAI_IMAGE_API_BASE_URL,
   apiKey: '',
   model: 'nai-diffusion-4-5-full',
   sizePreset: 'portrait',
@@ -118,6 +121,11 @@ function normalizeApiKey(value: string): string {
   return safeString(value).replace(/^Bearer\s+/i, '');
 }
 
+export function normalizeNovelAiImageApiBaseUrl(value: unknown): string {
+  const text = safeString(value).replace(/\/+$/g, '');
+  return text || OFFICIAL_NOVELAI_IMAGE_API_BASE_URL;
+}
+
 function normalizePositivePromptPrefix(value: unknown): string {
   const text = safeString(value);
   if (!text || text === LEGACY_POSITIVE_PROMPT_PREFIX) return DEFAULT_NOVELAI_IMAGE_SETTINGS.positivePromptPrefix;
@@ -138,6 +146,7 @@ function normalizeSettings(settings: Partial<NovelAiImageSettings> | null | unde
   const model = safeString(settings?.model);
   return {
     enabled: Boolean(settings?.enabled),
+    apiBaseUrl: normalizeNovelAiImageApiBaseUrl(settings?.apiBaseUrl),
     apiKey: normalizeApiKey(safeString(settings?.apiKey)),
     model: NOVELAI_IMAGE_MODEL_OPTIONS.includes(model) ? model : DEFAULT_NOVELAI_IMAGE_SETTINGS.model,
     sizePreset,
@@ -211,6 +220,7 @@ export function getNovelAiImageStatus(settings = loadNovelAiImageSettings()): {
   reason: string;
 } {
   if (!settings.enabled) return { ready: false, settings, reason: '未启用 NovelAI 生图' };
+  if (!safeString(settings.apiBaseUrl)) return { ready: false, settings, reason: '未填写 NovelAI 接口地址' };
   if (!safeString(settings.apiKey)) return { ready: false, settings, reason: '未填写 NovelAI API Key' };
   if (!safeString(settings.model)) return { ready: false, settings, reason: '未选择 NovelAI 模型' };
   return { ready: true, settings, reason: 'NovelAI 生图已就绪' };
