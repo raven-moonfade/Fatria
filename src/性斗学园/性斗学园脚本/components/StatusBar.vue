@@ -42,6 +42,11 @@
                 >
                   <span class="app-icon" :class="app.colorClass">
                     <i :class="app.icon"></i>
+                    <span
+                      v-if="app.page === 'settings' && hasScriptUpdate"
+                      class="script-update-dot"
+                      aria-hidden="true"
+                    ></span>
                   </span>
                   <span class="app-label">{{ app.label }}</span>
                 </button>
@@ -57,6 +62,11 @@
                 >
                   <span class="app-icon" :class="app.colorClass">
                     <i :class="app.icon"></i>
+                    <span
+                      v-if="app.page === 'settings' && hasScriptUpdate"
+                      class="script-update-dot"
+                      aria-hidden="true"
+                    ></span>
                   </span>
                   <span class="app-label">{{ app.label }}</span>
                 </button>
@@ -71,6 +81,11 @@
                 <div class="app-page-title">
                   <span class="page-icon" :class="currentApp?.colorClass">
                     <i :class="currentApp?.icon || 'fas fa-mobile-screen-button'"></i>
+                    <span
+                      v-if="currentPage === 'settings' && hasScriptUpdate"
+                      class="script-update-dot"
+                      aria-hidden="true"
+                    ></span>
                   </span>
                   <span>{{ currentPageTitle }}</span>
                 </div>
@@ -826,6 +841,7 @@ const novelAiImageStatusText = computed(() => {
   if (status.settings.enabled) return status.reason;
   return '关闭时后街只显示文字消息；API Key 会保存在本地浏览器。';
 });
+const hasScriptUpdate = computed(() => scriptUpdateState.value.hasUpdate);
 const scriptUpdateHelperReady = computed(
   () => scriptUpdateState.value.status === 'latest',
 );
@@ -1784,6 +1800,23 @@ onUnmounted(() => {
   }
 }
 
+.script-update-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 4;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  background: #ff3b30;
+  box-shadow:
+    0 0 0 1px rgba(125, 18, 18, 0.22),
+    0 0 10px rgba(255, 59, 48, 0.72);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
 .app-label {
   width: 76px;
   min-height: 17px;
@@ -2088,6 +2121,14 @@ onUnmounted(() => {
     position: relative;
     z-index: 1;
     font-size: 13px;
+  }
+
+  .script-update-dot {
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    border-width: 1px;
   }
 }
 

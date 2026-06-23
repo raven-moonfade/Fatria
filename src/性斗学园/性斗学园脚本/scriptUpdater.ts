@@ -1,6 +1,6 @@
 import { compare } from 'compare-versions';
 
-export const SCRIPT_VERSION = '3.1.4';
+export const SCRIPT_VERSION = '3.1.5';
 export const SCRIPT_UPDATE_EVENT = 'fatria-script-update-status';
 
 const UPDATE_MANIFEST_URL =
@@ -55,7 +55,7 @@ export function scheduleScriptUpdateCheck(delayMs = 4000): void {
   if (updateCheckScheduled) return;
   updateCheckScheduled = true;
   window.setTimeout(() => {
-    void checkScriptUpdate({ prompt: true, silent: true });
+    void checkScriptUpdate({ force: true, prompt: true, silent: true });
   }, delayMs);
 }
 
@@ -73,7 +73,11 @@ export async function checkScriptUpdate(options: CheckScriptUpdateOptions = {}):
   const now = Date.now();
   if (!options.force && cache.lastCheckedAt && now - cache.lastCheckedAt < UPDATE_CHECK_INTERVAL_MS) {
     applyCachedUpdateState(cache);
-    return getScriptUpdateState();
+    const state = getScriptUpdateState();
+    if (state.hasUpdate && state.manifest) {
+      notifyAvailableScriptUpdate(state.manifest, cache, options);
+    }
+    return state;
   }
 
   setScriptUpdateState({
@@ -105,11 +109,7 @@ export async function checkScriptUpdate(options: CheckScriptUpdateOptions = {}):
     });
 
     if (hasUpdate) {
-      if (options.prompt && cache.dismissedVersion !== latestVersion) {
-        promptScriptUpdateGuide(manifest);
-      } else if (!options.silent) {
-        notifyInfo(`发现脚本新版本 v${latestVersion}，请清除浏览器缓存后重新加载。`);
-      }
+      notifyAvailableScriptUpdate(manifest, cache, options);
     } else if (!options.silent && options.force) {
       notifySuccess(`当前已是最新版 v${SCRIPT_VERSION}。`);
     }
@@ -159,6 +159,22 @@ function promptScriptUpdateGuide(manifest: ScriptUpdateManifest): void {
   });
 }
 
+function notifyAvailableScriptUpdate(
+  manifest: ScriptUpdateManifest,
+  cache: ScriptUpdateCache,
+  options: CheckScriptUpdateOptions,
+): void {
+  const latestVersion = normalizeVersion(manifest.version);
+  if (options.prompt && cache.dismissedVersion !== latestVersion) {
+    promptScriptUpdateGuide(manifest);
+    return;
+  }
+
+  if (!options.silent) {
+    notifyInfo(`发现脚本新版本 v${latestVersion}，请清除浏览器缓存后重新加载。`);
+  }
+}
+
 async function fetchUpdateManifest(): Promise<ScriptUpdateManifest> {
   const response = await fetch(UPDATE_MANIFEST_URL, { cache: 'no-store' });
   if (!response.ok) {
@@ -191,7 +207,7 @@ function applyCachedUpdateState(cache: ScriptUpdateCache): void {
       ? `发现新版本 v${latestVersion}，请清除浏览器缓存后重新加载脚本。`
       : `当前已是最新版 v${SCRIPT_VERSION}。`,
     checkedAt: cache.lastCheckedAt,
-    manifest: cache.manifest,
+    manifest: cache.manifest ?? (hasUpdate ? { version: latestVersion, changelog: [] } : undefined),
   });
 }
 
