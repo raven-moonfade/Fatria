@@ -82,19 +82,32 @@ function createEmptyMeta(): PhoneMetaData {
 
 function normalizeMessage(value: Partial<BackstreetMessage>): BackstreetMessage | null {
   const text = safeString(value?.text);
-  if (!text) return null;
+  const imageRef = safeString(value?.imageRef);
+  const imagePrompt = safeString(value?.imagePrompt);
+  const imageError = safeString(value?.imageError);
+  const kind: BackstreetMessage['kind'] =
+    value?.kind === 'image' || imageRef || imagePrompt || imageError ? 'image' : 'text';
+  if (!text && kind !== 'image') return null;
+  if (kind === 'image' && !text && !imageRef && !imagePrompt && !imageError) return null;
   const sender: BackstreetMessage['sender'] =
     value?.sender === 'contact' || value?.sender === 'system' || value?.sender === 'user' ? value.sender : 'contact';
   const speaker = safeString(value?.speaker);
   const date = safeString(value?.date);
   const time = safeString(value?.time) || '--:--';
   return {
-    id: safeString(value?.id) || `${sender}::${speaker}::${date}::${time}::${text}`,
+    id: safeString(value?.id) || `${sender}::${speaker}::${date}::${time}::${text}::${imageRef || imagePrompt}`,
     sender,
+    kind,
     speaker: speaker || undefined,
     date: date || undefined,
     time,
     text,
+    imageRef: imageRef || undefined,
+    imagePrompt: imagePrompt || undefined,
+    imageNegativePrompt: safeString(value?.imageNegativePrompt) || undefined,
+    imageSource: value?.imageSource === 'novelai' || value?.imageSource === 'user' ? value.imageSource : undefined,
+    imageHiddenFromPrompt: Boolean(value?.imageHiddenFromPrompt) || undefined,
+    imageError: imageError || undefined,
     createdAt: Number(value?.createdAt || 0),
   };
 }
@@ -154,7 +167,7 @@ function mergeThreadParts(parts: BackstreetThreadData[]): BackstreetThreadData[]
     for (const message of thread.messages) {
       const id =
         safeString(message.id) ||
-        `${message.sender}::${message.speaker || ''}::${message.date || ''}::${message.time || ''}::${message.text}`;
+        `${message.sender}::${message.speaker || ''}::${message.date || ''}::${message.time || ''}::${message.text}::${message.imageRef || message.imagePrompt || ''}`;
       byMessageId.set(id, message);
     }
     thread.messages = Array.from(byMessageId.values()).sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
@@ -244,6 +257,14 @@ function getMessageSpeaker(message: Partial<BackstreetMessage>, thread?: Partial
   return safeString(message.speaker) || (thread?.kind === 'group' ? '群成员' : safeString(thread?.contact) || '对方');
 }
 
+function getMessageDisplayText(message: Partial<BackstreetMessage>): string {
+  const text = safeString(message.text);
+  if (message.kind !== 'image' && !message.imageRef && !message.imagePrompt && !message.imageError) return text;
+  if (message.imageError) return `【图片生成失败】${text || message.imageError}`;
+  if (message.imageSource === 'user') return `【图片】${text || '用户发送了一张图片'}`;
+  return `【图片】${text || '后街插图'}`;
+}
+
 function createGroupSystemMessage(text: string, date: string, time: string): BackstreetMessage {
   return {
     id: makeId('bst_group_event'),
@@ -291,7 +312,7 @@ function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit 
     normalizedThread.messages.length > 0
       ? normalizedThread.messages
           .slice(-12)
-          .map(message => `${formatMessageTimestamp(message)} ${getMessageSpeaker(message, normalizedThread)}: ${message.text}`)
+          .map(message => `${formatMessageTimestamp(message)} ${getMessageSpeaker(message, normalizedThread)}: ${getMessageDisplayText(message)}`)
           .join('\n')
       : '';
 
@@ -591,6 +612,19 @@ export class BackstreetWorldbookStore {
     return thread;
   }
 
+  async replaceMessage(contact: string, messageId: string, nextMessage: BackstreetMessage): Promise<BackstreetThreadData> {
+    const thread = await this.getThread(contact);
+    const messageIndex = thread.messages.findIndex(message => message.id === messageId);
+    if (messageIndex < 0) return thread;
+
+    thread.messages[messageIndex] = normalizeMessage(nextMessage) || nextMessage;
+    thread.updatedAt = Date.now();
+    await this.saveThread(thread);
+    await this.updateMetaFromThread(thread);
+    await worldbookClient.refreshWorldbookEditor(this.worldName);
+    return thread;
+  }
+
   async listContacts(characterData: any): Promise<BackstreetContact[]> {
     const meta = await this.getMeta().catch(() => createEmptyMeta());
     const relationSystem = characterData?.关系系统 || {};
@@ -690,14 +724,14 @@ export class BackstreetWorldbookStore {
         members: normalizeStringArray(thread.members?.length ? thread.members : existing?.members, 24),
         dissolved: Boolean(thread.dissolved || existing?.dissolved),
         dissolvedAt: Number(thread.dissolvedAt || existing?.dissolvedAt || 0) || undefined,
-        lastMessage: safeString(last?.text),
+        lastMessage: getMessageDisplayText(last || {}),
         lastTime: safeString(last?.time),
         updatedAt: thread.updatedAt,
       };
     } else {
       meta.contacts[thread.contact] = {
         name: thread.contact,
-        lastMessage: safeString(last?.text),
+        lastMessage: getMessageDisplayText(last || {}),
         lastTime: safeString(last?.time),
         updatedAt: thread.updatedAt,
       };

@@ -11,6 +11,7 @@ export interface SecondaryPhoneApiSettings {
 export interface SecondaryApiMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  images?: (File | string)[];
 }
 
 export interface SecondaryGenerateOptions {
@@ -102,6 +103,36 @@ async function readErrorMessage(response: Response): Promise<string> {
   } catch {
     return text;
   }
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function imageInputToUrl(input: File | string): Promise<string> {
+  if (typeof input === 'string') return input;
+  return fileToDataUrl(input);
+}
+
+async function buildSecondaryApiMessagePayload(message: SecondaryApiMessage): Promise<Record<string, unknown>> {
+  const images = Array.isArray(message.images) ? message.images.filter(Boolean) : [];
+  if (images.length === 0) {
+    return { role: message.role, content: message.content };
+  }
+
+  const imageUrls = await Promise.all(images.map(imageInputToUrl));
+  return {
+    role: message.role,
+    content: [
+      { type: 'text', text: message.content || '请查看随本条消息发送的图片并回复。' },
+      ...imageUrls.filter(Boolean).map(url => ({ type: 'image_url', image_url: { url } })),
+    ],
+  };
 }
 
 export function loadSecondaryPhoneApiSettings(): SecondaryPhoneApiSettings {
@@ -198,12 +229,13 @@ export async function generateWithSecondaryPhoneApi(
   if (!isSecondaryPhoneApiReady(settings)) throw new Error('第二 API 未启用或尚未选择模型');
 
   const maxTokens = normalizeMaxOutputTokens(options.maxTokens);
+  const messagePayloads = await Promise.all(messages.map(buildSecondaryApiMessagePayload));
   const response = await fetch(buildEndpoint(settings.baseUrl, '/chat/completions'), {
     method: 'POST',
     headers: buildHeaders(settings.apiKey, true),
     body: JSON.stringify({
       model: settings.model,
-      messages: messages.map(message => ({ role: message.role, content: message.content })),
+      messages: messagePayloads,
       stream: false,
       max_tokens: maxTokens,
     }),

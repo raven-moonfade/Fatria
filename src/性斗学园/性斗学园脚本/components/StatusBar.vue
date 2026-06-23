@@ -415,6 +415,95 @@
                     </div>
                   </section>
 
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>NovelAI 生图</span>
+                      <small>后街插图</small>
+                    </div>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-wand-magic-sparkles"></i></span>
+                      <span class="settings-row-label">启用 NovelAI 生图</span>
+                      <input v-model="novelAiImage.enabled" class="settings-toggle" type="checkbox" />
+                    </label>
+
+                    <label class="settings-text-field">
+                      <span>API Key</span>
+                      <input v-model.trim="novelAiImage.apiKey" type="password" placeholder="NovelAI Persistent API token" />
+                    </label>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-microchip"></i></span>
+                      <span class="settings-row-label">模型</span>
+                      <select v-model="novelAiImage.model">
+                        <option v-for="model in NOVELAI_IMAGE_MODEL_OPTIONS" :key="model" :value="model">
+                          {{ model }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label class="settings-row">
+                      <span class="settings-row-icon"><i class="fas fa-crop-simple"></i></span>
+                      <span class="settings-row-label">图片尺寸</span>
+                      <select v-model="novelAiImage.sizePreset">
+                        <option v-for="size in NOVELAI_IMAGE_SIZE_OPTIONS" :key="size.value" :value="size.value">
+                          {{ size.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>生成步数</span>
+                        <strong>{{ novelAiImage.steps }}</strong>
+                      </span>
+                      <input v-model.number="novelAiImage.steps" type="range" min="1" max="28" step="1" />
+                    </label>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>提示词引导强度</span>
+                        <strong>{{ novelAiImage.scale }}</strong>
+                      </span>
+                      <input v-model.number="novelAiImage.scale" type="range" min="1" max="20" step="0.5" />
+                    </label>
+
+                    <label class="settings-textarea-field">
+                      <span>正面提示词前缀</span>
+                      <textarea v-model="novelAiImage.positivePromptPrefix" rows="3"></textarea>
+                    </label>
+
+                    <label class="settings-textarea-field">
+                      <span>负向提示词</span>
+                      <textarea v-model="novelAiImage.negativePrompt" rows="4"></textarea>
+                    </label>
+
+                    <label class="settings-textarea-field">
+                      <span>插图提示词模板</span>
+                      <textarea v-model="novelAiImage.promptTemplate" rows="9"></textarea>
+                    </label>
+
+                    <div class="settings-actions">
+                      <button
+                        class="settings-action-primary"
+                        type="button"
+                        :disabled="isNovelAiImageTesting"
+                        @click="handleTestNovelAiImage"
+                      >
+                        <i class="fas fa-plug-circle-check"></i>
+                        {{ isNovelAiImageTesting ? '测试中' : '测试连接' }}
+                      </button>
+                      <button type="button" @click="resetNovelAiImageTemplate">
+                        <i class="fas fa-rotate-left"></i>
+                        恢复模板
+                      </button>
+                    </div>
+
+                    <div class="settings-helper" :class="{ ready: novelAiImageReady }">
+                      {{ novelAiImageStatusText }}
+                    </div>
+                  </section>
+
                   <div class="settings-category-heading">
                     <span>脚本维护</span>
                     <small>版本更新</small>
@@ -503,6 +592,16 @@ import {
   saveSecondaryPhoneApiSettings,
   type SecondaryPhoneApiSettings,
 } from '../phone/phoneApiSettings';
+import { testNovelAiImageConnection } from '../phone/novelAiImageClient';
+import {
+  DEFAULT_NOVELAI_IMAGE_SETTINGS,
+  getNovelAiImageStatus,
+  loadNovelAiImageSettings,
+  NOVELAI_IMAGE_MODEL_OPTIONS,
+  NOVELAI_IMAGE_SIZE_OPTIONS,
+  saveNovelAiImageSettings,
+  type NovelAiImageSettings,
+} from '../phone/novelAiImageSettings';
 import {
   checkScriptUpdate,
   getScriptUpdateState,
@@ -678,6 +777,9 @@ const secondaryPhoneApi = ref<SecondaryPhoneApiSettings>(loadSecondaryPhoneApiSe
 const secondaryApiModelOptions = ref<string[]>([...secondaryPhoneApi.value.models]);
 const secondaryApiStatus = ref('');
 const isSecondaryApiTesting = ref(false);
+const novelAiImage = ref<NovelAiImageSettings>(loadNovelAiImageSettings());
+const novelAiImageStatus = ref('');
+const isNovelAiImageTesting = ref(false);
 const scriptUpdateState = ref<ScriptUpdateState>(getScriptUpdateState());
 const isCheckingScriptUpdate = ref(false);
 let wallpaperSourceRequestId = 0;
@@ -716,6 +818,14 @@ const secondaryApiStatusText = computed(() => {
   if (secondaryPhoneApi.value.enabled) return '已启用，请读取模型并选择调用模型。';
   return '关闭时后街聊天继续使用酒馆原 API。';
 });
+const novelAiImageReady = computed(() => getNovelAiImageStatus(novelAiImage.value).ready);
+const novelAiImageStatusText = computed(() => {
+  if (novelAiImageStatus.value) return novelAiImageStatus.value;
+  const status = getNovelAiImageStatus(novelAiImage.value);
+  if (status.ready) return `NovelAI 将偶尔为后街聊天生成插图：${status.settings.model}`;
+  if (status.settings.enabled) return status.reason;
+  return '关闭时后街只显示文字消息；API Key 会保存在本地浏览器。';
+});
 const scriptUpdateHelperReady = computed(
   () => scriptUpdateState.value.status === 'latest',
 );
@@ -746,6 +856,14 @@ watch(
   secondaryPhoneApi,
   settings => {
     persistSecondaryApiSettings(settings);
+  },
+  { deep: true },
+);
+
+watch(
+  novelAiImage,
+  settings => {
+    saveNovelAiImageSettings(settings);
   },
   { deep: true },
 );
@@ -934,6 +1052,35 @@ function clearSecondaryApiModel() {
   secondaryPhoneApi.value.models = [];
   secondaryApiModelOptions.value = [];
   secondaryApiStatus.value = '已清除模型选择，关闭开关时会使用酒馆原 API。';
+}
+
+async function handleTestNovelAiImage() {
+  if (isNovelAiImageTesting.value) return;
+  isNovelAiImageTesting.value = true;
+  novelAiImageStatus.value = '正在测试 NovelAI 连接...';
+
+  try {
+    const message = await testNovelAiImageConnection(novelAiImage.value);
+    novelAiImage.value.enabled = true;
+    saveNovelAiImageSettings(novelAiImage.value);
+    novelAiImageStatus.value = message;
+    if (typeof toastr !== 'undefined') {
+      toastr.success(message, 'NovelAI 生图');
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'NovelAI 连接测试失败';
+    novelAiImageStatus.value = message;
+    if (typeof toastr !== 'undefined') {
+      toastr.error(message, 'NovelAI 生图');
+    }
+  } finally {
+    isNovelAiImageTesting.value = false;
+  }
+}
+
+function resetNovelAiImageTemplate() {
+  novelAiImage.value.promptTemplate = DEFAULT_NOVELAI_IMAGE_SETTINGS.promptTemplate;
+  novelAiImageStatus.value = '已恢复默认插图提示词模板。';
 }
 
 async function handleCheckScriptUpdate() {
@@ -2357,7 +2504,8 @@ onUnmounted(() => {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
 }
 
-.settings-text-field {
+.settings-text-field,
+.settings-textarea-field {
   margin-top: 12px;
   display: flex;
   flex-direction: column;
@@ -2366,13 +2514,12 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 800;
 
-  input {
+  input,
+  textarea {
     width: 100%;
     min-width: 0;
-    height: 40px;
     border: 1px solid rgba(124, 142, 153, 0.22) !important;
     border-radius: 13px;
-    padding: 0 12px;
     color: #25333c !important;
     background-color: rgba(247, 250, 252, 0.94) !important;
     box-sizing: border-box;
@@ -2383,6 +2530,19 @@ onUnmounted(() => {
       color: #8797a1;
       opacity: 1;
     }
+  }
+
+  input {
+    height: 40px;
+    padding: 0 12px;
+  }
+
+  textarea {
+    min-height: 78px;
+    padding: 10px 12px;
+    resize: vertical;
+    font: inherit;
+    line-height: 1.45;
   }
 }
 

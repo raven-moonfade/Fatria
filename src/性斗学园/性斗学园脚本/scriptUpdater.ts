@@ -1,6 +1,6 @@
 import { compare } from 'compare-versions';
 
-export const SCRIPT_VERSION = '3.1.3';
+export const SCRIPT_VERSION = '3.1.4';
 export const SCRIPT_UPDATE_EVENT = 'fatria-script-update-status';
 
 const UPDATE_MANIFEST_URL =
@@ -98,7 +98,7 @@ export async function checkScriptUpdate(options: CheckScriptUpdateOptions = {}):
       hasUpdate,
       status: hasUpdate ? 'available' : 'latest',
       message: hasUpdate
-        ? `发现新版本 v${latestVersion}，请清除浏览器缓存后重新加载脚本。`
+        ? `发现新版本 v${latestVersion}，请清除浏览器缓存后刷新浏览器。（帖子内标注也有只刷新单个脚本缓存的办法）`
         : `当前已是最新版 v${SCRIPT_VERSION}。`,
       checkedAt: now,
       manifest,

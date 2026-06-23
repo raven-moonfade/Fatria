@@ -2,18 +2,32 @@ import { extractXmlTag, parseJsonBlock } from './xmlToolCall';
 import { safeString } from './text';
 
 export interface ParsedBackstreetReply {
-  type: 'text' | 'system';
+  type: 'text' | 'system' | 'image';
   speaker?: string;
   time: string;
   text: string;
+  prompt?: string;
 }
 
 function normalizeReplyItem(value: unknown): ParsedBackstreetReply | null {
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
   const text = safeString(item.text);
+  const rawType = safeString(item.type).toLowerCase();
+  const prompt = safeString(item.prompt || item.imagePrompt || item.image_prompt || item.novelai_prompt);
+  if (rawType === 'image' || rawType === 'illustration') {
+    if (!prompt) return null;
+    return {
+      type: 'image',
+      speaker: safeString(item.speaker || item.sender),
+      time: safeString(item.time),
+      text: text || safeString(item.caption) || '图片',
+      prompt,
+    };
+  }
+
   if (!text) return null;
-  const type = item.type === 'system' ? 'system' : 'text';
+  const type = rawType === 'system' ? 'system' : 'text';
   return {
     type,
     speaker: safeString(item.speaker || item.sender),

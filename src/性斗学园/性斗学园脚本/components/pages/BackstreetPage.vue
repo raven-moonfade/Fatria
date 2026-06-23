@@ -330,7 +330,7 @@
             <span>{{ message.time }}</span>
           </div>
 
-          <div class="message-row" :class="message.sender">
+          <div class="message-row" :class="[message.sender, { 'has-image': isImageMessage(message) }]">
             <!-- Contact / system avatar on the left -->
             <span v-if="message.sender === 'contact' || message.sender === 'system'" class="msg-avatar">
               <template v-if="activeIsGroup && message.sender === 'contact'">
@@ -364,6 +364,27 @@
                   <i class="fas fa-rotate-right"></i>
                 </button>
                 <button
+                  v-if="canRerollImageMessage(message)"
+                  class="message-action message-reroll message-image-reroll"
+                  type="button"
+                  title="重 roll 图片"
+                  aria-label="重 roll 图片"
+                  @click="rerollImageMessage(message)"
+                >
+                  <i class="fas fa-rotate"></i>
+                </button>
+                <button
+                  v-if="canToggleUserImagePrompt(message)"
+                  class="message-action message-prompt-toggle"
+                  :class="{ active: message.imageHiddenFromPrompt }"
+                  type="button"
+                  :title="imagePromptToggleTitle(message)"
+                  :aria-label="imagePromptToggleTitle(message)"
+                  @click="toggleUserImagePromptHidden(message)"
+                >
+                  <i :class="message.imageHiddenFromPrompt ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+                </button>
+                <button
                   class="message-action message-delete"
                   type="button"
                   title="删除此处及以下消息"
@@ -374,7 +395,32 @@
                 </button>
               </div>
               <div v-if="activeIsGroup && message.sender === 'contact'" class="message-speaker">{{ messageSpeaker(message) }}</div>
-              <div class="message-text">{{ message.text }}</div>
+              <div v-if="isImageMessage(message)" class="message-image-block">
+                <button
+                  v-if="getMessageImageUrl(message)"
+                  class="message-image-button"
+                  type="button"
+                  title="查看图片"
+                  aria-label="查看图片"
+                  @click="openMessageImage(message)"
+                >
+                  <img :src="getMessageImageUrl(message)" :alt="message.text || '后街图片'" />
+                </button>
+                <div v-else-if="message.imageError" class="message-image-error">
+                  <i class="fas fa-image"></i>
+                  <span>{{ message.imageError }}</span>
+                </div>
+                <div v-else class="message-image-loading">
+                  <i class="fas fa-spinner"></i>
+                  <span>图片载入中</span>
+                </div>
+                <div v-if="message.sender === 'user' && message.imageHiddenFromPrompt" class="message-image-prompt-state">
+                  <i class="fas fa-eye-slash"></i>
+                  <span>已隐藏，不发送给 AI</span>
+                </div>
+                <div v-if="message.text" class="message-text image-caption">{{ message.text }}</div>
+              </div>
+              <div v-else class="message-text">{{ message.text }}</div>
             </div>
 
             <!-- User avatar on the right -->
@@ -447,6 +493,25 @@
             {{ emoji }}
           </button>
         </div>
+        <div v-if="pendingImageAttachments.length > 0" class="composer-attachment-preview">
+          <div v-for="(attachment, index) in pendingImageAttachments" :key="attachment.previewUrl" class="composer-attachment-item">
+            <img :src="attachment.previewUrl" :alt="attachment.file.name" />
+            <span>{{ attachment.file.name }}</span>
+            <button type="button" title="移除图片" aria-label="移除图片" @click="removePendingImageAttachment(index)">
+              <i class="fas fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+        <button
+          class="composer-attach-toggle"
+          type="button"
+          title="发送图片"
+          aria-label="发送图片"
+          :disabled="isSending || activeIsDissolved"
+          @click="openImageFilePicker"
+        >
+          <i class="fas fa-image"></i>
+        </button>
         <textarea
           ref="composerInputRef"
           v-model="draft"
@@ -458,6 +523,7 @@
           @input="updateMentionState"
           @keyup="updateMentionState"
           @keydown="handleComposerKeydown"
+          @paste="handleComposerPaste"
         ></textarea>
         <button
           class="composer-emoji-toggle"
@@ -470,9 +536,10 @@
         >
           <i class="fas fa-face-smile"></i>
         </button>
-        <button class="composer-send" type="submit" title="发送" aria-label="发送" :disabled="isSending || activeIsDissolved || !draft.trim()">
+        <button class="composer-send" type="submit" title="发送" aria-label="发送" :disabled="!canSendMessage">
           <i class="fas fa-paper-plane"></i>
         </button>
+        <input ref="imageInputRef" class="composer-file-input" type="file" accept="image/*" multiple @change="handleImageFileSelected" />
       </form>
     </section>
   </div>
@@ -482,7 +549,14 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { backstreetService } from '../../phone/backstreetService';
 import type { BackstreetContact, BackstreetMessage, BackstreetThreadKind } from '../../phone/types';
+import { makeId } from '../../phone/text';
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
+import {
+  getIndexedImageObjectUrl,
+  makeIndexedImageRef,
+  revokeIndexedImageObjectUrl,
+  saveIndexedImageBlob,
+} from '../../../shared/indexedImageStore';
 import { PLAYER_AVATAR_UPDATED_EVENT, resolveStoredPlayerAvatar } from '../../../shared/localPreferences';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 
@@ -522,6 +596,11 @@ const EMOJI_OPTIONS = [
   '💔',
 ];
 
+interface PendingImageAttachment {
+  file: File;
+  previewUrl: string;
+}
+
 const contacts = ref<BackstreetContact[]>([]);
 const messages = ref<BackstreetMessage[]>([]);
 const activeContact = ref('');
@@ -533,8 +612,11 @@ const isCreatingGroup = ref(false);
 const errorText = ref('');
 const messageListRef = ref<HTMLElement | null>(null);
 const composerInputRef = ref<HTMLTextAreaElement | null>(null);
+const imageInputRef = ref<HTMLInputElement | null>(null);
 const failedAvatars = ref(new Set<string>());
 const playerAvatarUrl = ref('');
+const messageImageUrls = ref<Record<string, string>>({});
+const pendingImageAttachments = ref<PendingImageAttachment[]>([]);
 const visibleMessageCount = ref(readVisibleMessageCount());
 const showContactCreator = ref(false);
 const contactNameDraft = ref('');
@@ -551,6 +633,7 @@ const selectedMentionIndex = ref(0);
 const showEmojiPanel = ref(false);
 let currentChatId = '';
 let stopChatChangeListener: (() => void) | null = null;
+let messageImageSyncId = 0;
 
 const privateContacts = computed(() => contacts.value.filter(contact => contact.type !== 'group'));
 const groupContacts = computed(() => contacts.value.filter(contact => contact.type === 'group'));
@@ -592,6 +675,13 @@ const canInviteMembers = computed(
 );
 const canAddPrivateContact = computed(() => normalizeContactName(contactNameDraft.value).length > 0 && !isAddingContact.value);
 const composerPlaceholder = computed(() => (activeIsDissolved.value ? '群聊已解散' : '发送消息…'));
+const canSendMessage = computed(
+  () =>
+    !isSending.value &&
+    !activeIsDissolved.value &&
+    Boolean(activeContact.value) &&
+    Boolean(draft.value.trim() || pendingImageAttachments.value.length > 0),
+);
 const mentionCandidates = computed(() => {
   if (!activeIsGroup.value || activeIsDissolved.value) return [];
   const query = mentionQuery.value.trim().toLowerCase();
@@ -626,11 +716,21 @@ onUnmounted(() => {
   window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.removeEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.removeEventListener('storage', handlePhonePreferencesStorage);
+  clearPendingImageAttachments();
+  revokeMessageImageUrls();
 });
 
 watch(visibleMessageCount, () => {
   scrollToBottom();
 });
+
+watch(
+  messages,
+  () => {
+    void syncMessageImageUrls();
+  },
+  { deep: false },
+);
 
 function clampVisibleMessageCount(value: unknown): number {
   const numericValue = Number(value);
@@ -686,6 +786,7 @@ function resetForChatChange() {
   searchText.value = '';
   errorText.value = '';
   hideEmojiPanel();
+  clearPendingImageAttachments();
   closeContactCreator();
   closeGroupCreator();
   closeGroupManager();
@@ -723,6 +824,177 @@ function handlePlayerAvatarUpdated() {
   void loadPlayerAvatar();
 }
 
+function isImageMessage(message: BackstreetMessage): boolean {
+  return message.kind === 'image' || Boolean(message.imageRef || message.imagePrompt || message.imageError);
+}
+
+function canRerollImageMessage(message: BackstreetMessage): boolean {
+  return isImageMessage(message) && message.imageSource === 'novelai' && Boolean(message.imagePrompt?.trim());
+}
+
+function canToggleUserImagePrompt(message: BackstreetMessage): boolean {
+  return message.sender === 'user' && isImageMessage(message) && Boolean(message.imageRef?.trim());
+}
+
+function imagePromptToggleTitle(message: BackstreetMessage): string {
+  return message.imageHiddenFromPrompt ? '恢复发送给 AI' : '隐藏，不发送给 AI';
+}
+
+function getMessageImageUrl(message: BackstreetMessage): string {
+  const ref = message.imageRef?.trim();
+  return ref ? messageImageUrls.value[ref] || '' : '';
+}
+
+function revokeMessageImageUrls() {
+  for (const url of Object.values(messageImageUrls.value)) {
+    revokeIndexedImageObjectUrl(url);
+  }
+  messageImageUrls.value = {};
+}
+
+async function syncMessageImageUrls() {
+  const syncId = ++messageImageSyncId;
+  const refs = Array.from(new Set(messages.value.map(message => message.imageRef?.trim()).filter((ref): ref is string => Boolean(ref))));
+  const previous = messageImageUrls.value;
+  const next: Record<string, string> = {};
+
+  for (const ref of refs) {
+    if (previous[ref]) {
+      next[ref] = previous[ref];
+      continue;
+    }
+    const url = await getIndexedImageObjectUrl(ref).catch(() => null);
+    if (syncId !== messageImageSyncId) {
+      revokeIndexedImageObjectUrl(url || '');
+      return;
+    }
+    if (url) next[ref] = url;
+  }
+
+  for (const [ref, url] of Object.entries(previous)) {
+    if (!next[ref]) revokeIndexedImageObjectUrl(url);
+  }
+  messageImageUrls.value = next;
+}
+
+function openMessageImage(message: BackstreetMessage) {
+  const url = getMessageImageUrl(message);
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function openImageFilePicker() {
+  if (isSending.value || activeIsDissolved.value) return;
+  imageInputRef.value?.click();
+}
+
+function clearPendingImageAttachments() {
+  for (const attachment of pendingImageAttachments.value) {
+    URL.revokeObjectURL(attachment.previewUrl);
+  }
+  pendingImageAttachments.value = [];
+  if (imageInputRef.value) imageInputRef.value.value = '';
+}
+
+function removePendingImageAttachment(index: number) {
+  const attachment = pendingImageAttachments.value[index];
+  if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+  pendingImageAttachments.value = pendingImageAttachments.value.filter((_, itemIndex) => itemIndex !== index);
+  if (imageInputRef.value) imageInputRef.value.value = '';
+}
+
+function setPendingImageAttachments(files: File[]) {
+  const imageFiles = files.filter(file => file.type.startsWith('image/'));
+  if (imageFiles.length !== files.length) {
+    errorText.value = '请选择图片文件';
+    if (imageInputRef.value) imageInputRef.value.value = '';
+    return;
+  }
+  if (imageFiles.length > 2) {
+    errorText.value = '单次最多只能发送 2 张图片';
+    if (imageInputRef.value) imageInputRef.value.value = '';
+    return;
+  }
+  if (imageFiles.length === 0) return;
+
+  clearPendingImageAttachments();
+  pendingImageAttachments.value = imageFiles.map(file => ({
+    file,
+    previewUrl: URL.createObjectURL(file),
+  }));
+  hideEmojiPanel();
+  hideMentionPanel();
+  nextTick(() => {
+    composerInputRef.value?.focus();
+  });
+}
+
+function handleImageFileSelected(event: Event) {
+  const input = event.target instanceof HTMLInputElement ? event.target : null;
+  const files = Array.from(input?.files || []);
+  if (files.length === 0) return;
+  setPendingImageAttachments(files);
+}
+
+function getImageFilesFromClipboard(data: DataTransfer | null): File[] {
+  if (!data) return [];
+
+  const files: File[] = [];
+  for (const item of Array.from(data.items || [])) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    const extension = file.type.split('/')[1] || 'png';
+    files.push(file.name ? file : new File([file], `clipboard-image-${Date.now()}-${files.length + 1}.${extension}`, { type: file.type }));
+  }
+  if (files.length > 0) return files;
+
+  for (const file of Array.from(data.files || [])) {
+    if (file.type.startsWith('image/')) files.push(file);
+  }
+
+  return files;
+}
+
+function insertTextAtCursor(text: string) {
+  const value = String(text || '');
+  if (!value) return;
+
+  const textarea = composerInputRef.value;
+  const start = textarea?.selectionStart ?? draft.value.length;
+  const end = textarea?.selectionEnd ?? start;
+  const before = draft.value.slice(0, start);
+  const after = draft.value.slice(end);
+  draft.value = `${before}${value}${after}`;
+
+  nextTick(() => {
+    const nextCursor = before.length + value.length;
+    composerInputRef.value?.focus();
+    composerInputRef.value?.setSelectionRange(nextCursor, nextCursor);
+    updateMentionState();
+  });
+}
+
+function handleComposerPaste(event: ClipboardEvent) {
+  if (isSending.value || activeIsDissolved.value) return;
+  const files = getImageFilesFromClipboard(event.clipboardData);
+  if (files.length === 0) return;
+
+  event.preventDefault();
+  setPendingImageAttachments(files);
+  insertTextAtCursor(event.clipboardData?.getData('text/plain') || '');
+}
+
+async function savePendingImageAttachments(contact: string): Promise<string[]> {
+  const refs: string[] = [];
+  for (const attachment of pendingImageAttachments.value) {
+    const ref = makeIndexedImageRef(`backstreet-user:${contact}:${makeId('upload')}:${attachment.file.name}`);
+    await saveIndexedImageBlob(ref, attachment.file);
+    refs.push(ref);
+  }
+  return refs;
+}
+
 async function loadContacts(characterDataOverride: any = props.characterData || {}) {
   try {
     contacts.value = await backstreetService.listContacts(characterDataOverride);
@@ -736,6 +1008,7 @@ async function selectContact(contact: BackstreetContact) {
   activeContact.value = contact.id;
   hideMentionPanel();
   hideEmojiPanel();
+  clearPendingImageAttachments();
   closeGroupManager();
   void loadPlayerAvatar();
   await loadThread(contact.id);
@@ -755,7 +1028,7 @@ async function loadThread(name: string) {
 async function sendMessage() {
   const contact = activeContact.value;
   const text = draft.value.trim();
-  if (!contact || !text || isSending.value || activeIsDissolved.value) return;
+  if (!contact || (!text && pendingImageAttachments.value.length === 0) || isSending.value || activeIsDissolved.value) return;
 
   draft.value = '';
   hideMentionPanel();
@@ -764,13 +1037,15 @@ async function sendMessage() {
   errorText.value = '';
 
   try {
-    const userMessage = await backstreetService.appendUserMessage(contact, text, props.characterData || {});
-    messages.value = [...messages.value, userMessage];
+    const imageRefs = await savePendingImageAttachments(contact);
+    clearPendingImageAttachments();
+    await backstreetService.appendUserMessage(contact, text, props.characterData || {}, { imageRefs });
+    await loadThread(contact);
     await scrollToBottom();
     await loadContacts();
 
-    const replies = await backstreetService.generateContactReply(contact, props.characterData || {});
-    messages.value = [...messages.value, ...replies];
+    await backstreetService.generateContactReply(contact, props.characterData || {});
+    await loadThread(contact);
     await loadContacts();
   } catch (error) {
     console.error('[后街页面] 发送失败:', error);
@@ -808,8 +1083,8 @@ async function rerollFromUserMessage(message: BackstreetMessage) {
     await scrollToBottom();
     await loadContacts();
 
-    const replies = await backstreetService.generateContactReply(contact, props.characterData || {});
-    messages.value = [...messages.value, ...replies];
+    await backstreetService.generateContactReply(contact, props.characterData || {});
+    await loadThread(contact);
     await loadContacts();
   } catch (error) {
     console.error('[后街页面] 重 roll 失败:', error);
@@ -821,11 +1096,48 @@ async function rerollFromUserMessage(message: BackstreetMessage) {
   }
 }
 
+async function rerollImageMessage(message: BackstreetMessage) {
+  const contact = activeContact.value;
+  if (!contact || !canRerollImageMessage(message) || isSending.value) return;
+
+  isSending.value = true;
+  errorText.value = '';
+
+  try {
+    messages.value = await backstreetService.rerollImageMessage(contact, message.id);
+    await loadContacts();
+    await scrollToBottom();
+  } catch (error) {
+    console.error('[后街页面] 图片重 roll 失败:', error);
+    errorText.value = error instanceof Error ? error.message : '图片重 roll 失败';
+    await loadThread(contact);
+  } finally {
+    isSending.value = false;
+    await scrollToBottom();
+  }
+}
+
+async function toggleUserImagePromptHidden(message: BackstreetMessage) {
+  const contact = activeContact.value;
+  if (!contact || !canToggleUserImagePrompt(message) || isSending.value) return;
+
+  try {
+    errorText.value = '';
+    messages.value = await backstreetService.setUserImagePromptHidden(contact, message.id, !message.imageHiddenFromPrompt);
+    await loadContacts();
+  } catch (error) {
+    console.error('[后街页面] 图片提示词隐藏设置失败:', error);
+    errorText.value = error instanceof Error ? error.message : '图片设置失败';
+    await loadThread(contact);
+  }
+}
+
 function backToContacts() {
   activeContact.value = '';
   messages.value = [];
   hideMentionPanel();
   hideEmojiPanel();
+  clearPendingImageAttachments();
   closeGroupManager();
   loadContacts();
 }
@@ -2377,6 +2689,13 @@ async function scrollToBottom() {
   padding: 10px 13px;
 }
 
+.message-row.has-image {
+  .message-bubble {
+    width: min(76%, 294px);
+    padding: 8px;
+  }
+}
+
 .message-speaker {
   margin-bottom: 3px;
   color: #c7d2fe;
@@ -2426,6 +2745,16 @@ async function scrollToBottom() {
   background: #14b8a6;
 }
 
+.message-prompt-toggle {
+  &.active {
+    background: rgba(99, 102, 241, 0.82);
+  }
+
+  &:hover {
+    background: #6366f1;
+  }
+}
+
 .message-bubble:hover .message-actions,
 .message-actions:focus-within {
   opacity: 1;
@@ -2445,6 +2774,86 @@ async function scrollToBottom() {
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: 0.01em;
+}
+
+.message-image-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.message-image-button {
+  width: 100%;
+  max-height: 360px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: zoom-in;
+
+  img {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 360px;
+    display: block;
+    object-fit: contain;
+    background: rgba(8, 12, 22, 0.18);
+  }
+}
+
+.message-image-loading,
+.message-image-error {
+  min-height: 118px;
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  color: rgba(240, 236, 255, 0.74);
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+
+  i {
+    font-size: 20px;
+    opacity: 0.72;
+  }
+}
+
+.message-image-loading i {
+  animation: spin 1s linear infinite;
+}
+
+.message-image-error {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.message-image-prompt-state {
+  border: 1px solid rgba(165, 180, 252, 0.2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(224, 231, 255, 0.82);
+  background: rgba(99, 102, 241, 0.12);
+  font-size: 11px;
+  line-height: 1.2;
+
+  i {
+    font-size: 10px;
+  }
+}
+
+.image-caption {
+  padding: 0 3px 2px;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2639,6 +3048,68 @@ async function scrollToBottom() {
   }
 }
 
+.composer-attachment-preview {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 8px);
+  min-height: 58px;
+  max-height: 132px;
+  overflow-y: auto;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 16px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: #e0f2fe;
+  background:
+    linear-gradient(155deg, rgba(15, 23, 42, 0.94), rgba(24, 43, 63, 0.84)),
+    rgba(10, 14, 28, 0.9);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  z-index: 10;
+}
+
+.composer-attachment-item {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 9px;
+
+  img {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    object-fit: cover;
+    display: block;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  button {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.composer-attach-toggle,
 .composer-emoji-toggle {
   width: 38px;
   height: 38px;
@@ -2664,6 +3135,14 @@ async function scrollToBottom() {
   &:not(:disabled):hover {
     color: #fff;
     background: linear-gradient(145deg, #f59e0b, #ec4899);
+    transform: translateY(-1px);
+  }
+}
+
+.composer-attach-toggle {
+  &:not(:disabled):hover {
+    color: #fff;
+    background: linear-gradient(145deg, #0ea5e9, #14b8a6);
     transform: translateY(-1px);
   }
 }
@@ -2698,6 +3177,10 @@ async function scrollToBottom() {
   &:not(:disabled):active {
     transform: scale(0.95);
   }
+}
+
+.composer-file-input {
+  display: none;
 }
 
 
@@ -2752,6 +3235,12 @@ async function scrollToBottom() {
   40% {
     opacity: 1;
     transform: translateY(-3px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

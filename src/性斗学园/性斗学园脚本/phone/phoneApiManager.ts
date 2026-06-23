@@ -5,6 +5,7 @@ interface RawMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   name?: string;
+  images?: (File | string)[];
 }
 
 interface GenerateRawResult {
@@ -13,6 +14,12 @@ interface GenerateRawResult {
 
 interface GenerateRawOptions {
   maxTokens?: number;
+}
+
+interface RolePrompt {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  image?: File | string | (File | string)[];
 }
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
@@ -67,6 +74,19 @@ function normalizeMaxOutputTokens(value: unknown): number {
   return Math.min(parsed, MAX_OUTPUT_TOKENS_LIMIT);
 }
 
+function getMessageImages(messages: RawMessage[]): (File | string)[] {
+  return messages.flatMap(message => (Array.isArray(message.images) ? message.images : [])).filter(Boolean);
+}
+
+function toRolePrompt(message: RawMessage): RolePrompt {
+  const images = Array.isArray(message.images) ? message.images.filter(Boolean) : [];
+  return {
+    role: message.role,
+    content: message.content,
+    ...(images.length > 0 ? { image: images.length === 1 ? images[0] : images } : {}),
+  };
+}
+
 export class PhoneApiManager {
   async generateRaw(messages: RawMessage[], options: GenerateRawOptions = {}): Promise<GenerateRawResult> {
     const secondaryApiStatus = getSecondaryPhoneApiStatus();
@@ -99,15 +119,19 @@ export class PhoneApiManager {
     hostAny.__fatriaBackstreetInternalGeneration = true;
 
     try {
-      const userInput = messages.findLast(message => message.role === 'user')?.content || '';
-      const rolePrompts = messages.filter(message => message.role !== 'user');
+      const lastUserIndex = messages.findLastIndex(message => message.role === 'user');
+      const userInput = lastUserIndex >= 0 ? messages[lastUserIndex]?.content || '' : '';
+      const rolePrompts = messages.filter((message, index) => index !== lastUserIndex);
+      const orderedPrompts = rolePrompts.map(toRolePrompt);
+      const imageInputs = getMessageImages(messages);
       const maxTokens = normalizeMaxOutputTokens(options.maxTokens);
       const result = await generateRaw({
         user_input: userInput,
+        ...(imageInputs.length > 0 ? { image: imageInputs.length === 1 ? imageInputs[0] : imageInputs } : {}),
         should_stream: false,
         should_silence: true,
         max_chat_history: 0,
-        ordered_prompts: [...rolePrompts, 'user_input'],
+        ordered_prompts: [...orderedPrompts, 'user_input'],
         custom_api: {
           max_tokens: maxTokens,
         },

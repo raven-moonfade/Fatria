@@ -1,13 +1,22 @@
 export type BackstreetMessageSender = 'user' | 'contact' | 'system';
 export type BackstreetThreadKind = 'private' | 'group';
+export type BackstreetMessageKind = 'text' | 'image';
+export type BackstreetImageSource = 'user' | 'novelai';
 
 export interface BackstreetMessage {
   id: string;
   sender: BackstreetMessageSender;
+  kind?: BackstreetMessageKind;
   speaker?: string;
   date?: string;
   time: string;
   text: string;
+  imageRef?: string;
+  imagePrompt?: string;
+  imageNegativePrompt?: string;
+  imageSource?: BackstreetImageSource;
+  imageHiddenFromPrompt?: boolean;
+  imageError?: string;
   createdAt: number;
 }
 
