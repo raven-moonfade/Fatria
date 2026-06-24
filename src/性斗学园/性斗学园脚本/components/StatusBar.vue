@@ -394,19 +394,18 @@
                       <input v-model.trim="secondaryPhoneApi.apiKey" type="password" placeholder="sk-..." />
                     </label>
 
-                    <label class="settings-row">
-                      <span class="settings-row-icon"><i class="fas fa-microchip"></i></span>
-                      <span class="settings-row-label">调用模型</span>
-                      <select
-                        v-model="secondaryPhoneApi.model"
-                        :disabled="secondaryApiModelOptions.length === 0"
+                    <label class="settings-text-field">
+                      <span>调用模型</span>
+                      <input
+                        v-model.trim="secondaryPhoneApi.model"
+                        type="text"
+                        list="secondary-phone-api-models"
+                        placeholder="例如 gpt-4o-mini / claude-sonnet-4"
                         @change="persistSecondaryApiSettings()"
-                      >
-                        <option value="">未选择</option>
-                        <option v-for="model in secondaryApiModelOptions" :key="model" :value="model">
-                          {{ model }}
-                        </option>
-                      </select>
+                      />
+                      <datalist id="secondary-phone-api-models">
+                        <option v-for="model in secondaryApiModelOptions" :key="model" :value="model"></option>
+                      </datalist>
                     </label>
 
                     <div class="settings-actions">
@@ -427,6 +426,9 @@
 
                     <div class="settings-helper" :class="{ ready: secondaryApiReady }">
                       {{ secondaryApiStatusText }}
+                      <span v-if="secondaryApiModelOptions.length === 0">
+                        可直接手动填写模型名；“读取模型”只是辅助，不是必需。
+                      </span>
                     </div>
                   </section>
 
@@ -846,7 +848,7 @@ const secondaryApiReady = computed(
 const secondaryApiStatusText = computed(() => {
   if (secondaryApiStatus.value) return secondaryApiStatus.value;
   if (secondaryApiReady.value) return `后街聊天将使用第二 API：${secondaryPhoneApi.value.model}`;
-  if (secondaryPhoneApi.value.enabled) return '已启用，请读取模型并选择调用模型。';
+  if (secondaryPhoneApi.value.enabled) return '已启用，请手动填写模型名，或读取模型后选择。';
   return '关闭时后街聊天继续使用酒馆原 API。';
 });
 const novelAiImageReady = computed(() => getNovelAiImageStatus(novelAiImage.value).ready);
