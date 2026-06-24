@@ -129,6 +129,17 @@
           <div class="item-desc" v-if="item.描述">
             {{ item.描述 }}
           </div>
+          <div
+            v-if="item.类型 === '装备' && item.加成属性 && Object.keys(item.加成属性).length > 0"
+            class="item-bonus-inline"
+          >
+            <div v-for="(value, key) in item.加成属性" :key="key" class="item-bonus-inline-row" v-show="value !== 0">
+              <span>{{ formatBonusLabel(String(key)) }}</span>
+              <strong :class="getBonusClass(Number(value))">
+                {{ formatBonusValue(Number(value)) }}{{ isPercentBonus(String(key)) ? '%' : '' }}
+              </strong>
+            </div>
+          </div>
 
           <!-- 装备按钮（仅装备类型显示） -->
           <button v-if="item.类型 === '装备' && item.部位" class="equip-btn" @click.stop="equipItem(itemKey, item)">
@@ -195,6 +206,55 @@ const tooltip = ref({
   x: 0,
   y: 0,
 });
+
+const TOOLTIP_WIDTH = 260;
+const TOOLTIP_HEIGHT = 220;
+const TOOLTIP_GAP = 10;
+const TOOLTIP_CONTAINER_PADDING = 8;
+
+function clampTooltipCoordinate(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function getTooltipPosition(event: MouseEvent | TouchEvent): { x: number; y: number } {
+  const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const container = target?.closest('.inventory-page') as HTMLElement | null;
+
+  if (!container) {
+    return { x: TOOLTIP_CONTAINER_PADDING, y: TOOLTIP_CONTAINER_PADDING };
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const scrollLeft = container.scrollLeft;
+  const scrollTop = container.scrollTop;
+  const minX = scrollLeft + TOOLTIP_CONTAINER_PADDING;
+  const minY = scrollTop + TOOLTIP_CONTAINER_PADDING;
+  const maxX = scrollLeft + container.clientWidth - TOOLTIP_WIDTH - TOOLTIP_CONTAINER_PADDING;
+  const maxY = scrollTop + container.clientHeight - TOOLTIP_HEIGHT - TOOLTIP_CONTAINER_PADDING;
+
+  if (event instanceof MouseEvent) {
+    const rect = target?.getBoundingClientRect();
+    const rawX =
+      rect && rect.right - containerRect.left + TOOLTIP_GAP + TOOLTIP_WIDTH <= container.clientWidth
+        ? rect.right - containerRect.left + scrollLeft + TOOLTIP_GAP
+        : (rect?.left ?? event.clientX) - containerRect.left + scrollLeft - TOOLTIP_WIDTH - TOOLTIP_GAP;
+    const rawY = rect ? rect.top - containerRect.top + scrollTop : scrollTop + TOOLTIP_CONTAINER_PADDING;
+
+    return {
+      x: clampTooltipCoordinate(rawX, minX, maxX),
+      y: clampTooltipCoordinate(rawY, minY, maxY),
+    };
+  }
+
+  const touch = event.touches[0] || event.changedTouches[0];
+  const rawX = (touch?.clientX ?? containerRect.left) - containerRect.left + scrollLeft + TOOLTIP_GAP;
+  const rawY = (touch?.clientY ?? containerRect.top) - containerRect.top + scrollTop + TOOLTIP_GAP;
+
+  return {
+    x: clampTooltipCoordinate(rawX, minX, maxX),
+    y: clampTooltipCoordinate(rawY, minY, maxY),
+  };
+}
 
 // 物品类型列表
 const itemTypes = computed(() => {
@@ -353,14 +413,15 @@ function showTooltip(itemKey: string, item: any, event: MouseEvent) {
     return;
   }
 
+  const position = getTooltipPosition(event);
   tooltip.value = {
     visible: true,
     name: itemKey,
     level: item.等级 || 'C',
     bonuses: item.加成属性 || {},
     desc: item.描述 || '',
-    x: event.clientX + 10,
-    y: event.clientY + 10,
+    x: position.x,
+    y: position.y,
   };
 }
 
@@ -370,15 +431,15 @@ function showTooltipMobile(itemKey: string, item: any, event: TouchEvent) {
     return;
   }
 
-  const touch = event.touches[0];
+  const position = getTooltipPosition(event);
   tooltip.value = {
     visible: true,
     name: itemKey,
     level: item.等级 || 'C',
     bonuses: item.加成属性 || {},
     desc: item.描述 || '',
-    x: touch.clientX + 10,
-    y: touch.clientY + 10,
+    x: position.x,
+    y: position.y,
   };
 
   // 3秒后自动隐藏
@@ -393,14 +454,15 @@ function showEquipmentTooltip(equippedItem: any, event: MouseEvent) {
     return;
   }
 
+  const position = getTooltipPosition(event);
   tooltip.value = {
     visible: true,
     name: equippedItem.名称,
     level: equippedItem.等级 || 'C',
     bonuses: equippedItem.加成属性 || {},
     desc: equippedItem.描述 || '',
-    x: event.clientX + 10,
-    y: event.clientY + 10,
+    x: position.x,
+    y: position.y,
   };
 }
 
@@ -410,15 +472,15 @@ function showEquipmentTooltipMobile(equippedItem: any, event: TouchEvent) {
     return;
   }
 
-  const touch = event.touches[0];
+  const position = getTooltipPosition(event);
   tooltip.value = {
     visible: true,
     name: equippedItem.名称,
     level: equippedItem.等级 || 'C',
     bonuses: equippedItem.加成属性 || {},
     desc: equippedItem.描述 || '',
-    x: touch.clientX + 10,
-    y: touch.clientY + 10,
+    x: position.x,
+    y: position.y,
   };
 
   // 3秒后自动隐藏
@@ -1246,6 +1308,52 @@ async function unequipItem(slotKey: string) {
     margin-bottom: 8px;
   }
 
+  .item-bonus-inline {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    margin: 8px 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(12, 18, 30, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .item-bonus-inline-row {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.68);
+
+    span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      flex-shrink: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+
+      &.positive {
+        color: #34d399;
+      }
+
+      &.negative {
+        color: #f87171;
+      }
+
+      &.neutral {
+        color: rgba(255, 255, 255, 0.5);
+      }
+    }
+  }
+
   .equip-btn {
     margin-top: 8px;
     padding: 6px 12px;
@@ -1310,15 +1418,16 @@ async function unequipItem(slotKey: string) {
 }
 
 .tooltip {
-  position: fixed;
-  z-index: 10000;
+  position: absolute;
+  z-index: 60;
   background: rgba(20, 20, 30, 0.95);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   padding: 12px;
-  min-width: 200px;
-  max-width: 300px;
+  box-sizing: border-box;
+  width: min(260px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 
