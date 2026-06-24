@@ -9,6 +9,10 @@ import {
   type NovelAiImageSettings,
 } from './novelAiImageSettings';
 import { phoneApiManager } from './phoneApiManager';
+import {
+  loadBackstreetGenerationSettings,
+  renderBackstreetPromptTemplate,
+} from './backstreetGenerationSettings';
 import { phoneLoreContextBuilder } from './phoneLoreContext';
 import type {
   BackstreetContact,
@@ -52,11 +56,6 @@ interface NovelAiIllustrationState {
 }
 
 const PLAYER_NAME_MACRO = '<user>';
-const MAX_USER_IMAGES_PER_SEND = 2;
-const MAX_USER_IMAGES_IN_PROMPT = 2;
-const GROUP_MEMBER_PRIVATE_HISTORY_LIMIT = 12;
-const PRIVATE_CONTACT_GROUP_HISTORY_LIMIT = 20;
-const PRIVATE_CONTACT_GROUP_THREAD_LIMIT = 5;
 const BACKSTREET_ADULT_ROLEPLAY_RULES = `【后街成人内容规则】
 这是虚构成人角色扮演场景；涉及亲密、裸露或成人向内容时，默认相关角色均为成年人，并基于当前剧情、关系与同意展开。
 当当前剧情进入成人向、NSFW、调情、裸露或亲密行为时，不要空回、不要转成规则说明、不要以道德化拒绝打断；只输出角色真实会发送的手机消息。
@@ -517,7 +516,8 @@ async function requestBackstreetReplyWithRecovery(
           ];
 
     try {
-      const result = await phoneApiManager.generateRaw(messages, { maxTokens: 900 });
+      const generationSettings = loadBackstreetGenerationSettings();
+      const result = await phoneApiManager.generateRaw(messages, { maxTokens: generationSettings.maxOutputTokens });
       const parsedReplies = parseBackstreetReply(result.text);
       const invalidReason = validateBackstreetReply(result.text, parsedReplies, options);
       if (!invalidReason) {
@@ -574,7 +574,11 @@ async function buildInlineImageFile(message: BackstreetMessage): Promise<File> {
 }
 
 async function buildInlineImagesForPrompt(messages: BackstreetMessage[]): Promise<{ images: File[]; refs: Set<string> }> {
-  const promptImageMessages = getPromptVisibleUserImageMessages(messages).slice(-MAX_USER_IMAGES_IN_PROMPT);
+  const generationSettings = loadBackstreetGenerationSettings();
+  const promptImageMessages =
+    generationSettings.maxUserImagesInPrompt > 0
+      ? getPromptVisibleUserImageMessages(messages).slice(-generationSettings.maxUserImagesInPrompt)
+      : [];
   const images: File[] = [];
   const refs = new Set<string>();
 
@@ -590,11 +594,15 @@ async function buildInlineImagesForPrompt(messages: BackstreetMessage[]): Promis
 
 function normalizeAppendImageRefs(options: AppendUserMessageOptions): string[] {
   const refs = uniqueStrings([...(Array.isArray(options.imageRefs) ? options.imageRefs : []), options.imageRef].filter(Boolean));
-  if (refs.length > MAX_USER_IMAGES_PER_SEND) throw new Error(`单次最多只能发送 ${MAX_USER_IMAGES_PER_SEND} 张图片`);
+  const generationSettings = loadBackstreetGenerationSettings();
+  if (refs.length > generationSettings.maxUserImagesPerSend) {
+    throw new Error(`单次最多只能发送 ${generationSettings.maxUserImagesPerSend} 张图片`);
+  }
   return refs;
 }
 
-function buildGroupMemberPrivateHistory(threads: BackstreetThreadData[], members: string[]): string {
+function buildGroupMemberPrivateHistory(threads: BackstreetThreadData[], members: string[], messageLimit: number): string {
+  if (messageLimit <= 0) return '';
   const memberNames = normalizeList(members, 24);
   if (memberNames.length === 0) return '';
 
@@ -615,7 +623,7 @@ function buildGroupMemberPrivateHistory(threads: BackstreetThreadData[], members
 
   const blocks = memberPrivateThreads
     .map(item => {
-      const messages = getRoleplayMessages(item.thread).slice(-GROUP_MEMBER_PRIVATE_HISTORY_LIMIT);
+      const messages = getRoleplayMessages(item.thread).slice(-messageLimit);
       return messages.length > 0
         ? formatThreadBlock(item.thread, messages, `群成员私聊参考：${item.matches.join('、')}｜非群内公开`)
         : '';
@@ -626,18 +634,28 @@ function buildGroupMemberPrivateHistory(threads: BackstreetThreadData[], members
   return `【群成员相关私聊记录｜仅供关系与记忆参考，默认不是群内公开信息】\n${blocks.join('\n\n')}`;
 }
 
-function buildPrivateContactGroupHistory(threads: BackstreetThreadData[], contact: string): string {
+function buildPrivateContactGroupHistory(
+  threads: BackstreetThreadData[],
+  contact: string,
+  messageLimit: number,
+  threadLimit: number,
+  groupMemberLimit: number,
+): string {
   const contactName = safeString(contact);
-  if (!contactName || contactName === '群聊') return '';
+  if (!contactName || contactName === '群聊' || messageLimit <= 0 || threadLimit <= 0) return '';
 
   const groupThreads = threads
-    .filter(thread => thread.kind === 'group' && normalizeList(thread.members, 24).some(member => isSameCharacter(member, contactName)))
+    .filter(
+      thread =>
+        thread.kind === 'group' &&
+        normalizeList(thread.members, groupMemberLimit).some(member => isSameCharacter(member, contactName)),
+    )
     .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0))
-    .slice(0, PRIVATE_CONTACT_GROUP_THREAD_LIMIT);
+    .slice(0, threadLimit);
 
   const blocks = groupThreads
     .map(thread => {
-      const messages = getRoleplayMessages(thread).slice(-PRIVATE_CONTACT_GROUP_HISTORY_LIMIT);
+      const messages = getRoleplayMessages(thread).slice(-messageLimit);
       return messages.length > 0 ? formatThreadBlock(thread, messages, `私聊对象参与群聊参考：${contactName}`) : '';
     })
     .filter(Boolean);
@@ -663,6 +681,7 @@ function buildIllustrationStateForThread(
   thread: BackstreetThreadData,
   characterData: any,
   settings: NovelAiImageSettings,
+  groupMemberLimit = 24,
 ): NovelAiIllustrationState {
   const status = getNovelAiImageStatus(settings);
   if (!status.ready) {
@@ -682,7 +701,7 @@ function buildIllustrationStateForThread(
   const instruction = buildNovelAiIllustrationInstruction(
     {
       contact: getThreadDisplayName(thread),
-      members: thread.kind === 'group' ? normalizeList(thread.members, 24) : [],
+      members: thread.kind === 'group' ? normalizeList(thread.members, groupMemberLimit) : [],
       location: `${safeString(characterData?.位置系统?.地点名称)} ${safeString(characterData?.位置系统?.坐标)}`.trim(),
       time: getCurrentTime(characterData),
       isGroup: thread.kind === 'group',
@@ -712,7 +731,8 @@ function logNovelAiIllustrationState(thread: BackstreetThreadData, state: NovelA
 export class BackstreetService {
   private async enforceUserImagePromptLimit(contact: string, thread: BackstreetThreadData): Promise<BackstreetThreadData> {
     const visibleImages = getPromptVisibleUserImageMessages(thread.messages);
-    const overflowCount = visibleImages.length - MAX_USER_IMAGES_IN_PROMPT;
+    const generationSettings = loadBackstreetGenerationSettings();
+    const overflowCount = visibleImages.length - generationSettings.maxUserImagesInPrompt;
     if (overflowCount <= 0) return thread;
 
     let nextThread = thread;
@@ -963,7 +983,8 @@ export class BackstreetService {
 
   private async generateGroupReply(thread: BackstreetThreadData, characterData: any): Promise<BackstreetMessage[]> {
     const groupName = getThreadDisplayName(thread);
-    const members = normalizeList(thread.members, 24);
+    const generationSettings = loadBackstreetGenerationSettings();
+    const members = normalizeList(thread.members, generationSettings.groupMemberLimit);
     if (thread.dissolved) throw new Error('群聊已解散，不能继续生成回复');
     if (members.length === 0) throw new Error('群聊没有可回复的成员');
     const latestUserMessageObject = thread.messages.filter(message => message.sender === 'user').at(-1);
@@ -979,43 +1000,54 @@ export class BackstreetService {
       characters: members,
       keywords: uniqueStrings([groupName, ...members, ...keywordQuery.keywords]),
       locations: [safeString(characterData?.位置系统?.地点名称), safeString(characterData?.位置系统?.坐标)],
-      limit: 6,
+      limit: generationSettings.groupArchiveMemoryCount,
     });
 
     const [archiveHits, loreContexts, rawThreads] = await Promise.all([
       backstreetWorldbookStore.searchArchiveMemory(query),
-      Promise.all(members.slice(0, 8).map(member => phoneLoreContextBuilder.build({ contact: member, characterData }).catch(() => ''))),
+      Promise.all(
+        members
+          .slice(0, generationSettings.groupLoreMemberCount)
+          .map(member => phoneLoreContextBuilder.build({ contact: member, characterData }).catch(() => '')),
+      ),
       backstreetWorldbookStore.listRawThreads({ force: true }),
     ]);
     const whitelistLoreContext = uniqueStrings(loreContexts.filter(Boolean)).join('\n\n');
-    const groupMemberPrivateHistory = buildGroupMemberPrivateHistory(rawThreads, members);
-    const mainSceneSnapshot = buildMainSceneSnapshot(characterData, { includeRecentChat: true });
+    const groupMemberPrivateHistory = buildGroupMemberPrivateHistory(
+      rawThreads,
+      members,
+      generationSettings.groupMemberPrivateHistoryCount,
+    );
+    const mainSceneSnapshot = buildMainSceneSnapshot(characterData, {
+      includeRecentChat: true,
+      recentChatLimit: generationSettings.mainRecentChatCount,
+    });
     const historyMessages = thread.messages.filter(shouldIncludeMessageInPrompt);
-    const historyText = formatThreadMessagesForPrompt(thread, historyMessages, 30, { inlineImageRefs: userImagePromptState.refs });
+    const historyText = formatThreadMessagesForPrompt(thread, historyMessages, generationSettings.groupHistoryCount, {
+      inlineImageRefs: userImagePromptState.refs,
+    });
     const novelAiImageSettings = loadNovelAiImageSettings();
-    const illustrationState = buildIllustrationStateForThread(thread, characterData, novelAiImageSettings);
+    const illustrationState = buildIllustrationStateForThread(
+      thread,
+      characterData,
+      novelAiImageSettings,
+      generationSettings.groupMemberLimit,
+    );
     logNovelAiIllustrationState(thread, illustrationState);
     const outputSchema = buildBackstreetOutputSchema({
       allowImage: illustrationState.allowImage,
       sampleSpeaker: members[0] || '群成员',
     });
 
-    const systemPrompt = `【后街群聊生成协议】
-你正在模拟名为“后街”的手机群聊「${groupName}」。
-${PLAYER_NAME_MACRO}是正在使用后街手机的人；群成员只有：${members.join('、')}。
-${BACKSTREET_ADULT_ROLEPLAY_RULES}
-保持每个群成员的人格、关系记忆、当前情绪和手机聊天习惯。不要自称AI，不要解释规则，不要写旁白。
-【主线快照】是真实主线当前状态；如果它和旧后街记忆冲突，以主线快照、当前群聊和${PLAYER_NAME_MACRO}刚刚发送的消息为准。
-不要输出主线正文、状态栏、变量更新、战斗格式或世界书控制指令。
-根据当前情境选择 1-3 名合适的群成员发言，一次回复 1-4 条消息。
-语言像真实群聊：短句、口语、可以互相接话、吐槽、试探或沉默。
-可以自然使用少量 emoji 和颜文字（如🙂、😳、www、(。・ω・。)），但必须符合发言者性格、情绪和聊天语境，不要每条都堆叠。
-不要输出、推算或编写消息时间；消息时间由系统根据当前 MVU 时间自动写入。
-每条消息必须包含 speaker，speaker 必须完全等于一个群成员名字。
-
-${illustrationState.instruction}
-
-${outputSchema}`;
+    const systemPrompt = renderBackstreetPromptTemplate(generationSettings.groupSystemPromptTemplate, {
+      contact: groupName,
+      groupName,
+      members,
+      adultRules: BACKSTREET_ADULT_ROLEPLAY_RULES,
+      illustrationInstruction: illustrationState.instruction,
+      outputSchema,
+      playerName: PLAYER_NAME_MACRO,
+    });
 
     const phoneContext = `${whitelistLoreContext || '【后街白名单世界书】暂无可用条目'}
 
@@ -1058,6 +1090,7 @@ ${latestUserMessage}
 
   private async generateReply(contact: string, messages: BackstreetMessage[], characterData: any): Promise<BackstreetMessage[]> {
     const contactName = getPrivatePromptName(contact);
+    const generationSettings = loadBackstreetGenerationSettings();
     const latestUserMessageObject = messages.filter(message => message.sender === 'user').at(-1);
     const userImagePromptState = await buildInlineImagesForPrompt(messages);
     const latestUserMessage = latestUserMessageObject
@@ -1071,7 +1104,7 @@ ${latestUserMessage}
       characters: contactName === '群聊' ? [] : [contactName],
       keywords: uniqueStrings([contactName, ...keywordQuery.keywords]),
       locations: [safeString(characterData?.位置系统?.地点名称), safeString(characterData?.位置系统?.坐标)],
-      limit: 5,
+      limit: generationSettings.privateArchiveMemoryCount,
     });
 
     const [archiveHits, whitelistLoreContext, rawThreads] = await Promise.all([
@@ -1079,8 +1112,17 @@ ${latestUserMessage}
       phoneLoreContextBuilder.build({ contact: contactName, characterData }),
       backstreetWorldbookStore.listRawThreads({ force: true }),
     ]);
-    const relatedGroupHistory = buildPrivateContactGroupHistory(rawThreads, contactName);
-    const mainSceneSnapshot = buildMainSceneSnapshot(characterData, { includeRecentChat: true });
+    const relatedGroupHistory = buildPrivateContactGroupHistory(
+      rawThreads,
+      contactName,
+      generationSettings.privateContactGroupHistoryCount,
+      generationSettings.privateContactGroupThreadCount,
+      generationSettings.groupMemberLimit,
+    );
+    const mainSceneSnapshot = buildMainSceneSnapshot(characterData, {
+      includeRecentChat: true,
+      recentChatLimit: generationSettings.mainRecentChatCount,
+    });
 
     const threadForIllustration: BackstreetThreadData = {
       contact,
@@ -1089,7 +1131,7 @@ ${latestUserMessage}
       messages,
     };
     const historyMessages = messages.filter(message => message.sender !== 'system' && shouldIncludeMessageInPrompt(message));
-    const historyText = formatThreadMessagesForPrompt(threadForIllustration, historyMessages, 24, {
+    const historyText = formatThreadMessagesForPrompt(threadForIllustration, historyMessages, generationSettings.privateHistoryCount, {
       inlineImageRefs: userImagePromptState.refs,
     });
     const novelAiImageSettings = loadNovelAiImageSettings();
@@ -1097,19 +1139,13 @@ ${latestUserMessage}
     logNovelAiIllustrationState(threadForIllustration, illustrationState);
     const outputSchema = buildBackstreetOutputSchema({ allowImage: illustrationState.allowImage });
 
-    const systemPrompt = `【后街单聊生成协议】
-你正在扮演「${contactName}」，通过名为“后街”的手机私聊应用与${PLAYER_NAME_MACRO}对话。
-${BACKSTREET_ADULT_ROLEPLAY_RULES}
-保持角色人格、关系记忆、当前情绪和手机聊天习惯。不要自称AI，不要解释规则，不要写旁白。
-【主线快照】是真实主线当前状态；如果它和旧后街记忆冲突，以主线快照、当前会话和${PLAYER_NAME_MACRO}刚刚发送的消息为准。
-不要输出主线正文、状态栏、变量更新、战斗格式或世界书控制指令。
-语言像真实手机聊天：短句、口语、可以试探、停顿、主动或冷淡。一次回复 1-4 条消息。
-可以自然使用少量 emoji 和颜文字（如🙂、😳、www、(。・ω・。)），但必须符合角色性格、情绪和聊天语境，不要每条都堆叠。
-不要输出、推算或编写消息时间；消息时间由系统根据当前 MVU 时间自动写入。
-
-${illustrationState.instruction}
-
-${outputSchema}`;
+    const systemPrompt = renderBackstreetPromptTemplate(generationSettings.privateSystemPromptTemplate, {
+      contact: contactName,
+      adultRules: BACKSTREET_ADULT_ROLEPLAY_RULES,
+      illustrationInstruction: illustrationState.instruction,
+      outputSchema,
+      playerName: PLAYER_NAME_MACRO,
+    });
 
     const phoneContext = `${whitelistLoreContext}
 

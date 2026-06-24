@@ -117,10 +117,11 @@
                 <CGPage v-if="currentPage === 'cg'" :character-data="characterData" />
 
                 <div v-if="currentPage === 'settings'" class="settings-page">
-                  <div class="settings-category-heading">
-                    <span>桌面设置</span>
+                  <details class="settings-category-panel" open>
+                    <summary class="settings-category-heading">
+                    <span>界面显示</span>
                     <small>外观与入口</small>
-                  </div>
+                    </summary>
 
                   <section class="settings-section">
                     <div class="settings-section-title">
@@ -287,81 +288,13 @@
                     </label>
                   </section>
 
-                  <div class="settings-category-heading">
+                  </details>
+
+                  <details class="settings-category-panel" open>
+                    <summary class="settings-category-heading">
                     <span>后街设置</span>
                     <small>聊天与模型</small>
-                  </div>
-
-                  <section class="settings-section settings-section-compact">
-                    <div class="settings-section-title">
-                      <span>后街聊天</span>
-                      <small>显示与正文注入</small>
-                    </div>
-
-                    <label class="settings-slider-row">
-                      <span>
-                        <span>可见聊天楼层</span>
-                        <strong>{{ phonePrefs.backstreetVisibleMessageCount }} 层</strong>
-                      </span>
-                      <input
-                        v-model.number="phonePrefs.backstreetVisibleMessageCount"
-                        type="range"
-                        min="5"
-                        max="100"
-                        step="1"
-                      />
-                    </label>
-
-                    <div class="settings-helper">
-                      正文注入会直接写入后街原始聊天记录，不进行总结，也不依赖关键词匹配。
-                    </div>
-
-                    <label class="settings-slider-row">
-                      <span>
-                        <span>在场私聊注入</span>
-                        <strong>{{ phonePrefs.backstreetPresentPrivateMessageCount }} 条/人</strong>
-                      </span>
-                      <input
-                        v-model.number="phonePrefs.backstreetPresentPrivateMessageCount"
-                        type="range"
-                        min="0"
-                        max="30"
-                        step="1"
-                      />
-                    </label>
-
-                    <label class="settings-slider-row">
-                      <span>
-                        <span>在场群聊注入</span>
-                        <strong>{{ phonePrefs.backstreetPresentGroupMessageCount }} 条/群</strong>
-                      </span>
-                      <input
-                        v-model.number="phonePrefs.backstreetPresentGroupMessageCount"
-                        type="range"
-                        min="0"
-                        max="30"
-                        step="1"
-                      />
-                    </label>
-
-                    <label class="settings-slider-row">
-                      <span>
-                        <span>全局最近注入</span>
-                        <strong>{{ phonePrefs.backstreetGlobalRecentMessageCount }} 条</strong>
-                      </span>
-                      <input
-                        v-model.number="phonePrefs.backstreetGlobalRecentMessageCount"
-                        type="range"
-                        min="0"
-                        max="50"
-                        step="1"
-                      />
-                    </label>
-
-                    <div class="settings-helper">
-                      在场私聊：当前在场角色各自的最近私聊；在场群聊：群成员包含在场角色的群聊；全局最近：不要求角色在场。
-                    </div>
-                  </section>
+                    </summary>
 
                   <section class="settings-section">
                     <div class="settings-section-title">
@@ -431,6 +364,265 @@
                       </span>
                     </div>
                   </section>
+
+                  <section class="settings-section settings-section-compact">
+                    <div class="settings-section-title">
+                      <span>后街聊天</span>
+                      <small>显示、生成与正文注入</small>
+                    </div>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>窗口显示消息数</span>
+                        <strong>{{ phonePrefs.backstreetVisibleMessageCount }} 层</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetVisibleMessageCount"
+                        type="range"
+                        min="5"
+                        max="100"
+                        step="1"
+                      />
+                    </label>
+
+                    <div class="settings-helper">
+                      只影响后街窗口首次显示数量；聊天顶部可继续加载更早消息。
+                    </div>
+
+                    <details class="settings-advanced-panel">
+                      <summary>
+                        <span>高级参数</span>
+                        <small>生成上下文、注入与模板</small>
+                      </summary>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>生成读取正文楼层</span>
+                        <strong>{{ backstreetGeneration.mainRecentChatCount }} 层</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.mainRecentChatCount" type="range" min="0" max="64" step="1" />
+                    </label>
+                    <p class="settings-param-help">从酒馆正文最近楼层中提取主线片段给后街参考。设为 0 时只保留时间、地点等主线快照。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>生成读取私聊历史</span>
+                        <strong>{{ backstreetGeneration.privateHistoryCount }} 条</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.privateHistoryCount" type="range" min="0" max="120" step="1" />
+                    </label>
+                    <p class="settings-param-help">私聊回复时带入当前联系人最近多少条后街消息。数值越高越记得上下文，但请求会更长。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>生成读取群聊历史</span>
+                        <strong>{{ backstreetGeneration.groupHistoryCount }} 条</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.groupHistoryCount" type="range" min="0" max="120" step="1" />
+                    </label>
+                    <p class="settings-param-help">群聊回复时带入当前群最近多少条消息。群聊成员多时可适当降低。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>群聊成员上限</span>
+                        <strong>{{ backstreetGeneration.groupMemberLimit }} 人</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.groupMemberLimit" type="range" min="1" max="80" step="1" />
+                    </label>
+                    <p class="settings-param-help">限制一次群聊生成最多识别多少名成员。超大群可降低以避免提示词过长。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>群成员资料读取</span>
+                        <strong>{{ backstreetGeneration.groupLoreMemberCount }} 人</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.groupLoreMemberCount" type="range" min="0" max="40" step="1" />
+                    </label>
+                    <p class="settings-param-help">为群聊前若干名成员读取白名单世界书资料。设为 0 时不额外读取成员资料。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>群成员私聊参考</span>
+                        <strong>{{ backstreetGeneration.groupMemberPrivateHistoryCount }} 条/人</strong>
+                      </span>
+                      <input
+                        v-model.number="backstreetGeneration.groupMemberPrivateHistoryCount"
+                        type="range"
+                        min="0"
+                        max="80"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">群聊生成时参考群成员和玩家的近期私聊记录。用于保持私下关系，但默认不代表群内公开。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>私聊对象群聊参考</span>
+                        <strong>{{ backstreetGeneration.privateContactGroupHistoryCount }} 条/群</strong>
+                      </span>
+                      <input
+                        v-model.number="backstreetGeneration.privateContactGroupHistoryCount"
+                        type="range"
+                        min="0"
+                        max="80"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">私聊生成时参考该联系人参与过的群聊内容。适合承接群里刚发生过的事。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>私聊参考群数量</span>
+                        <strong>{{ backstreetGeneration.privateContactGroupThreadCount }} 个</strong>
+                      </span>
+                      <input
+                        v-model.number="backstreetGeneration.privateContactGroupThreadCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">限制私聊生成最多参考多少个相关群聊。数值越高，跨群记忆越多。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>私聊记忆检索</span>
+                        <strong>{{ backstreetGeneration.privateArchiveMemoryCount }} 条</strong>
+                      </span>
+                      <input
+                        v-model.number="backstreetGeneration.privateArchiveMemoryCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">从归档后街记忆中检索私聊相关记录。用于找回较早的承诺、暗号或关系进展。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>群聊记忆检索</span>
+                        <strong>{{ backstreetGeneration.groupArchiveMemoryCount }} 条</strong>
+                      </span>
+                      <input
+                        v-model.number="backstreetGeneration.groupArchiveMemoryCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">从归档后街记忆中检索群聊相关记录。用于让群聊接上更早的话题。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>单次发送图片上限</span>
+                        <strong>{{ backstreetGeneration.maxUserImagesPerSend }} 张</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.maxUserImagesPerSend" type="range" min="0" max="8" step="1" />
+                    </label>
+                    <p class="settings-param-help">限制玩家一次能发送几张图片。设为 0 时禁止发送图片。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>请求携带用户图片</span>
+                        <strong>{{ backstreetGeneration.maxUserImagesInPrompt }} 张</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.maxUserImagesInPrompt" type="range" min="0" max="8" step="1" />
+                    </label>
+                    <p class="settings-param-help">生成回复时实际随请求发送的最近用户图片数量。模型或接口不支持视觉时建议设为 0。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>后街输出上限</span>
+                        <strong>{{ backstreetGeneration.maxOutputTokens }} tokens</strong>
+                      </span>
+                      <input v-model.number="backstreetGeneration.maxOutputTokens" type="range" min="256" max="8192" step="128" />
+                    </label>
+                    <p class="settings-param-help">限制后街生成回复的最大输出长度。太低可能截断格式，太高会增加等待时间。</p>
+
+                    <label class="settings-textarea-field">
+                      <span>私聊系统提示词模板</span>
+                      <textarea v-model="backstreetGeneration.privateSystemPromptTemplate" rows="9"></textarea>
+                    </label>
+                    <p class="settings-param-help">控制私聊角色如何说话、遵守什么格式。保留变量占位符可让系统自动插入规则和输出格式。</p>
+
+                    <label class="settings-textarea-field">
+                      <span>群聊系统提示词模板</span>
+                      <textarea v-model="backstreetGeneration.groupSystemPromptTemplate" rows="9"></textarea>
+                    </label>
+                    <p class="settings-param-help">控制群聊成员发言、speaker 规则和群聊语气。修改后会影响所有群聊生成。</p>
+
+                    <div class="settings-actions">
+                      <button type="button" @click="resetBackstreetGenerationTemplates">
+                        <i class="fas fa-rotate-left"></i>
+                        恢复后街模板
+                      </button>
+                    </div>
+
+                    <div class="settings-helper" v-pre>
+                      可用变量：{{contact}}、{{group_name}}、{{members}}、{{player_name}}、{{adult_rules}}、{{illustration_instruction}}、{{output_schema}}。
+                    </div>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>在场私聊注入</span>
+                        <strong>{{ phonePrefs.backstreetPresentPrivateMessageCount }} 条/人</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetPresentPrivateMessageCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">正文生成时，把当前在场人物相关私聊注入给主线参考。它不影响后街聊天窗口显示。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>在场群聊注入</span>
+                        <strong>{{ phonePrefs.backstreetPresentGroupMessageCount }} 条/群</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetPresentGroupMessageCount"
+                        type="range"
+                        min="0"
+                        max="30"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">正文生成时，把包含在场人物的群聊记录注入给主线参考。适合让正文记住群聊承诺和公开信息。</p>
+
+                    <label class="settings-slider-row">
+                      <span>
+                        <span>全局最近注入</span>
+                        <strong>{{ phonePrefs.backstreetGlobalRecentMessageCount }} 条</strong>
+                      </span>
+                      <input
+                        v-model.number="phonePrefs.backstreetGlobalRecentMessageCount"
+                        type="range"
+                        min="0"
+                        max="50"
+                        step="1"
+                      />
+                    </label>
+                    <p class="settings-param-help">正文生成时额外注入最近后街记录，不要求相关角色在场。数值过高会增加正文提示词长度。</p>
+
+                    <div class="settings-helper">
+                      在场私聊：当前在场角色各自的最近私聊；在场群聊：群成员包含在场角色的群聊；全局最近：不要求角色在场。
+                    </div>
+                    </details>
+                  </section>
+
+                  </details>
+
+                  <details class="settings-category-panel" open>
+                    <summary class="settings-category-heading">
+                    <span>生图设置</span>
+                    <small>NovelAI 插图</small>
+                    </summary>
 
                   <section class="settings-section">
                     <div class="settings-section-title">
@@ -536,10 +728,45 @@
                     </div>
                   </section>
 
+                  </details>
+
                   <div class="settings-category-heading">
                     <span>脚本维护</span>
-                    <small>版本更新</small>
+                    <small>恢复与版本</small>
                   </div>
+
+                  <section class="settings-section">
+                    <div class="settings-section-title">
+                      <span>恢复默认设置</span>
+                      <small>可多选</small>
+                    </div>
+
+                    <div class="settings-reset-grid">
+                      <label>
+                        <input v-model="resetSettingTargets.display" type="checkbox" />
+                        <span>界面显示</span>
+                      </label>
+                      <label>
+                        <input v-model="resetSettingTargets.backstreet" type="checkbox" />
+                        <span>后街设置</span>
+                      </label>
+                      <label>
+                        <input v-model="resetSettingTargets.image" type="checkbox" />
+                        <span>生图设置</span>
+                      </label>
+                    </div>
+
+                    <div class="settings-actions">
+                      <button class="settings-action-primary" type="button" :disabled="!canResetSelectedSettings" @click="resetSelectedSettings">
+                        <i class="fas fa-rotate-left"></i>
+                        恢复所选默认
+                      </button>
+                    </div>
+
+                    <div class="settings-helper">
+                      只会恢复勾选类别；未勾选的设置会保持当前值。恢复后会立即写入本地浏览器设置。
+                    </div>
+                  </section>
 
                   <section class="settings-section">
                     <div class="settings-section-title">
@@ -619,11 +846,19 @@ import RelationshipPage from './pages/RelationshipPage.vue';
 import ShopPage from './pages/ShopPage.vue';
 import SkillPage from './pages/SkillPage.vue';
 import {
+  DEFAULT_SECONDARY_PHONE_API_SETTINGS,
   fetchSecondaryPhoneApiModels,
   loadSecondaryPhoneApiSettings,
   saveSecondaryPhoneApiSettings,
   type SecondaryPhoneApiSettings,
 } from '../phone/phoneApiSettings';
+import {
+  DEFAULT_BACKSTREET_GENERATION_SETTINGS,
+  loadBackstreetGenerationSettings,
+  resetBackstreetGenerationPromptTemplates,
+  saveBackstreetGenerationSettings,
+  type BackstreetGenerationSettings,
+} from '../phone/backstreetGenerationSettings';
 import { testNovelAiImageConnection } from '../phone/novelAiImageClient';
 import {
   DEFAULT_NOVELAI_IMAGE_SETTINGS,
@@ -810,11 +1045,17 @@ const secondaryPhoneApi = ref<SecondaryPhoneApiSettings>(loadSecondaryPhoneApiSe
 const secondaryApiModelOptions = ref<string[]>([...secondaryPhoneApi.value.models]);
 const secondaryApiStatus = ref('');
 const isSecondaryApiTesting = ref(false);
+const backstreetGeneration = ref<BackstreetGenerationSettings>(loadBackstreetGenerationSettings());
 const novelAiImage = ref<NovelAiImageSettings>(loadNovelAiImageSettings());
 const novelAiImageStatus = ref('');
 const isNovelAiImageTesting = ref(false);
 const scriptUpdateState = ref<ScriptUpdateState>(getScriptUpdateState());
 const isCheckingScriptUpdate = ref(false);
+const resetSettingTargets = ref({
+  display: true,
+  backstreet: false,
+  image: false,
+});
 let wallpaperSourceRequestId = 0;
 
 const homeApps = computed(() => phoneApps.filter(app => !app.dock));
@@ -869,6 +1110,9 @@ const scriptUpdateStatusText = computed(() => {
   }
   return scriptUpdateState.value.message;
 });
+const canResetSelectedSettings = computed(
+  () => resetSettingTargets.value.display || resetSettingTargets.value.backstreet || resetSettingTargets.value.image,
+);
 
 watch(
   phonePrefs,
@@ -890,6 +1134,14 @@ watch(
   secondaryPhoneApi,
   settings => {
     persistSecondaryApiSettings(settings);
+  },
+  { deep: true },
+);
+
+watch(
+  backstreetGeneration,
+  settings => {
+    saveBackstreetGenerationSettings(settings);
   },
   { deep: true },
 );
@@ -1086,6 +1338,59 @@ function clearSecondaryApiModel() {
   secondaryPhoneApi.value.models = [];
   secondaryApiModelOptions.value = [];
   secondaryApiStatus.value = '已清除模型选择，关闭开关时会使用酒馆原 API。';
+}
+
+function resetBackstreetGenerationTemplates() {
+  backstreetGeneration.value = resetBackstreetGenerationPromptTemplates(backstreetGeneration.value);
+}
+
+function resetDisplaySettings() {
+  const previousWallpaperUrl = phonePrefs.value.wallpaperUrl;
+  phonePrefs.value = {
+    ...phonePrefs.value,
+    wallpaperUrl: DEFAULT_PHONE_PREFS.wallpaperUrl,
+    wallpaperPreset: DEFAULT_PHONE_PREFS.wallpaperPreset,
+    theme: DEFAULT_PHONE_PREFS.theme,
+    fontFamily: DEFAULT_PHONE_PREFS.fontFamily,
+    appIconStyle: DEFAULT_PHONE_PREFS.appIconStyle,
+    launcherStyle: DEFAULT_PHONE_PREFS.launcherStyle,
+    wallpaperOpacity: DEFAULT_PHONE_PREFS.wallpaperOpacity,
+    wallpaperBlur: DEFAULT_PHONE_PREFS.wallpaperBlur,
+    tintStrength: DEFAULT_PHONE_PREFS.tintStrength,
+  };
+  if (isIndexedImageRef(previousWallpaperUrl)) {
+    void deleteIndexedImage(previousWallpaperUrl);
+  }
+  setResolvedWallpaperUrl('');
+}
+
+function resetBackstreetSettings() {
+  phonePrefs.value = {
+    ...phonePrefs.value,
+    backstreetVisibleMessageCount: DEFAULT_PHONE_PREFS.backstreetVisibleMessageCount,
+    backstreetPresentPrivateMessageCount: DEFAULT_PHONE_PREFS.backstreetPresentPrivateMessageCount,
+    backstreetPresentGroupMessageCount: DEFAULT_PHONE_PREFS.backstreetPresentGroupMessageCount,
+    backstreetGlobalRecentMessageCount: DEFAULT_PHONE_PREFS.backstreetGlobalRecentMessageCount,
+  };
+  secondaryPhoneApi.value = { ...DEFAULT_SECONDARY_PHONE_API_SETTINGS };
+  secondaryApiModelOptions.value = [];
+  secondaryApiStatus.value = '';
+  backstreetGeneration.value = { ...DEFAULT_BACKSTREET_GENERATION_SETTINGS };
+}
+
+function resetImageSettings() {
+  novelAiImage.value = { ...DEFAULT_NOVELAI_IMAGE_SETTINGS };
+  novelAiImageStatus.value = '已恢复默认生图设置。';
+}
+
+function resetSelectedSettings() {
+  if (!canResetSelectedSettings.value) return;
+  if (resetSettingTargets.value.display) resetDisplaySettings();
+  if (resetSettingTargets.value.backstreet) resetBackstreetSettings();
+  if (resetSettingTargets.value.image) resetImageSettings();
+  if (typeof toastr !== 'undefined') {
+    toastr.success('已恢复所选默认设置', '小手机设置');
+  }
 }
 
 async function handleTestNovelAiImage() {
@@ -2242,6 +2547,39 @@ onUnmounted(() => {
   }
 }
 
+.settings-category-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  > summary.settings-category-heading {
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '\f078';
+      flex: 0 0 auto;
+      color: #71838e;
+      font-family: 'Font Awesome 6 Free';
+      font-size: 11px;
+      font-weight: 900;
+      transition: transform 0.16s ease;
+    }
+  }
+
+  &:not([open]) {
+    gap: 0;
+  }
+
+  &[open] > summary.settings-category-heading::after {
+    transform: rotate(180deg);
+  }
+}
+
 .settings-section {
   padding: 14px;
   border: 1px solid rgba(137, 160, 172, 0.2);
@@ -2276,6 +2614,102 @@ onUnmounted(() => {
     color: #7c8b95;
     font-size: 11px;
     font-weight: 700;
+  }
+}
+
+.settings-advanced-panel {
+  margin-top: 12px;
+  border-top: 1px solid rgba(133, 154, 164, 0.14);
+  padding-top: 10px;
+
+  summary {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid rgba(124, 142, 153, 0.18);
+    border-radius: 14px;
+    padding: 0 12px;
+    color: #2d4857;
+    background: rgba(248, 251, 252, 0.94);
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '\f078';
+      font-family: 'Font Awesome 6 Free';
+      font-size: 10px;
+      font-weight: 900;
+      transition: transform 0.16s ease;
+    }
+
+    span {
+      min-width: 0;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    small {
+      margin-left: auto;
+      color: #71838e;
+      font-size: 10px;
+      font-weight: 800;
+    }
+  }
+
+  &[open] summary {
+    margin-bottom: 12px;
+
+    &::after {
+      transform: rotate(180deg);
+    }
+  }
+}
+
+.settings-param-help {
+  margin: -2px 0 10px;
+  color: #71838e;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.settings-reset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+
+  label {
+    min-width: 0;
+    min-height: 38px;
+    border: 1px solid rgba(124, 142, 153, 0.18);
+    border-radius: 14px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #344b58;
+    background: rgba(248, 251, 252, 0.94);
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  input {
+    flex: 0 0 auto;
+    accent-color: #29a9bd;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

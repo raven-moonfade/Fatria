@@ -325,6 +325,11 @@
       </section>
 
       <div ref="messageListRef" class="message-list">
+        <button v-if="hasOlderMessages" class="load-older-messages" type="button" @click="loadOlderMessages">
+          <i class="fas fa-chevron-up"></i>
+          <span>加载更早消息</span>
+        </button>
+
         <template v-for="(message, index) in visibleMessages" :key="message.id">
           <div v-if="shouldShowTimestamp(index)" class="time-divider">
             <span>{{ message.time }}</span>
@@ -351,7 +356,11 @@
               <span v-else>{{ contactInitial(activeDisplayName) }}</span>
             </span>
 
-            <div class="message-bubble">
+            <div
+              class="message-bubble"
+              :class="{ 'actions-open': activeActionMessageId === message.id }"
+              @click="toggleMessageActions(message)"
+            >
               <div class="message-actions">
                 <button
                   v-if="message.sender === 'user'"
@@ -359,7 +368,7 @@
                   type="button"
                   title="重 roll 此条回复"
                   aria-label="重 roll 此条回复"
-                  @click="rerollFromUserMessage(message)"
+                  @click.stop="rerollFromUserMessage(message)"
                 >
                   <i class="fas fa-rotate-right"></i>
                 </button>
@@ -369,7 +378,7 @@
                   type="button"
                   title="重 roll 图片"
                   aria-label="重 roll 图片"
-                  @click="rerollImageMessage(message)"
+                  @click.stop="rerollImageMessage(message)"
                 >
                   <i class="fas fa-rotate"></i>
                 </button>
@@ -380,7 +389,7 @@
                   type="button"
                   :title="imagePromptToggleTitle(message)"
                   :aria-label="imagePromptToggleTitle(message)"
-                  @click="toggleUserImagePromptHidden(message)"
+                  @click.stop="toggleUserImagePromptHidden(message)"
                 >
                   <i :class="message.imageHiddenFromPrompt ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
                 </button>
@@ -389,7 +398,7 @@
                   type="button"
                   title="删除此处及以下消息"
                   aria-label="删除此处及以下消息"
-                  @click="deleteMessage(message)"
+                  @click.stop="deleteMessage(message)"
                 >
                   <i class="fas fa-trash-can"></i>
                 </button>
@@ -402,7 +411,7 @@
                   type="button"
                   title="查看图片"
                   aria-label="查看图片"
-                  @click="openMessageImage(message)"
+                  @click.stop="openMessageImage(message)"
                 >
                   <img :src="getMessageImageUrl(message)" :alt="message.text || '后街图片'" />
                 </button>
@@ -618,6 +627,7 @@ const playerAvatarUrl = ref('');
 const messageImageUrls = ref<Record<string, string>>({});
 const pendingImageAttachments = ref<PendingImageAttachment[]>([]);
 const visibleMessageCount = ref(readVisibleMessageCount());
+const activeActionMessageId = ref('');
 const showContactCreator = ref(false);
 const contactNameDraft = ref('');
 const isAddingContact = ref(false);
@@ -650,6 +660,7 @@ const filteredContacts = computed(() => {
   return list.filter(contact => contact.name.toLowerCase().includes(query)).slice(0, 120);
 });
 const visibleMessages = computed(() => messages.value.slice(-visibleMessageCount.value));
+const hasOlderMessages = computed(() => messages.value.length > visibleMessages.value.length);
 const activeThread = computed(() => contacts.value.find(contact => contact.id === activeContact.value) || null);
 const activeDisplayName = computed(() => activeThread.value?.name || activeContact.value);
 const activeIsGroup = computed(() => activeThread.value?.type === 'group');
@@ -718,10 +729,6 @@ onUnmounted(() => {
   window.removeEventListener('storage', handlePhonePreferencesStorage);
   clearPendingImageAttachments();
   revokeMessageImageUrls();
-});
-
-watch(visibleMessageCount, () => {
-  scrollToBottom();
 });
 
 watch(
@@ -1006,6 +1013,7 @@ async function loadContacts(characterDataOverride: any = props.characterData || 
 
 async function selectContact(contact: BackstreetContact) {
   activeContact.value = contact.id;
+  activeActionMessageId.value = '';
   hideMentionPanel();
   hideEmojiPanel();
   clearPendingImageAttachments();
@@ -1017,12 +1025,31 @@ async function selectContact(contact: BackstreetContact) {
 async function loadThread(name: string) {
   try {
     errorText.value = '';
+    activeActionMessageId.value = '';
+    visibleMessageCount.value = readVisibleMessageCount();
     messages.value = await backstreetService.getMessages(name);
     await scrollToBottom();
   } catch (error) {
     console.warn('[后街页面] 聊天加载失败:', error);
     errorText.value = '聊天加载失败';
   }
+}
+
+async function loadOlderMessages() {
+  const el = messageListRef.value;
+  const previousScrollHeight = el?.scrollHeight || 0;
+  const previousScrollTop = el?.scrollTop || 0;
+  const increment = readVisibleMessageCount();
+  visibleMessageCount.value = Math.min(messages.value.length, visibleMessageCount.value + increment);
+  activeActionMessageId.value = '';
+  await nextTick();
+  if (el) {
+    el.scrollTop = Math.max(0, el.scrollHeight - previousScrollHeight + previousScrollTop);
+  }
+}
+
+function toggleMessageActions(message: BackstreetMessage) {
+  activeActionMessageId.value = activeActionMessageId.value === message.id ? '' : message.id;
 }
 
 async function sendMessage() {
@@ -2689,6 +2716,37 @@ async function scrollToBottom() {
   padding: 10px 13px;
 }
 
+.load-older-messages {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin: 2px auto 6px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  color: rgba(226, 232, 240, 0.9);
+  background: rgba(15, 23, 42, 0.52);
+  font-size: 12px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    border-color: rgba(125, 211, 252, 0.48);
+    color: #fff;
+    background: rgba(14, 116, 144, 0.45);
+  }
+
+  i {
+    font-size: 10px;
+  }
+}
+
 .message-row.has-image {
   .message-bubble {
     width: min(76%, 294px);
@@ -2756,6 +2814,7 @@ async function scrollToBottom() {
 }
 
 .message-bubble:hover .message-actions,
+.message-bubble.actions-open .message-actions,
 .message-actions:focus-within {
   opacity: 1;
   transform: scale(1);
@@ -2763,7 +2822,13 @@ async function scrollToBottom() {
 
 @media (hover: none) {
   .message-actions {
-    opacity: 0.7;
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  .message-bubble.actions-open .message-actions,
+  .message-actions:focus-within {
+    opacity: 1;
     transform: scale(1);
   }
 }
