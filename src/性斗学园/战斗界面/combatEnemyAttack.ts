@@ -460,6 +460,8 @@ export function resolveEnemySkillAttack(params: {
   talent: TalentData | null;
   createTalentContext: () => TalentSystem.TalentEffectContext;
   damageMultiplier?: number;
+  attackDamageMultiplier?: number;
+  guaranteedCritFromStatus?: boolean;
 }): EnemySkillAttackResolution {
   if (!params.skill.data) {
     throw new Error(`技能 ${params.skill.name} 的数据不存在，无法使用`);
@@ -479,6 +481,14 @@ export function resolveEnemySkillAttack(params: {
   enemyAttackModifiers.logs.forEach(log => {
     beforeDialogueEvents.push(createLogEvent(log, 'system', 'critical'));
   });
+
+  if (params.guaranteedCritFromStatus) {
+    enemyAttackModifiers.options.guaranteedCrit = true;
+  }
+  if (params.attackDamageMultiplier && params.attackDamageMultiplier > 0 && params.attackDamageMultiplier !== 1) {
+    enemyAttackModifiers.options.damageMultiplier =
+      (enemyAttackModifiers.options.damageMultiplier ?? 1) * params.attackDamageMultiplier;
+  }
 
   const result = executeAttack(params.enemy, params.player, params.skill.data, false, enemyAttackModifiers.options);
   if (params.damageMultiplier && params.damageMultiplier !== 1) {

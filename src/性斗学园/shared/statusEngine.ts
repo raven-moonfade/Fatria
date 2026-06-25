@@ -11,11 +11,31 @@ export interface TimedStatusEffect {
   加成?: Partial<BonusStats>;
   剩余回合?: number;
   描述?: string;
+  资源变化?: {
+    快感?: number;
+    耐力?: number;
+    是否为百分比?: boolean;
+  };
+  特殊效果?: {
+    类型?: string;
+    效果值?: number;
+    是否为百分比?: boolean;
+  };
 }
 
 export interface PermanentStatusEffect {
   加成?: Partial<BonusStats>;
   描述?: string;
+  资源变化?: {
+    快感?: number;
+    耐力?: number;
+    是否为百分比?: boolean;
+  };
+  特殊效果?: {
+    类型?: string;
+    效果值?: number;
+    是否为百分比?: boolean;
+  };
 }
 
 export type StatusEntry = TimedStatusEffect | PermanentStatusEffect | number;
@@ -68,6 +88,22 @@ export function normalizeTimedStatusList(statusList: StatusList | undefined | nu
       加成: normalizeBonusStats((entry as TimedStatusEffect).加成),
       剩余回合: Math.max(0, Number((entry as TimedStatusEffect).剩余回合) || 0),
       描述: (entry as TimedStatusEffect).描述 || '',
+      资源变化:
+        (entry as TimedStatusEffect).资源变化 && typeof (entry as TimedStatusEffect).资源变化 === 'object'
+          ? {
+              快感: Number((entry as TimedStatusEffect).资源变化?.快感) || 0,
+              耐力: Number((entry as TimedStatusEffect).资源变化?.耐力) || 0,
+              是否为百分比: Boolean((entry as TimedStatusEffect).资源变化?.是否为百分比),
+            }
+          : undefined,
+      特殊效果:
+        (entry as TimedStatusEffect).特殊效果 && typeof (entry as TimedStatusEffect).特殊效果 === 'object'
+          ? {
+              类型: (entry as TimedStatusEffect).特殊效果?.类型 || '',
+              效果值: Number((entry as TimedStatusEffect).特殊效果?.效果值) || 0,
+              是否为百分比: Boolean((entry as TimedStatusEffect).特殊效果?.是否为百分比),
+            }
+          : undefined,
     };
   }
 
@@ -104,6 +140,8 @@ export function upsertStatusEffect(
     加成: normalizeBonusStats(effect.加成),
     剩余回合: Math.max(0, Number(effect.剩余回合) || 0),
     描述: effect.描述 || '',
+    资源变化: effect.资源变化,
+    特殊效果: effect.特殊效果,
   };
   return normalized;
 }

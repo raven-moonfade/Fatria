@@ -5289,7 +5289,7 @@ export const ENEMY_SKILLS: Record<string, SkillData> = {
   望月静_7: {
     id: '望月静_7',
     name: '极道·威压凝视',
-    description: '利用上位者的气场瞬间震慑对手，使其陷入"恐惧"状态，下一次受到的快感伤害翻倍',
+    description: '利用上位者的气场瞬间震慑对手，使其陷入"乏力"状态，下一次受到的快感伤害翻倍',
     effectDescription: '造成120%性斗力伤害，敏感+40%',
     icon: 'Glare',
     type: SkillType.MENTAL,
@@ -8344,7 +8344,7 @@ export const ENEMY_SKILLS: Record<string, SkillData> = {
   绫濑川_2: {
     id: '绫濑川_2',
     name: '精神疏导',
-    description: '通过轻柔的按摩与对话,缓解学生的精神压力,移除“混乱”、“恐惧”等负面状态。',
+    description: '通过轻柔的按摩与对话,缓解学生的精神压力,移除“迷离”、“乏力”等负面状态。',
     effectDescription: '造成50%性斗力伤害，480%魅力伤害',
     icon: 'Brain',
     type: SkillType.MENTAL,
@@ -19817,9 +19817,23 @@ export function convertToMvuSkillFormat(skill: SkillData) {
         BuffType.DOT_LUST,
       ]);
 
-      const buffTypeMap: Record<string, '性斗力' | '忍耐力' | '魅力' | '幸运' | '闪避率' | '暴击率' | '束缚'> = {
+      const buffTypeMap: Partial<Record<
+        string,
+        | '性斗力'
+        | '忍耐力'
+        | '魅力'
+        | '幸运'
+        | '闪避率'
+        | '暴击率'
+        | '束缚'
+        | '持续快感'
+        | '持续耐力'
+        | '敏感'
+        | '乏力'
+        | '集中'
+      >> = {
         [BuffType.BIND]: '束缚',
-        [BuffType.SENSITIVE]: '性斗力',
+        [BuffType.SENSITIVE]: '敏感',
         [BuffType.DODGE_UP]: '闪避率',
         [BuffType.DODGE_DOWN]: '闪避率',
         [BuffType.ATK_UP]: '性斗力',
@@ -19830,15 +19844,21 @@ export function convertToMvuSkillFormat(skill: SkillData) {
         [BuffType.CHARM_DOWN]: '魅力',
         [BuffType.DEF_UP]: '忍耐力',
         [BuffType.DEF_DOWN]: '忍耐力',
+        [BuffType.FEAR]: '乏力',
+        [BuffType.FOCUS]: '集中',
+        [BuffType.DOT_LUST]: '持续快感',
+        [BuffType.REGEN]: '持续耐力',
       };
-      const effectType = buffTypeMap[buff.type] || '性斗力';
+      const effectType = buffTypeMap[buff.type];
+      if (!effectType) {
+        return;
+      }
       let effectValue = buff.value;
 
       // 束缚效果值为0，持续回合数决定束缚时长；debuff使用负值
       if (buff.type === BuffType.BIND) {
         effectValue = 0; // 束缚效果值为0，通过持续回合数来控制
       } else if (
-        buff.type === BuffType.SENSITIVE ||
         buff.type === BuffType.DODGE_DOWN ||
         buff.type === BuffType.ATK_DOWN ||
         buff.type === BuffType.DEF_DOWN ||

@@ -7,7 +7,24 @@ import { BuffType, DamageSource, SkillData } from '../data/skill-types';
 
 // MVU变量中技能效果的结构
 export interface MvuSkillEffect {
-  效果类型: '性斗力' | '忍耐力' | '魅力' | '幸运' | '闪避率' | '暴击率' | '束缚';
+  效果类型:
+    | '性斗力'
+    | '忍耐力'
+    | '魅力'
+    | '幸运'
+    | '闪避率'
+    | '暴击率'
+    | '束缚'
+    | '快感变化'
+    | '持续快感'
+    | '耐力变化'
+    | '持续耐力'
+    | '敏感'
+    | '乏力'
+    | '迷离'
+    | '集中'
+    | '反弹'
+    | '吸取快感';
   效果值: number;
   是否为百分比: boolean;
   持续回合数: number;
@@ -65,6 +82,14 @@ const BUFF_TYPE_MAP: Partial<Record<BuffType, MvuSkillEffect['效果类型']>> =
   [BuffType.DODGE_DOWN]: '闪避率',
   [BuffType.BIND]: '束缚',
   [BuffType.CHARM_DEBUFF]: '魅力',
+  [BuffType.REGEN]: '持续耐力',
+  [BuffType.REFLECT]: '反弹',
+  [BuffType.LIFESTEAL]: '吸取快感',
+  [BuffType.FOCUS]: '集中',
+  [BuffType.DOT_LUST]: '持续快感',
+  [BuffType.CONFUSION]: '迷离',
+  [BuffType.FEAR]: '乏力',
+  [BuffType.SENSITIVE]: '敏感',
 };
 
 // Debuff类型集合（作用于敌人）

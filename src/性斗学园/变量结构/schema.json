@@ -153,6 +153,39 @@
               "描述": {
                 "default": "",
                 "type": "string"
+              },
+              "资源变化": {
+                "type": "object",
+                "properties": {
+                  "快感": {
+                    "default": 0,
+                    "type": "number"
+                  },
+                  "耐力": {
+                    "default": 0,
+                    "type": "number"
+                  },
+                  "是否为百分比": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              },
+              "特殊效果": {
+                "type": "object",
+                "properties": {
+                  "类型": {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  "效果值": {
+                    "default": 0,
+                    "type": "number"
+                  },
+                  "是否为百分比": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }
@@ -179,6 +212,39 @@
               "描述": {
                 "default": "",
                 "type": "string"
+              },
+              "资源变化": {
+                "type": "object",
+                "properties": {
+                  "快感": {
+                    "default": 0,
+                    "type": "number"
+                  },
+                  "耐力": {
+                    "default": 0,
+                    "type": "number"
+                  },
+                  "是否为百分比": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              },
+              "特殊效果": {
+                "type": "object",
+                "properties": {
+                  "类型": {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  "效果值": {
+                    "default": 0,
+                    "type": "number"
+                  },
+                  "是否为百分比": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }
@@ -378,10 +444,10 @@
                 "type": "object",
                 "properties": {
                   "等级": {
-                    "$ref": "#/$defs/__schema1"
+                    "$ref": "#/$defs/__schema2"
                   },
                   "描述": {
-                    "$ref": "#/$defs/__schema2"
+                    "$ref": "#/$defs/__schema3"
                   },
                   "类型": {
                     "type": "string",
@@ -414,10 +480,10 @@
                 "type": "object",
                 "properties": {
                   "等级": {
-                    "$ref": "#/$defs/__schema1"
+                    "$ref": "#/$defs/__schema2"
                   },
                   "描述": {
-                    "$ref": "#/$defs/__schema2"
+                    "$ref": "#/$defs/__schema3"
                   },
                   "类型": {
                     "type": "string",
@@ -456,10 +522,10 @@
                 "type": "object",
                 "properties": {
                   "等级": {
-                    "$ref": "#/$defs/__schema1"
+                    "$ref": "#/$defs/__schema2"
                   },
                   "描述": {
-                    "$ref": "#/$defs/__schema2"
+                    "$ref": "#/$defs/__schema3"
                   },
                   "类型": {
                     "type": "string",
@@ -483,19 +549,19 @@
           "type": "object",
           "properties": {
             "主装备": {
-              "$ref": "#/$defs/__schema3"
+              "$ref": "#/$defs/__schema4"
             },
             "副装备": {
-              "$ref": "#/$defs/__schema3"
+              "$ref": "#/$defs/__schema4"
             },
             "饰品1": {
-              "$ref": "#/$defs/__schema3"
+              "$ref": "#/$defs/__schema4"
             },
             "饰品2": {
-              "$ref": "#/$defs/__schema3"
+              "$ref": "#/$defs/__schema4"
             },
             "特殊装备": {
-              "$ref": "#/$defs/__schema3"
+              "$ref": "#/$defs/__schema4"
             }
           }
         }
@@ -693,7 +759,17 @@
                             "幸运",
                             "闪避率",
                             "暴击率",
-                            "束缚"
+                            "束缚",
+                            "快感变化",
+                            "持续快感",
+                            "耐力变化",
+                            "持续耐力",
+                            "敏感",
+                            "乏力",
+                            "迷离",
+                            "集中",
+                            "反弹",
+                            "吸取快感"
                           ]
                         },
                         "效果值": {
@@ -802,6 +878,18 @@
       }
     },
     "__schema1": {
+      "default": "敏感",
+      "type": "string",
+      "enum": [
+        "敏感",
+        "乏力",
+        "迷离",
+        "集中",
+        "反弹",
+        "吸取快感"
+      ]
+    },
+    "__schema2": {
       "default": "C",
       "type": "string",
       "enum": [
@@ -812,11 +900,11 @@
         "SS"
       ]
     },
-    "__schema2": {
+    "__schema3": {
       "default": "",
       "type": "string"
     },
-    "__schema3": {
+    "__schema4": {
       "default": {},
       "type": "object",
       "properties": {

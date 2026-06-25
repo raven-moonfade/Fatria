@@ -951,7 +951,7 @@ export const MENTAL_SKILLS: SkillData[] = [
       { cost: 2, damageIncrease: 10, costReduction: 0, cooldownReduction: 0 },
       { cost: 3, damageIncrease: 15, costReduction: 2, cooldownReduction: 0 },
       { cost: 4, damageIncrease: 20, costReduction: 2, cooldownReduction: 1 },
-      { cost: 5, damageIncrease: 25, costReduction: 3, cooldownReduction: 1, specialEffect: '恐惧+1回合' },
+      { cost: 5, damageIncrease: 25, costReduction: 3, cooldownReduction: 1, specialEffect: '乏力+1回合' },
       { cost: 6, damageIncrease: 30, costReduction: 4, cooldownReduction: 1 },
     ],
     voiceLine: '笑一个~这可是会被很多人看到的哦？',

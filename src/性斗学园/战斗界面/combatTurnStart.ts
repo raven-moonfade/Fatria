@@ -19,6 +19,12 @@ export type TurnStartAction =
       delta: number;
     }
   | {
+      kind: 'resourcePopup';
+      target: 'player' | 'enemy';
+      resource: 'stamina' | 'pleasure';
+      delta: number;
+    }
+  | {
       kind: 'bindPlayer';
       turns: number;
       bindSource: 'player' | 'enemy';
@@ -105,10 +111,31 @@ export function createEnduranceRecoveryLog(
   };
 }
 
+export function createEnduranceRecoveryPopup(
+  target: 'player' | 'enemy',
+  recovery: EnduranceRecoveryResult,
+): TurnStartAction | null {
+  if (recovery.recovered <= 0) {
+    return null;
+  }
+
+  return {
+    kind: 'resourcePopup',
+    target,
+    resource: 'stamina',
+    delta: recovery.recovered,
+  };
+}
+
 export function createTurnStartRecoveryActions(player: Character, enemy: Character): TurnStartAction[] {
+  const playerRecovery = recoverTurnStartEndurance(player);
+  const enemyRecovery = recoverTurnStartEndurance(enemy);
+
   return [
-    createEnduranceRecoveryLog(player.name, recoverTurnStartEndurance(player)),
-    createEnduranceRecoveryLog(enemy.name, recoverTurnStartEndurance(enemy)),
+    createEnduranceRecoveryLog(player.name, playerRecovery),
+    createEnduranceRecoveryPopup('player', playerRecovery),
+    createEnduranceRecoveryLog(enemy.name, enemyRecovery),
+    createEnduranceRecoveryPopup('enemy', enemyRecovery),
   ].filter(Boolean) as TurnStartAction[];
 }
 

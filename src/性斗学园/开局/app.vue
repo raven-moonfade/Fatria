@@ -1710,10 +1710,8 @@ const handleStartGame = async () => {
           'crit_down',
           'bind',
           'sensitive',
-          'silence',
+          'confusion',
           'fear',
-          'shame',
-          'heat',
           'dot_lust',
         ]);
 
@@ -1734,15 +1732,20 @@ const handleStartGame = async () => {
               crit_up: '暴击率',
               crit_down: '暴击率',
               bind: '束缚',
+              regen: '持续耐力',
               sensitive: '敏感',
-              silence: '沉默',
-              fear: '恐惧',
-              shame: '羞耻',
-              heat: '发情',
+              fear: '乏力',
+              confusion: '迷离',
+              focus: '集中',
+              reflect: '反弹',
+              lifesteal: '吸取快感',
               dot_lust: '持续快感',
             };
 
-            const effectType = buffTypeMap[buff.type] || '性斗力';
+            const effectType = buffTypeMap[buff.type];
+            if (!effectType) {
+              return;
+            }
             const rawEffectValue = buff.value || 0;
             // 判断是否为负面效果：检查是否在debuff类型集合中，或者效果值为负
             const isDebuff = debuffTypes.has(buff.type) || rawEffectValue < 0;

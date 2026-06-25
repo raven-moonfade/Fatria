@@ -37,8 +37,43 @@ function readStatusBonuses(statusData: unknown): Record<string, number> {
   return bonuses as Record<string, number>;
 }
 
+function readStatusResourceChange(statusData: unknown): { 快感?: number; 耐力?: number; 是否为百分比?: boolean } | null {
+  if (!statusData || typeof statusData !== 'object') {
+    return null;
+  }
+
+  const resourceChange = (statusData as { 资源变化?: unknown }).资源变化;
+  if (!resourceChange || typeof resourceChange !== 'object') {
+    return null;
+  }
+
+  return resourceChange as { 快感?: number; 耐力?: number; 是否为百分比?: boolean };
+}
+
+function readStatusSpecialEffect(
+  statusData: unknown,
+): { 类型?: string; 效果值?: number; 是否为百分比?: boolean } | null {
+  if (!statusData || typeof statusData !== 'object') {
+    return null;
+  }
+
+  const specialEffect = (statusData as { 特殊效果?: unknown }).特殊效果;
+  if (!specialEffect || typeof specialEffect !== 'object') {
+    return null;
+  }
+
+  return specialEffect as { 类型?: string; 效果值?: number; 是否为百分比?: boolean };
+}
+
 function getStatusIcon(statusName: string, type: 'buff' | 'debuff'): string {
   if (statusName.includes('敏感')) return '❤️';
+  if (statusName.includes('乏力') || statusName.includes('恐惧')) return '!';
+  if (statusName.includes('迷离') || statusName.includes('混乱')) return '?';
+  if (statusName.includes('集中')) return '◆';
+  if (statusName.includes('反弹')) return '↩';
+  if (statusName.includes('吸取')) return '↓';
+  if (statusName.includes('持续快感')) return '♥';
+  if (statusName.includes('持续耐力')) return '+';
   if (statusName.includes('沉默')) return '😶';
   if (statusName.includes('束缚')) return '⛓️';
   if (statusName.includes('无敌')) return '🛡️';
@@ -70,6 +105,33 @@ export function statusListToEffects(statusList: StatusList | Record<string, unkn
       }
 
       displayName = bonusTexts.join(', ') || name;
+    }
+
+    const resourceChange = readStatusResourceChange(val);
+    if (resourceChange) {
+      const resourceTexts: string[] = [];
+      const isPercent = Boolean(resourceChange.是否为百分比);
+      const pleasure = Number(resourceChange.快感) || 0;
+      const endurance = Number(resourceChange.耐力) || 0;
+      if (pleasure !== 0) {
+        const sign = pleasure > 0 ? '+' : '';
+        resourceTexts.push(`快感${sign}${pleasure}${isPercent ? '%' : ''}`);
+        type = pleasure > 0 ? 'debuff' : 'buff';
+      }
+      if (endurance !== 0) {
+        const sign = endurance > 0 ? '+' : '';
+        resourceTexts.push(`耐力${sign}${endurance}${isPercent ? '%' : ''}`);
+        if (endurance < 0) type = 'debuff';
+      }
+      displayName = resourceTexts.join(', ') || displayName;
+    }
+
+    const specialEffect = readStatusSpecialEffect(val);
+    if (specialEffect?.类型) {
+      const effectValue = Number(specialEffect.效果值) || 0;
+      const valueText = effectValue !== 0 ? `${effectValue > 0 ? '+' : ''}${effectValue}${specialEffect.是否为百分比 ? '%' : ''}` : '';
+      displayName = `${specialEffect.类型}${valueText}`;
+      type = ['敏感', '乏力', '迷离', '恐惧', '混乱'].includes(specialEffect.类型) ? 'debuff' : 'buff';
     }
 
     effects.push({

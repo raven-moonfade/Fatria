@@ -22,10 +22,11 @@ export interface CombatResult {
 /**
  * 计算技能基础伤害
  * @param attacker 攻击者
+ * @param target 目标
  * @param skill 技能数据
  * @returns 基础伤害值
  */
-export function calculateBaseDamage(attacker: Character, skill: SkillData): number {
+export function calculateBaseDamage(attacker: Character, target: Character, skill: SkillData): number {
   let totalDamage = 0;
 
   console.info('[战斗计算] 计算基础伤害:');
@@ -51,6 +52,9 @@ export function calculateBaseDamage(attacker: Character, skill: SkillData): numb
         break;
       case DamageSource.FIXED:
         sourceValue = 1;
+        break;
+      case DamageSource.TARGET_PLEASURE:
+        sourceValue = target.stats.currentPleasure;
         break;
     }
 
@@ -243,7 +247,7 @@ export function executeAttack(
   }
 
   // 1. 计算基础伤害（每次攻击相同）
-  const baseDamage = calculateBaseDamage(attacker, skill);
+  const baseDamage = calculateBaseDamage(attacker, target, skill);
 
   if (hitCount > 1) {
     logs.push(`【${hitCount}连击技能】`);
@@ -478,7 +482,7 @@ function getBuffName(type: BuffType): string {
     [BuffType.FOCUS]: '集中',
     [BuffType.SHAME]: '羞耻',
     [BuffType.HEAT]: '发情',
-    [BuffType.FEAR]: '恐惧',
+    [BuffType.FEAR]: '乏力',
     [BuffType.DOT_LUST]: '持续快感',
     [BuffType.REGEN]: '持续回复',
   };

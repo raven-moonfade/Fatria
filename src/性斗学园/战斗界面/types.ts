@@ -208,10 +208,27 @@ export interface MvuStatData {
     _暴击率: number;
   };
   临时状态: {
-    状态列表: Record<string, { 加成: BonusStats; 剩余回合: number; 描述?: string }>;
+    状态列表: Record<
+      string,
+      {
+        加成: BonusStats;
+        剩余回合: number;
+        描述?: string;
+        资源变化?: { 快感?: number; 耐力?: number; 是否为百分比?: boolean };
+        特殊效果?: { 类型?: string; 效果值?: number; 是否为百分比?: boolean };
+      }
+    >;
   };
   永久状态: {
-    状态列表: Record<string, { 加成: BonusStats; 描述?: string }>;
+    状态列表: Record<
+      string,
+      {
+        加成: BonusStats;
+        描述?: string;
+        资源变化?: { 快感?: number; 耐力?: number; 是否为百分比?: boolean };
+        特殊效果?: { 类型?: string; 效果值?: number; 是否为百分比?: boolean };
+      }
+    >;
   };
   性斗系统: {
     对手名称: string;

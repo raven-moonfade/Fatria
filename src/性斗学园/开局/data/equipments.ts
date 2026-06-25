@@ -207,7 +207,7 @@ export const MAIN_EQUIPMENTS: EquipmentData[] = [
       {
         id: 'eff_hypno_gaze',
         name: '迷离之眼',
-        description: '精神技能命中率+15%，混乱效果持续+1回合',
+        description: '精神技能命中率+15%，迷离效果持续+1回合',
         trigger: 'on_mental_skill',
         chance: 100,
         cooldown: 0,
@@ -587,7 +587,7 @@ export const SPECIAL_EQUIPMENTS: EquipmentData[] = [
       {
         id: 'eff_blackmail',
         name: '威胁材料',
-        description: '羞耻类技能效果+30%，恐惧持续+1回合',
+        description: '羞耻类技能效果+30%，乏力持续+1回合',
         trigger: 'on_shame_skill',
         chance: 100,
         cooldown: 0,
