@@ -195,6 +195,7 @@ const debugBackpack = computed(() => {
 // 筛选状态
 const selectedType = ref<string>('全部');
 const selectedLevel = ref<string>('全部');
+const ITEM_RARITY_ORDER = ['C', 'B', 'A', 'S', 'SS', 'SSS', 'EX'];
 
 // 工具提示
 const tooltip = ref({
@@ -273,11 +274,20 @@ const itemLevels = computed(() => {
   Object.values(items).forEach((item: any) => {
     if (item?.等级) levels.add(item.等级);
   });
-  return Array.from(levels).sort((a, b) => {
-    const order = ['C', 'B', 'A', 'S', 'SS'];
-    return order.indexOf(a) - order.indexOf(b);
-  });
+  return Array.from(levels).sort(compareItemRarity);
 });
+
+function getItemRarityRank(level: string): number {
+  if (level === '全部') return -1;
+  const index = ITEM_RARITY_ORDER.indexOf(level);
+  return index >= 0 ? index : ITEM_RARITY_ORDER.length;
+}
+
+function compareItemRarity(a: string, b: string): number {
+  const rarityDiff = getItemRarityRank(a) - getItemRarityRank(b);
+  if (rarityDiff !== 0) return rarityDiff;
+  return a.localeCompare(b, 'zh-Hans-CN');
+}
 
 // 装备栏槽位
 const equipmentSlots = computed(() => {
@@ -332,6 +342,11 @@ const filteredItems = computed(() => {
         return false;
       }
       return true;
+    })
+    .sort(([keyA, itemA]: [string, any], [keyB, itemB]: [string, any]) => {
+      const rarityDiff = compareItemRarity(String(itemA?.等级 || ''), String(itemB?.等级 || ''));
+      if (rarityDiff !== 0) return rarityDiff;
+      return keyA.localeCompare(keyB, 'zh-Hans-CN');
     })
     .reduce(
       (acc, [key, item]) => {
@@ -518,6 +533,41 @@ function createFullBonusAttributes(partial?: any): Record<string, number> {
   };
 }
 
+function addEquipmentBackToBackpack(statData: any, itemName: string, itemData: any) {
+  if (!statData.物品系统.背包) {
+    statData.物品系统.背包 = {};
+  }
+
+  const existing = statData.物品系统.背包[itemName];
+  if (existing && typeof existing === 'object' && existing.类型 === '装备') {
+    const currentQuantity = Math.max(1, Number(existing.数量 ?? 1) || 1);
+    statData.物品系统.背包[itemName] = {
+      ...existing,
+      ...itemData,
+      数量: currentQuantity + 1,
+    };
+    return;
+  }
+
+  statData.物品系统.背包[itemName] = {
+    ...itemData,
+    数量: 1,
+  };
+}
+
+function consumeOneBackpackEquipment(statData: any, itemKey: string) {
+  const backpackItem = statData.物品系统.背包?.[itemKey];
+  if (!backpackItem) return;
+
+  const currentQuantity = Math.max(1, Number(backpackItem.数量 ?? 1) || 1);
+  if (currentQuantity > 1) {
+    backpackItem.数量 = currentQuantity - 1;
+    return;
+  }
+
+  delete statData.物品系统.背包[itemKey];
+}
+
 // 装备物品
 async function equipItem(itemKey: string, item: any) {
   if (item.类型 !== '装备' || !item.部位) {
@@ -564,23 +614,17 @@ async function equipItem(itemKey: string, item: any) {
     const currentEquipped = statData.物品系统._装备栏?.[slotKey];
     if (currentEquipped?.名称) {
       // 将当前装备放回背包
-      if (!statData.物品系统.背包) {
-        statData.物品系统.背包 = {};
-      }
-      statData.物品系统.背包[currentEquipped.名称] = {
+      addEquipmentBackToBackpack(statData, currentEquipped.名称, {
         类型: '装备',
         等级: currentEquipped.等级 || 'C',
         加成属性: createFullBonusAttributes(currentEquipped.加成属性),
         部位: item.部位,
-        数量: 1,
         描述: currentEquipped.描述 || '',
-      };
+      });
     }
 
     // 从背包移除
-    if (statData.物品系统.背包 && statData.物品系统.背包[itemKey]) {
-      delete statData.物品系统.背包[itemKey];
-    }
+    consumeOneBackpackEquipment(statData, itemKey);
 
     // 装备到槽位
     if (!statData.物品系统._装备栏) {
@@ -770,13 +814,12 @@ async function unequipItem(slotKey: string) {
       等级: equippedItem.等级 || 'C',
       加成属性: createFullBonusAttributes(equippedItem.加成属性),
       部位: itemSlot,
-      数量: 1 as const,
       描述: equippedItem.描述 || '',
     };
 
     console.log('[背包界面] 添加到背包的物品:', backpackItem);
 
-    statData.物品系统.背包[equippedItem.名称] = backpackItem;
+    addEquipmentBackToBackpack(statData, equippedItem.名称, backpackItem);
 
     // 清空装备槽位（使用完整的结构）
     statData.物品系统._装备栏[slotKey] = {

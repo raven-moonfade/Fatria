@@ -46,13 +46,14 @@ function buildEndpoint(baseUrl: string, path: string): string {
 
 function normalizeSettings(settings: Partial<SecondaryPhoneApiSettings> | null | undefined): SecondaryPhoneApiSettings {
   const models = Array.isArray(settings?.models) ? uniqueStrings(settings.models) : [];
-  const model = safeString(settings?.model);
+  const selectedModel = safeString(settings?.model);
+  const model = selectedModel && models.includes(selectedModel) ? selectedModel : '';
   return {
     enabled: Boolean(settings?.enabled),
     baseUrl: safeString(settings?.baseUrl),
     apiKey: safeString(settings?.apiKey),
     model,
-    models: model && !models.includes(model) ? [model, ...models] : models,
+    models,
   };
 }
 

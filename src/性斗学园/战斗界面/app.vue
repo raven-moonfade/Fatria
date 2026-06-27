@@ -209,6 +209,23 @@
                   </svg>
                   <span>{{ isItemsDisabled ? (isSinItemsDisabled ? '七宗罪封印' : '已封印') : '物品背包' }}</span>
                 </Card>
+                <Card v-if="hasEquipmentSkills" hover class="menu-card" @click="activeMenu = 'equipment'">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    class="icon-violet"
+                  >
+                    <path d="m12 2 3 6 6 .9-4.5 4.4 1.1 6.2L12 16.6 6.4 19.5l1.1-6.2L3 8.9 9 8z" />
+                    <path d="M12 8v5" />
+                    <path d="M9.5 10.5h5" />
+                  </svg>
+                  <span>装备技</span>
+                </Card>
                 <Card hover class="menu-card" @click="handleSkipTurn">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -466,6 +483,54 @@
                 </div>
                 <button class="back-btn" @click="activeMenu = 'main'">返回</button>
               </div>
+
+              <!-- 装备技菜单 -->
+              <div v-else-if="activeMenu === 'equipment'" key="equipment" class="menu-equipment">
+                <template v-if="equippedEquipmentSkills.length > 0">
+                  <Card
+                    v-for="skill in equippedEquipmentSkills"
+                    :key="skill.id"
+                    :hover="!isEquipmentSkillDisabled(skill)"
+                    class="skill-card equipment-skill-card"
+                    :class="{ disabled: isEquipmentSkillDisabled(skill) }"
+                    @click="handleEquipmentSkill(skill)"
+                  >
+                    <div v-if="getEquipmentSkillCooldown(skill) > 0" class="cooldown-overlay">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <span class="cooldown-count">{{ getEquipmentSkillCooldown(skill) }}<small>T</small></span>
+                    </div>
+                    <div class="skill-header">
+                      <span class="skill-name equipment-skill-name">{{ skill.name }}</span>
+                      <span class="skill-rarity" :class="'rarity-' + skill.grade.toLowerCase()">{{ skill.grade }}</span>
+                    </div>
+                    <p class="equipment-source">{{ skill.equipmentName }} · {{ skill.slotKey }}</p>
+                    <p class="skill-desc equipment-skill-desc" :title="skill.description">{{ skill.description }}</p>
+                    <div class="skill-stats-row">
+                      <span class="stat-item equipment-use">
+                        {{ getEquipmentSkillRemainingUses(skill) }}/{{ skill.usesPerBattle }}次
+                      </span>
+                      <span v-if="skill.cooldown > 0" class="stat-item cooldown">{{ skill.cooldown }}回合</span>
+                      <span v-if="skill.sharedCooldownGroup" class="stat-item equipment-free">共享冷却</span>
+                      <span class="stat-item equipment-free">不耗行动</span>
+                    </div>
+                  </Card>
+                </template>
+                <div v-else class="empty-items">
+                  <p class="empty-text">当前没有已装备的装备技</p>
+                </div>
+                <button class="back-btn" @click="activeMenu = 'main'">返回</button>
+              </div>
             </Transition>
           </div>
         </div>
@@ -528,6 +593,23 @@
 
     <!-- 战斗特效 -->
     <CombatEffect v-if="effectType" :type="effectType!" :show="showEffect" />
+
+    <!-- 装备技释放特效 -->
+    <div
+      v-if="equipmentSkillVisualEffect"
+      :key="equipmentSkillVisualEffect.key"
+      class="equipment-skill-visual"
+      :class="[`tone-${equipmentSkillVisualEffect.tone}`, `grade-${equipmentSkillVisualEffect.grade.toLowerCase()}`]"
+    >
+      <div class="equipment-skill-visual-sweep"></div>
+      <div class="equipment-skill-visual-sigil">
+        <span>{{ equipmentSkillVisualEffect.grade }}</span>
+      </div>
+      <div class="equipment-skill-visual-caption">
+        <span class="equipment-skill-visual-source">{{ equipmentSkillVisualEffect.equipmentName }}</span>
+        <span class="equipment-skill-visual-name">{{ equipmentSkillVisualEffect.skillName }}</span>
+      </div>
+    </div>
 
     <!-- 协同作战立绘特效 -->
     <div v-if="companionAssistEffect" class="companion-assist-effect">
@@ -731,6 +813,11 @@ import { getTalentById, type TalentData } from '../性斗学园脚本/data/talen
 import * as TalentSystem from './talentSystem';
 import { getEnemySnapshot, getPlayerSnapshot } from '../shared/statSelectors';
 import { tickStatusList, type TimedStatusEffect } from '../shared/statusEngine';
+import {
+  getEquipmentSkillsFromEquippedSlots,
+  type EquippedEquipmentSkill,
+  type EquipmentSkillDefinition,
+} from '../shared/legendaryEquipment';
 
 // 延迟加载数据库模块的辅助函数
 let enemyDbModule: any = null;
@@ -759,7 +846,7 @@ const enemyRuntimeSkillCooldowns = combatRuntime.enemySkillCooldowns;
 const enemyRuntimeSkillEffects = combatRuntime.enemySkillEffects;
 const turnState = combatRuntime.turnState;
 const logs = combatRuntime.logs;
-const activeMenu = ref<'main' | 'skills' | 'items'>('main');
+const activeMenu = ref<'main' | 'skills' | 'items' | 'equipment'>('main');
 const allowSurrender = ref<boolean>(true); // 允许认输：true时不可认输，false时允许认输
 const showSurrenderMenu = ref<boolean>(false);
 let hasLoggedMissingPlayerSkills = false;
@@ -781,6 +868,21 @@ const isBossSurrenderDisabled = ref<boolean>(false);
 // 每回合道具使用限制
 const itemUsedThisTurn = ref<boolean>(false);
 
+// 装备技战斗内状态
+const equippedEquipmentSkills = ref<EquippedEquipmentSkill[]>([]);
+const equipmentSkillUses = ref<Record<string, number>>({});
+const equipmentSkillCooldowns = ref<Record<string, number>>({});
+const equipmentSkillSharedCooldowns = ref<Record<string, number>>({});
+
+type EquipmentSkillVisualTone = 'bind' | 'chain' | 'rose' | 'crown';
+interface EquipmentSkillVisualState {
+  key: number;
+  skillName: string;
+  equipmentName: string;
+  grade: string;
+  tone: EquipmentSkillVisualTone;
+}
+
 // 七宗罪禁用状态（计算属性）
 const isSinItemsDisabled = computed(() => {
   return TalentSystem.sinTalentDisablesItems(playerTalent.value);
@@ -791,6 +893,7 @@ const isSinSurrenderDisabled = computed(() => {
 // 综合禁用状态（BOSS或七宗罪任一禁用则禁用，或本回合已使用道具）
 const isItemsDisabled = computed(() => isBossItemsDisabled.value || isSinItemsDisabled.value || itemUsedThisTurn.value);
 const isSurrenderDisabled = computed(() => isBossSurrenderDisabled.value || isSinSurrenderDisabled.value);
+const hasEquipmentSkills = computed(() => equippedEquipmentSkills.value.length > 0);
 
 // BOSS对话显示状态
 const bossOverlayText = ref<string>('');
@@ -805,6 +908,7 @@ const phaseTransitionEffect = ref<'phase1to2' | 'phase2to3' | 'eden-game-over' |
 const effectType = ref<'critical' | 'dodge' | 'climax' | 'victory' | 'defeat' | null>(null);
 const showEffect = ref(false);
 const companionAssistEffect = ref<{ name: string; avatarUrl: string; skillName: string } | null>(null);
+const equipmentSkillVisualEffect = ref<EquipmentSkillVisualState | null>(null);
 type ResourcePopupTarget = 'player' | 'enemy';
 type ResourcePopupKind = 'stamina' | 'pleasure';
 interface ResourcePopup {
@@ -847,6 +951,7 @@ const skillEffectTooltip = ref<SkillEffectTooltipState | null>(null);
 const cooperationTriggerChance = ref(0);
 const unusableSkillFeedbackId = ref<string | null>(null);
 let companionAssistTimer: ReturnType<typeof setTimeout> | null = null;
+let equipmentSkillVisualTimer: ReturnType<typeof setTimeout> | null = null;
 let unusableSkillFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let skillEffectLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 let skillEffectClickGuardTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2050,6 +2155,14 @@ async function loadFromMvu() {
       }
     }
 
+    const nextEquipmentSkills = getEquipmentSkillsFromEquippedSlots(data);
+    equippedEquipmentSkills.value = nextEquipmentSkills;
+    resetEquipmentSkillBattleState(nextEquipmentSkills);
+    console.info(
+      '[战斗界面] 已加载装备技:',
+      nextEquipmentSkills.map(skill => `${skill.equipmentName}:${skill.name}`),
+    );
+
     // 获取对手名称
     const enemyName = _.get(data, '性斗系统.对手名称', '');
     console.info('[战斗界面] 对手名称:', enemyName);
@@ -2786,6 +2899,544 @@ function buildSensitiveDamageLog(targetName: string, sensitiveValue: number): st
   return `${targetName} 的敏感状态使受到的快感伤害${direction}${Math.abs(sensitiveValue)}%`;
 }
 
+interface EquipmentSkillLog {
+  message: string;
+  type: CombatLogEntry['type'];
+}
+
+function resetEquipmentSkillBattleState(skills: EquipmentSkillDefinition[]) {
+  equipmentSkillUses.value = Object.fromEntries(skills.map(skill => [skill.id, 0]));
+  equipmentSkillCooldowns.value = {};
+  equipmentSkillSharedCooldowns.value = {};
+}
+
+function getEquipmentSkillRemainingUses(skill: EquipmentSkillDefinition): number {
+  const used = Math.max(0, Number(equipmentSkillUses.value[skill.id]) || 0);
+  return Math.max(0, skill.usesPerBattle - used);
+}
+
+function getEquipmentSkillCooldown(skill: EquipmentSkillDefinition): number {
+  const ownCooldown = Math.max(0, Number(equipmentSkillCooldowns.value[skill.id]) || 0);
+  const sharedCooldown = skill.sharedCooldownGroup
+    ? Math.max(0, Number(equipmentSkillSharedCooldowns.value[skill.sharedCooldownGroup]) || 0)
+    : 0;
+  return Math.max(ownCooldown, sharedCooldown);
+}
+
+function isEquipmentSkillDisabled(skill: EquipmentSkillDefinition): boolean {
+  return turnState.phase !== 'playerInput' || getEquipmentSkillRemainingUses(skill) <= 0 || getEquipmentSkillCooldown(skill) > 0;
+}
+
+function markEquipmentSkillUsed(skill: EquipmentSkillDefinition) {
+  equipmentSkillUses.value = {
+    ...equipmentSkillUses.value,
+    [skill.id]: Math.max(0, Number(equipmentSkillUses.value[skill.id]) || 0) + 1,
+  };
+
+  if (skill.cooldown > 0) {
+    equipmentSkillCooldowns.value = {
+      ...equipmentSkillCooldowns.value,
+      [skill.id]: skill.cooldown,
+    };
+  }
+
+  if (skill.sharedCooldownGroup && skill.sharedCooldown && skill.sharedCooldown > 0) {
+    equipmentSkillSharedCooldowns.value = {
+      ...equipmentSkillSharedCooldowns.value,
+      [skill.sharedCooldownGroup]: skill.sharedCooldown,
+    };
+  }
+}
+
+function decrementEquipmentSkillCooldowns() {
+  const nextCooldowns: Record<string, number> = {};
+  Object.entries(equipmentSkillCooldowns.value).forEach(([skillId, cooldown]) => {
+    const next = Math.max(0, Number(cooldown) || 0) - 1;
+    if (next > 0) {
+      nextCooldowns[skillId] = next;
+    }
+  });
+  equipmentSkillCooldowns.value = nextCooldowns;
+
+  const nextSharedCooldowns: Record<string, number> = {};
+  Object.entries(equipmentSkillSharedCooldowns.value).forEach(([groupId, cooldown]) => {
+    const next = Math.max(0, Number(cooldown) || 0) - 1;
+    if (next > 0) {
+      nextSharedCooldowns[groupId] = next;
+    }
+  });
+  equipmentSkillSharedCooldowns.value = nextSharedCooldowns;
+}
+
+function getStatusRemainingTurns(entry: unknown): number {
+  if (typeof entry === 'number') {
+    return Math.max(0, Number(entry) || 0);
+  }
+  if (!entry || typeof entry !== 'object') {
+    return 0;
+  }
+  return Math.max(0, Number((entry as TimedStatusEffect).剩余回合) || 0);
+}
+
+function getStatusBonus(entry: unknown): Record<string, number> {
+  if (!entry || typeof entry !== 'object') {
+    return {};
+  }
+  const bonus = (entry as TimedStatusEffect).加成;
+  return bonus && typeof bonus === 'object' ? (bonus as Record<string, number>) : {};
+}
+
+function getStatusResourceChange(entry: unknown): TimedStatusEffect['资源变化'] | undefined {
+  if (!entry || typeof entry !== 'object') {
+    return undefined;
+  }
+  return (entry as TimedStatusEffect).资源变化;
+}
+
+function getStatusSpecialEffect(entry: unknown): TimedStatusEffect['特殊效果'] | undefined {
+  if (!entry || typeof entry !== 'object') {
+    return undefined;
+  }
+  return (entry as TimedStatusEffect).特殊效果;
+}
+
+function isNegativeSpecialEffect(special: TimedStatusEffect['特殊效果']): boolean {
+  if (!special?.类型) {
+    return false;
+  }
+  const type = normalizeSkillEffectType(special.类型);
+  const value = Number(special.效果值) || 0;
+  if (type === '敏感') {
+    return value > 0;
+  }
+  return ['乏力', '迷离'].includes(type) && value > 0;
+}
+
+function isPositiveSpecialEffect(special: TimedStatusEffect['特殊效果']): boolean {
+  if (!special?.类型) {
+    return false;
+  }
+  const type = normalizeSkillEffectType(special.类型);
+  const value = Number(special.效果值) || 0;
+  if (type === '敏感') {
+    return value < 0;
+  }
+  return ['集中', '反弹', '吸取快感'].includes(type) && value > 0;
+}
+
+function isNegativeStatusEntry(entry: unknown): boolean {
+  if (getStatusRemainingTurns(entry) <= 0) {
+    return false;
+  }
+
+  const bonuses = Object.values(getStatusBonus(entry)).map(value => Number(value) || 0);
+  if (bonuses.some(value => value < 0)) {
+    return true;
+  }
+
+  const resourceChange = getStatusResourceChange(entry);
+  if (resourceChange) {
+    const pleasure = Number(resourceChange.快感) || 0;
+    const endurance = Number(resourceChange.耐力) || 0;
+    if (pleasure > 0 || endurance < 0) {
+      return true;
+    }
+  }
+
+  return isNegativeSpecialEffect(getStatusSpecialEffect(entry));
+}
+
+function isPositiveStatusEntry(entry: unknown): boolean {
+  if (getStatusRemainingTurns(entry) <= 0 || isNegativeStatusEntry(entry)) {
+    return false;
+  }
+
+  const bonuses = Object.values(getStatusBonus(entry)).map(value => Number(value) || 0);
+  if (bonuses.some(value => value > 0)) {
+    return true;
+  }
+
+  const resourceChange = getStatusResourceChange(entry);
+  if (resourceChange) {
+    const pleasure = Number(resourceChange.快感) || 0;
+    const endurance = Number(resourceChange.耐力) || 0;
+    if (pleasure < 0 || endurance > 0) {
+      return true;
+    }
+  }
+
+  return isPositiveSpecialEffect(getStatusSpecialEffect(entry));
+}
+
+async function applyEnemyEquipmentStatus(statusName: string, effect: TimedStatusEffect) {
+  setEnemyRuntimeStatus(statusName, effect);
+  await updateEnemyRealtimeStats();
+}
+
+async function applyPlayerEquipmentStatus(statusName: string, effect: TimedStatusEffect) {
+  await addPlayerTemporaryStatus(statusName, effect);
+  await reloadStatusFromMvu();
+}
+
+async function changePlayerPleasure(delta: number): Promise<{ before: number; after: number; actual: number }> {
+  const before = player.value.stats.currentPleasure;
+  const after = Math.max(0, Math.min(player.value.stats.maxPleasure, before + delta));
+  player.value.stats.currentPleasure = after;
+  await syncPlayerPleasureToMvu(after);
+  return { before, after, actual: after - before };
+}
+
+async function changePlayerEndurance(delta: number): Promise<{ before: number; after: number; actual: number }> {
+  const before = player.value.stats.currentEndurance;
+  const after = Math.max(0, Math.min(player.value.stats.maxEndurance, before + delta));
+  player.value.stats.currentEndurance = after;
+  await syncPlayerStaminaToMvu(after);
+  return { before, after, actual: after - before };
+}
+
+async function applyEnemyBindFromEquipment(duration: number, skillName: string): Promise<EquipmentSkillLog[]> {
+  const logs: EquipmentSkillLog[] = [];
+  if (BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'muxinlan') {
+    const immuneDialogue = BossSystem.getBindImmuneDialogue(BossSystem.bossState.currentPhase);
+    if (immuneDialogue) {
+      BossSystem.queueDialogues([immuneDialogue]);
+    }
+    logs.push({ message: `${enemy.value.name} 免疫了${skillName}的束缚效果！`, type: 'debuff' });
+    return logs;
+  }
+
+  let finalDuration = Math.max(1, duration);
+  if (enemySensoryNumb.value > 0) {
+    finalDuration = 1;
+    enemySensoryNumb.value = 0;
+    logs.push({ message: `【感官麻木】${enemy.value.name} 的束缚持续时间被减少为1回合！`, type: 'info' });
+  }
+
+  finalDuration = Math.min(finalDuration, MAX_BIND_DURATION);
+  enemyBoundTurns.value = Math.max(enemyBoundTurns.value, finalDuration);
+  enemyBindSource.value = 'player';
+  logs.push({ message: `${enemy.value.name} 被${skillName}束缚了 ${finalDuration} 回合。`, type: 'debuff' });
+  return logs;
+}
+
+async function clearPlayerDebuffsForEquipment(): Promise<EquipmentSkillLog[]> {
+  const statusList = await readPlayerTemporaryStatusList();
+  const nextStatusList: Record<string, any> = {};
+  const removedNames: string[] = [];
+
+  Object.entries(statusList).forEach(([name, entry]) => {
+    if (isNegativeStatusEntry(entry)) {
+      removedNames.push(name);
+      return;
+    }
+    nextStatusList[name] = entry;
+  });
+
+  await setPlayerTemporaryStatusList(nextStatusList);
+  player.value.statusEffects = statusListToEffects(nextStatusList);
+
+  const wasBound = playerBoundTurns.value > 0;
+  if (wasBound) {
+    playerBoundTurns.value = 0;
+    playerBindSource.value = null;
+  }
+
+  await reloadStatusFromMvu();
+  const count = removedNames.length + (wasBound ? 1 : 0);
+  return [
+    {
+      message: count > 0 ? `净心清除了自身 ${count} 个负面状态。` : '净心发动，但自身没有可清除的负面状态。',
+      type: count > 0 ? 'buff' : 'info',
+    },
+  ];
+}
+
+async function removeEnemyPositiveStatuses(limit: number): Promise<string[]> {
+  const statusList = { ...(enemyRuntimeStatuses.value as Record<string, any>) };
+  const removed: string[] = [];
+
+  for (const [name, entry] of Object.entries(statusList)) {
+    if (removed.length >= limit) {
+      break;
+    }
+    if (!isPositiveStatusEntry(entry)) {
+      continue;
+    }
+    delete statusList[name];
+    removed.push(name);
+  }
+
+  if (removed.length > 0) {
+    enemyRuntimeStatuses.value = statusList;
+    enemy.value.statusEffects = statusListToEffects(statusList, 'enemy_');
+    await updateEnemyRealtimeStats();
+  }
+
+  return removed;
+}
+
+async function extendPositiveStatuses(side: CombatSide): Promise<number> {
+  const statusList = await readStatusListForSide(side);
+  let count = 0;
+
+  Object.entries(statusList).forEach(([name, entry]) => {
+    if (!isPositiveStatusEntry(entry) || !entry || typeof entry !== 'object') {
+      return;
+    }
+
+    statusList[name] = {
+      ...(entry as TimedStatusEffect),
+      剩余回合: getStatusRemainingTurns(entry) + 1,
+    };
+    count++;
+  });
+
+  await setStatusListForSide(side, statusList);
+  if (side === 'enemy') {
+    await updateEnemyRealtimeStats();
+  } else {
+    await reloadStatusFromMvu();
+  }
+
+  return count;
+}
+
+async function applyEquipmentSkillEffect(skill: EquippedEquipmentSkill): Promise<EquipmentSkillLog[]> {
+  const logs: EquipmentSkillLog[] = [
+    { message: `${player.value.name} 发动装备技【${skill.name}】。`, type: skill.grade === 'EX' ? 'critical' : 'buff' },
+  ];
+
+  switch (skill.id) {
+    case 'equipment_immobilizing_disc_bind': {
+      const duration = enemy.value.stats.evasion > 60 ? 3 : 2;
+      await applyEnemyEquipmentStatus('装备技_定身_闪避压制', {
+        加成: { 闪避率加成: -45 },
+        剩余回合: duration,
+        描述: '定身：闪避率降低',
+      });
+      await applyEnemyEquipmentStatus('装备技_定身_敏感', {
+        加成: {},
+        剩余回合: duration,
+        描述: '定身：敏感',
+        特殊效果: { 类型: '敏感', 效果值: 25, 是否为百分比: true },
+      });
+      logs.push({
+        message:
+          duration > 2
+            ? `${enemy.value.name} 当前闪避率高于60%，定身延长至 ${duration} 回合。`
+            : `${enemy.value.name} 被定身压制，持续 ${duration} 回合。`,
+        type: 'debuff',
+      });
+      break;
+    }
+
+    case 'equipment_god_binding_chain_break': {
+      const targetHadHigherEndurance = enemy.value.stats.baseEndurance > player.value.stats.sexPower;
+      await applyEnemyEquipmentStatus('装备技_破界_忍耐破坏', {
+        加成: { 基础忍耐力成算: -35 },
+        剩余回合: 2,
+        描述: '破界：基础忍耐力成算降低',
+      });
+      logs.push(...(await applyEnemyBindFromEquipment(1, '破界')));
+      if (targetHadHigherEndurance) {
+        await applyEnemyEquipmentStatus('装备技_破界_敏感', {
+          加成: {},
+          剩余回合: 2,
+          描述: '破界：敏感',
+          特殊效果: { 类型: '敏感', 效果值: 30, 是否为百分比: true },
+        });
+        logs.push({ message: `${enemy.value.name} 的基础忍耐力高于玩家基础性斗力，额外获得敏感+30%。`, type: 'debuff' });
+      }
+      break;
+    }
+
+    case 'equipment_white_rose_purify': {
+      logs.push(...(await clearPlayerDebuffsForEquipment()));
+      const reduce = Math.floor(player.value.stats.maxPleasure * 0.2);
+      const change = await changePlayerPleasure(-reduce);
+      logs.push({
+        message: `${player.value.name} 的快感 ${change.before} → ${change.after}（-${Math.abs(change.actual)}）。`,
+        type: 'heal',
+      });
+      break;
+    }
+
+    case 'equipment_crown_pride': {
+      const removed = await removeEnemyPositiveStatuses(3);
+      if (removed.length > 0) {
+        await applyEnemyEquipmentStatus('七罪王冠_傲慢_忍耐裁落', {
+          加成: { 基础忍耐力成算: -8 * removed.length },
+          剩余回合: 2,
+          描述: '傲慢裁定：被清除正面Buff后的忍耐削弱',
+        });
+        logs.push({ message: `傲慢裁定清除了${enemy.value.name} ${removed.length} 个正面Buff。`, type: 'debuff' });
+      } else {
+        logs.push({ message: `${enemy.value.name} 没有可被傲慢裁定清除的正面Buff。`, type: 'info' });
+      }
+      await applyPlayerEquipmentStatus('七罪王冠_傲慢_代价_闪避', {
+        加成: { 闪避率加成: -15 },
+        剩余回合: 3,
+        描述: '傲慢裁定的代价',
+      });
+      logs.push({ message: '代价：自身闪避率-15，持续3回合。', type: 'debuff' });
+      break;
+    }
+
+    case 'equipment_crown_envy': {
+      const bonus: Record<string, number> = {};
+      if (enemy.value.stats.sexPower > player.value.stats.sexPower) bonus.基础性斗力加成 = 50;
+      if (enemy.value.stats.baseEndurance > player.value.stats.baseEndurance) bonus.基础忍耐力加成 = 50;
+      if (enemy.value.stats.charm > player.value.stats.charm) bonus.魅力加成 = 40;
+      if (enemy.value.stats.luck > player.value.stats.luck) bonus.幸运加成 = 40;
+
+      if (Object.keys(bonus).length > 0) {
+        await applyPlayerEquipmentStatus('七罪王冠_嫉妒_优势夺取', {
+          加成: bonus,
+          剩余回合: 2,
+          描述: '嫉妒裁定：夺取目标高于自身的优势',
+        });
+        logs.push({ message: '嫉妒裁定夺取了目标高于自身的优势属性，持续2回合。', type: 'buff' });
+      } else {
+        logs.push({ message: '嫉妒裁定未发现目标高于自身的优势属性。', type: 'info' });
+      }
+      await applyPlayerEquipmentStatus('七罪王冠_嫉妒_代价_迷离', {
+        加成: {},
+        剩余回合: 1,
+        描述: '嫉妒裁定的代价',
+        特殊效果: { 类型: '迷离', 效果值: 50, 是否为百分比: true },
+      });
+      logs.push({ message: '代价：自身迷离+50%，持续1回合。', type: 'debuff' });
+      break;
+    }
+
+    case 'equipment_crown_wrath': {
+      await applyEnemyEquipmentStatus('七罪王冠_暴怒_性斗力压制', {
+        加成: { 基础性斗力成算: -30 },
+        剩余回合: 1,
+        描述: '暴怒裁定：基础性斗力成算降低',
+      });
+      await applyEnemyEquipmentStatus('七罪王冠_暴怒_暴击压制', {
+        加成: { 暴击率加成: -25 },
+        剩余回合: 2,
+        描述: '暴怒裁定：暴击率降低',
+      });
+      const increase = Math.floor(player.value.stats.maxPleasure * 0.2);
+      const change = await changePlayerPleasure(increase);
+      logs.push({ message: `${enemy.value.name} 被暴怒裁定压制进攻。`, type: 'debuff' });
+      logs.push({
+        message: `代价：自身快感 ${change.before} → ${change.after}（+${Math.abs(change.actual)}）。`,
+        type: 'debuff',
+      });
+      break;
+    }
+
+    case 'equipment_crown_sloth': {
+      logs.push(...(await applyEnemyBindFromEquipment(1, '怠惰裁定')));
+      await applyEnemyEquipmentStatus('七罪王冠_怠惰_闪避迟滞', {
+        加成: { 闪避率加成: -35 },
+        剩余回合: 2,
+        描述: '怠惰裁定：闪避率降低',
+      });
+      await applyPlayerEquipmentStatus('七罪王冠_怠惰_代价_性斗力', {
+        加成: { 基础性斗力成算: -10 },
+        剩余回合: 3,
+        描述: '怠惰裁定的代价',
+      });
+      logs.push({ message: '代价：自身基础性斗力成算-10，持续3回合。', type: 'debuff' });
+      break;
+    }
+
+    case 'equipment_crown_greed': {
+      const selfCount = await extendPositiveStatuses('player');
+      const enemyCount = await extendPositiveStatuses('enemy');
+      logs.push({ message: `贪婪裁定延长自身 ${selfCount} 个正面Buff 1回合。`, type: selfCount > 0 ? 'buff' : 'info' });
+      logs.push({
+        message: `代价：对方 ${enemyCount} 个正面Buff 也被延长1回合。`,
+        type: enemyCount > 0 ? 'debuff' : 'info',
+      });
+      break;
+    }
+
+    case 'equipment_crown_gluttony': {
+      const enduranceGain = Math.ceil(player.value.stats.maxEndurance * 0.25);
+      const pleasureReduce = Math.floor(player.value.stats.maxPleasure * 0.15);
+      const enduranceChange = await changePlayerEndurance(enduranceGain);
+      const pleasureChange = await changePlayerPleasure(-pleasureReduce);
+      await applyPlayerEquipmentStatus('七罪王冠_暴食_代价_闪避', {
+        加成: { 闪避率加成: -25 },
+        剩余回合: 2,
+        描述: '暴食裁定的代价',
+      });
+      logs.push({
+        message: `暴食裁定恢复耐力 ${enduranceChange.before} → ${enduranceChange.after}，快感 ${pleasureChange.before} → ${pleasureChange.after}。`,
+        type: 'heal',
+      });
+      logs.push({ message: '代价：自身闪避率-25，持续2回合。', type: 'debuff' });
+      break;
+    }
+
+    case 'equipment_crown_lust': {
+      await applyEnemyEquipmentStatus('七罪王冠_色欲_敏感', {
+        加成: {},
+        剩余回合: 2,
+        描述: '色欲裁定：敏感',
+        特殊效果: { 类型: '敏感', 效果值: 40, 是否为百分比: true },
+      });
+      await applyEnemyEquipmentStatus('七罪王冠_色欲_忍耐瓦解', {
+        加成: { 基础忍耐力成算: -20 },
+        剩余回合: 2,
+        描述: '色欲裁定：基础忍耐力成算降低',
+      });
+      await applyPlayerEquipmentStatus('七罪王冠_色欲_代价_敏感', {
+        加成: {},
+        剩余回合: 2,
+        描述: '色欲裁定的代价',
+        特殊效果: { 类型: '敏感', 效果值: 40, 是否为百分比: true },
+      });
+      logs.push({ message: `${enemy.value.name} 获得敏感+40%并被削弱忍耐。`, type: 'debuff' });
+      logs.push({ message: '代价：自身也获得敏感+40%，持续2回合。', type: 'debuff' });
+      break;
+    }
+  }
+
+  return logs;
+}
+
+async function handleEquipmentSkill(skill: EquippedEquipmentSkill) {
+  if (turnState.phase !== 'playerInput') {
+    return;
+  }
+
+  if (getEquipmentSkillRemainingUses(skill) <= 0) {
+    addLog(`【${skill.name}】本场战斗已使用完毕。`, 'system', 'info');
+    return;
+  }
+
+  const cooldown = getEquipmentSkillCooldown(skill);
+  if (cooldown > 0) {
+    addLog(`【${skill.name}】仍在冷却中（${cooldown}回合）。`, 'system', 'info');
+    return;
+  }
+
+  try {
+    triggerEquipmentSkillVisual(skill);
+    const skillLogs = await applyEquipmentSkillEffect(skill);
+    markEquipmentSkillUsed(skill);
+    skillLogs.forEach(log => addLog(log.message, 'system', log.type));
+    await saveToMvu();
+    await reloadStatusFromMvu();
+
+    if (await triggerPendingClimaxFromResourceChange('装备技')) {
+      return;
+    }
+
+    activeMenu.value = 'main';
+  } catch (error) {
+    console.error('[战斗界面] 装备技发动失败', error);
+    addLog(`【${skill.name}】发动失败。`, 'system', 'critical');
+  }
+}
+
 async function applyPostDamageSpecialEffects(params: {
   attackerSide: CombatSide;
   targetSide: CombatSide;
@@ -3338,6 +3989,32 @@ function triggerEffect(type: 'critical' | 'dodge' | 'climax' | 'victory' | 'defe
       effectType.value = null;
     }, 300);
   }, 1500);
+}
+
+function getEquipmentSkillVisualTone(skill: EquippedEquipmentSkill): EquipmentSkillVisualTone {
+  if (skill.equipmentId === 'immobilizing_disc') return 'bind';
+  if (skill.equipmentId === 'god_binding_chain') return 'chain';
+  if (skill.equipmentId === 'white_rose_of_atonement') return 'rose';
+  return 'crown';
+}
+
+function triggerEquipmentSkillVisual(skill: EquippedEquipmentSkill) {
+  if (equipmentSkillVisualTimer) {
+    clearTimeout(equipmentSkillVisualTimer);
+  }
+
+  equipmentSkillVisualEffect.value = {
+    key: Date.now(),
+    skillName: skill.name,
+    equipmentName: skill.equipmentName,
+    grade: skill.grade,
+    tone: getEquipmentSkillVisualTone(skill),
+  };
+
+  equipmentSkillVisualTimer = setTimeout(() => {
+    equipmentSkillVisualEffect.value = null;
+    equipmentSkillVisualTimer = null;
+  }, 1750);
 }
 
 function pushResourcePopup(
@@ -5185,6 +5862,7 @@ async function startNewTurn() {
   // 冷却递减
   addTurnFlowLogs(createReadySkillCooldownLogs(decrementSkillCooldowns(player.value.skills).readySkills));
   decrementSkillCooldowns(enemy.value.skills, enemyRuntimeSkillCooldowns.value);
+  decrementEquipmentSkillCooldowns();
 
   void refreshStatusEffectsAtTurnStart();
 
@@ -6828,7 +7506,8 @@ function getSinTalentDisplayName(sinType: string): string {
 }
 
 .menu-skills,
-.menu-items {
+.menu-items,
+.menu-equipment {
   display: flex;
   gap: 0.4rem;
   height: 100%;
@@ -6942,6 +7621,9 @@ function getSinTalentDisplayName(sinType: string): string {
 .icon-red {
   color: #f87171;
 }
+.icon-violet {
+  color: #a78bfa;
+}
 
 .skill-card,
 .item-card {
@@ -6992,6 +7674,47 @@ function getSinTalentDisplayName(sinType: string): string {
   &.unusable-shake {
     animation: unusableSkillShake 0.38s linear;
   }
+}
+
+.equipment-skill-card {
+  width: 260px;
+  min-width: 260px;
+  max-width: 300px;
+  height: calc(100% - 0.25rem);
+  min-height: 9.75rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-color: rgba(167, 139, 250, 0.2);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.42) transparent;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(167, 139, 250, 0.38);
+    border-radius: 999px;
+  }
+
+  .skill-stats-row {
+    margin-top: 0.25rem;
+  }
+}
+
+.equipment-source {
+  margin: -0.2rem 0 0;
+  color: #a78bfa;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
+.equipment-skill-name {
+  color: #c4b5fd;
 }
 
 .skill-effect-tooltip {
@@ -7143,6 +7866,18 @@ function getSinTalentDisplayName(sinType: string): string {
   overflow: hidden;
 }
 
+.equipment-skill-card .skill-desc.equipment-skill-desc {
+  display: block;
+  -webkit-line-clamp: initial;
+  -webkit-box-orient: initial;
+  overflow: visible;
+  color: #dbe4ff;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+}
+
 .item-desc {
   font-size: 0.625rem;
   color: #94a3b8;
@@ -7204,6 +7939,20 @@ function getSinTalentDisplayName(sinType: string): string {
     color: #f87171;
     border: 1px solid rgba(248, 113, 113, 0.55);
     text-shadow: 0 0 10px rgba(248, 113, 113, 0.55);
+  }
+
+  &.rarity-sss {
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.32), rgba(217, 119, 6, 0.26));
+    color: #fde68a;
+    border: 1px solid rgba(250, 204, 21, 0.62);
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
+  }
+
+  &.rarity-ex {
+    background: linear-gradient(135deg, rgba(196, 181, 253, 0.34), rgba(244, 114, 182, 0.26));
+    color: #f5d0fe;
+    border: 1px solid rgba(216, 180, 254, 0.65);
+    text-shadow: 0 0 12px rgba(216, 180, 254, 0.55);
   }
 }
 
@@ -7267,6 +8016,14 @@ function getSinTalentDisplayName(sinType: string): string {
 
   &.accuracy {
     color: #fbbf24;
+  }
+
+  &.equipment-use {
+    color: #c4b5fd;
+  }
+
+  &.equipment-free {
+    color: #facc15;
   }
 }
 
@@ -7782,6 +8539,246 @@ function getSinTalentDisplayName(sinType: string): string {
   pointer-events: none !important;
   cursor: not-allowed !important;
   transition: filter 0.5s ease;
+}
+
+// ========== 装备技释放特效 ==========
+.equipment-skill-visual {
+  position: fixed;
+  inset: 0;
+  z-index: 89;
+  pointer-events: none;
+  overflow: hidden;
+  --skill-primary: #a78bfa;
+  --skill-secondary: #fbbf24;
+  --skill-accent: #38bdf8;
+  animation: equipmentVisualFade 1.75s ease-out forwards;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  &::before {
+    width: min(70vw, 720px);
+    aspect-ratio: 1;
+    border: 1px solid color-mix(in srgb, var(--skill-primary) 72%, transparent);
+    box-shadow:
+      0 0 24px color-mix(in srgb, var(--skill-primary) 56%, transparent),
+      inset 0 0 42px color-mix(in srgb, var(--skill-accent) 22%, transparent);
+    animation: equipmentVisualRing 1.75s ease-out forwards;
+  }
+
+  &::after {
+    width: min(48vw, 430px);
+    aspect-ratio: 1;
+    border: 1px dashed color-mix(in srgb, var(--skill-secondary) 72%, transparent);
+    animation: equipmentVisualGlyph 1.75s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  }
+
+  &.tone-bind {
+    --skill-primary: #facc15;
+    --skill-secondary: #38bdf8;
+    --skill-accent: #fde68a;
+  }
+
+  &.tone-chain {
+    --skill-primary: #94a3b8;
+    --skill-secondary: #a78bfa;
+    --skill-accent: #f43f5e;
+  }
+
+  &.tone-rose {
+    --skill-primary: #f9a8d4;
+    --skill-secondary: #f8fafc;
+    --skill-accent: #86efac;
+  }
+
+  &.tone-crown {
+    --skill-primary: #c084fc;
+    --skill-secondary: #fbbf24;
+    --skill-accent: #fb7185;
+  }
+
+  &.grade-ex {
+    --skill-primary: #d8b4fe;
+    --skill-secondary: #f0abfc;
+    --skill-accent: #fbbf24;
+  }
+}
+
+.equipment-skill-visual-sweep {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(92vw, 920px);
+  height: 7px;
+  background: linear-gradient(90deg, transparent, var(--skill-primary), var(--skill-secondary), transparent);
+  filter: drop-shadow(0 0 14px var(--skill-primary));
+  transform: translate(-50%, -50%) rotate(-18deg) scaleX(0);
+  animation: equipmentVisualSweep 1.75s ease-out forwards;
+}
+
+.equipment-skill-visual-sigil {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 88px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--skill-secondary) 78%, transparent);
+  background:
+    linear-gradient(135deg, rgba(2, 6, 23, 0.82), rgba(15, 23, 42, 0.62)),
+    conic-gradient(from 90deg, var(--skill-primary), var(--skill-secondary), var(--skill-accent), var(--skill-primary));
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 14px var(--skill-secondary);
+  box-shadow:
+    0 0 30px color-mix(in srgb, var(--skill-primary) 62%, transparent),
+    inset 0 0 22px rgba(255, 255, 255, 0.12);
+  transform: translate(-50%, -50%) scale(0.62) rotate(-20deg);
+  animation: equipmentVisualSigil 1.75s cubic-bezier(0.2, 0.85, 0.2, 1) forwards;
+}
+
+.equipment-skill-visual-caption {
+  position: absolute;
+  left: 50%;
+  top: calc(42% + 66px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transform: translateX(-50%);
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.86);
+  animation: equipmentVisualCaption 1.75s ease-out forwards;
+}
+
+.equipment-skill-visual-source {
+  color: color-mix(in srgb, var(--skill-secondary) 82%, white);
+  font-size: clamp(12px, 1.7vw, 16px);
+  font-weight: 800;
+}
+
+.equipment-skill-visual-name {
+  color: #f8fafc;
+  font-size: clamp(24px, 4.6vw, 54px);
+  font-weight: 950;
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .equipment-skill-visual-sigil {
+    top: 39%;
+    width: 72px;
+  }
+
+  .equipment-skill-visual-caption {
+    top: calc(39% + 56px);
+    width: min(86vw, 360px);
+  }
+}
+
+@keyframes equipmentVisualFade {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  76% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes equipmentVisualRing {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.58);
+  }
+  28% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.22);
+  }
+}
+
+@keyframes equipmentVisualGlyph {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.42) rotate(-30deg);
+  }
+  24%,
+  62% {
+    opacity: 0.86;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.12) rotate(34deg);
+  }
+}
+
+@keyframes equipmentVisualSweep {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-18deg) scaleX(0);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-18deg) scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-18deg) scaleX(0.2) translateX(28%);
+  }
+}
+
+@keyframes equipmentVisualSigil {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.62) rotate(-20deg);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05) rotate(0deg);
+  }
+  76% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(8deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9) rotate(18deg);
+  }
+}
+
+@keyframes equipmentVisualCaption {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  28%,
+  74% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
 }
 
 // ========== 协同作战立绘特效 ==========

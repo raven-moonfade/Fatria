@@ -200,6 +200,35 @@
             <i class="fas fa-caret-down"></i>
           </div>
           <div class="wheel-disc" :style="wheelDiscStyle">
+            <svg class="wheel-svg" viewBox="0 0 200 200" aria-hidden="true">
+              <defs>
+                <radialGradient id="wheelSurfaceLight" cx="34%" cy="28%" r="68%">
+                  <stop offset="0%" stop-color="rgba(255,255,255,0.22)" />
+                  <stop offset="46%" stop-color="rgba(255,255,255,0.06)" />
+                  <stop offset="100%" stop-color="rgba(0,0,0,0.16)" />
+                </radialGradient>
+              </defs>
+              <path
+                v-for="segment in wheelSegmentPaths"
+                :key="segment.id"
+                class="wheel-segment-path"
+                :class="{ rare: segment.rare }"
+                :d="segment.d"
+                :fill="segment.color"
+              />
+              <line
+                v-for="line in wheelSeparatorLines"
+                :key="line.id"
+                class="wheel-separator-line"
+                x1="100"
+                y1="100"
+                :x2="line.x"
+                :y2="line.y"
+              />
+              <circle class="wheel-surface-light" cx="100" cy="100" r="95" fill="url(#wheelSurfaceLight)" />
+              <circle class="wheel-outer-ring" cx="100" cy="100" r="96" />
+              <circle class="wheel-inner-ring" cx="100" cy="100" r="31" />
+            </svg>
             <div
               v-for="(segment, index) in currentWheelConfig.segments"
               :key="segment.id"
@@ -212,6 +241,12 @@
           </div>
           <div class="wheel-center">
             <i :class="currentWheelConfig.icon"></i>
+          </div>
+          <div v-if="wheelSssEffect" class="wheel-sss-burst" aria-live="polite">
+            <div class="wheel-sss-ring"></div>
+            <i class="fas fa-crown"></i>
+            <span class="wheel-sss-title">{{ wheelSssEffect.title }}</span>
+            <span class="wheel-sss-name">{{ wheelSssEffect.itemText }}</span>
           </div>
         </div>
 
@@ -404,6 +439,7 @@ import {
 } from '../../../shared/localPreferences';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import { getPlayerDerivedStats } from '../../../shared/statSelectors';
+import { GRAND_WHEEL_SSS_EQUIPMENT_ITEMS } from '../../../shared/legendaryEquipment';
 import { grandWheelFetishPool, type FetishEntry } from '../../data/fetishPool';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
 
@@ -429,6 +465,7 @@ type WheelSegmentId =
   | 'advanced_ticket'
   | 'grand_s_equipment'
   | 'grand_ss_equipment'
+  | 'grand_sss_equipment'
   | 'grand_attr'
   | 'grand_potential'
   | 'grand_fetish';
@@ -467,6 +504,13 @@ interface WheelProbabilityRow {
 interface WheelRewardResult {
   text: string;
   pendingFetish?: FetishEntry;
+  specialEffect?: 'sssEquipment';
+  itemName?: string;
+}
+
+interface WheelSssEffectState {
+  title: string;
+  itemText: string;
 }
 
 type FetishDecision = 'keep' | 'reroll' | 'discard';
@@ -481,6 +525,7 @@ type BonusKey =
   | '暴击率加成';
 
 const RARE_WEIGHT_FACTOR = 0.5;
+const GRAND_WHEEL_SSS_BASE_WEIGHT = 3.285714285714286;
 const BONUS_KEYS: BonusKey[] = [
   '魅力加成',
   '幸运加成',
@@ -861,6 +906,7 @@ onUnmounted(() => {
   window.removeEventListener('touchend', stopModalDrag);
   window.removeEventListener('touchcancel', stopModalDrag);
   window.removeEventListener('resize', clampStoredModalOffsets);
+  clearWheelSssEffectTimer();
 });
 
 function unlockSpecialBattle() {
@@ -2069,7 +2115,6 @@ const allEquipments = [
     slot: '主装备',
     icon: 'fas fa-snowflake',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '女',
@@ -2082,7 +2127,6 @@ const allEquipments = [
     slot: '副装备',
     icon: 'fas fa-fan',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '女',
@@ -2095,7 +2139,6 @@ const allEquipments = [
     slot: '饰品',
     icon: 'fas fa-yin-yang',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '女',
@@ -2108,7 +2151,6 @@ const allEquipments = [
     slot: '饰品',
     icon: 'fas fa-heart',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '女',
@@ -2121,7 +2163,6 @@ const allEquipments = [
     slot: '特殊装备',
     icon: 'fas fa-fire',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '女',
@@ -2136,7 +2177,6 @@ const allEquipments = [
     slot: '主装备',
     icon: 'fas fa-dragon',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '男',
@@ -2149,7 +2189,6 @@ const allEquipments = [
     slot: '副装备',
     icon: 'fas fa-wand-sparkles',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '男',
@@ -2162,7 +2201,6 @@ const allEquipments = [
     slot: '饰品',
     icon: 'fas fa-circle',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '男',
@@ -2175,7 +2213,6 @@ const allEquipments = [
     slot: '饰品',
     icon: 'fas fa-lock',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '男',
@@ -2188,7 +2225,6 @@ const allEquipments = [
     slot: '特殊装备',
     icon: 'fas fa-paw',
     price: 18888,
-    salePrice: 888,
     category: 'equipment',
     grade: 'S',
     gender: '男',
@@ -3102,6 +3138,18 @@ const visibleConsumableSubCategories = computed(() => {
 const wheelAEquipmentPool = allEquipments.filter(item => item.grade === 'A');
 const wheelSEquipmentPool = allEquipments.filter(item => item.grade === 'S');
 const wheelSSEquipmentPool = allEquipments.filter(item => item.grade === 'SS');
+const wheelSSSEquipmentPool = GRAND_WHEEL_SSS_EQUIPMENT_ITEMS.map(item => ({
+  name: item.name,
+  slot: item.slot,
+  icon: item.icon,
+  price: 0,
+  category: 'equipment',
+  grade: item.grade,
+  gender: '通用',
+  attrFocus: item.attrFocus,
+  description: item.description,
+  bonuses: item.bonuses,
+}));
 const wheelRecoveryPool: any[] = (
   (consumableSubCategories.find(subCat => subCat.type === 'recovery')?.items ?? []) as any[]
 ).filter(item => item.id.startsWith('con_r_'));
@@ -3208,16 +3256,24 @@ const wheelConfigs: Record<WheelType, WheelConfig> = {
         id: 'grand_s_equipment',
         label: 'S级装备',
         color: '#f59e0b',
-        weight: 27,
+        weight: 25,
         rewardDesc: '随机S级装备',
       },
       {
         id: 'grand_ss_equipment',
         label: 'SS级装备',
         color: '#ec4899',
-        weight: 14,
+        weight: 13,
         rare: true,
         rewardDesc: '随机SS级装备',
+      },
+      {
+        id: 'grand_sss_equipment',
+        label: 'SSS装备',
+        color: '#d4af37',
+        weight: GRAND_WHEEL_SSS_BASE_WEIGHT,
+        rare: true,
+        rewardDesc: '随机SSS装备',
       },
       {
         id: 'grand_attr',
@@ -3248,10 +3304,12 @@ const wheelConfigs: Record<WheelType, WheelConfig> = {
 const activeWheelType = ref<WheelType>('basic');
 const wheelRotation = ref(0);
 const wheelLastResultText = ref('');
+const wheelSssEffect = ref<WheelSssEffectState | null>(null);
 const isWheelDrawing = ref(false);
 const fetishDecisionModalVisible = ref(false);
 const pendingFetishDecision = ref<FetishEntry | null>(null);
 const fetishDecisionResolver = ref<((choice: FetishDecision) => void) | null>(null);
+let wheelSssEffectTimer: ReturnType<typeof setTimeout> | null = null;
 
 const currentWheelConfig = computed(() => wheelConfigs[activeWheelType.value]);
 const luckyRareMultiplier = computed(() => {
@@ -3285,15 +3343,35 @@ const wheelProbabilityRows = computed(() =>
   buildWheelSegmentProbabilities(currentWheelConfig.value.segments, luckyRareMultiplier.value),
 );
 const wheelDiscStyle = computed(() => {
-  const segmentCount = currentWheelConfig.value.segments.length;
-  const segmentAngle = 360 / segmentCount;
-  const gradient = currentWheelConfig.value.segments
-    .map((segment, index) => `${segment.color} ${index * segmentAngle}deg ${(index + 1) * segmentAngle}deg`)
-    .join(', ');
   return {
-    background: `conic-gradient(${gradient})`,
     transform: `rotate(${wheelRotation.value}deg)`,
   };
+});
+const wheelSegmentPaths = computed(() => {
+  const segments = currentWheelConfig.value.segments;
+  const segmentAngle = 360 / segments.length;
+  return segments.map((segment, index) => {
+    const startAngle = index * segmentAngle;
+    const endAngle = (index + 1) * segmentAngle;
+    return {
+      id: segment.id,
+      color: segment.color,
+      rare: segment.rare,
+      d: describeWheelSegment(100, 100, 96, startAngle, endAngle),
+    };
+  });
+});
+const wheelSeparatorLines = computed(() => {
+  const segments = currentWheelConfig.value.segments;
+  const segmentAngle = 360 / segments.length;
+  return segments.map((segment, index) => {
+    const point = polarToPoint(100, 100, 96, index * segmentAngle);
+    return {
+      id: `${segment.id}_separator`,
+      x: point.x.toFixed(3),
+      y: point.y.toFixed(3),
+    };
+  });
 });
 const pendingFetishBonusRows = computed(() => {
   if (!pendingFetishDecision.value) return [];
@@ -3315,6 +3393,26 @@ function getWheelSegmentLabelStyle(index: number, segmentCount: number) {
   return {
     transform: `translate(-50%, -50%) rotate(${centerAngle}deg) translateY(-108px) rotate(${-centerAngle}deg)`,
   };
+}
+
+function polarToPoint(cx: number, cy: number, radius: number, angleDeg: number) {
+  const angle = ((angleDeg - 90) * Math.PI) / 180;
+  return {
+    x: cx + radius * Math.cos(angle),
+    y: cy + radius * Math.sin(angle),
+  };
+}
+
+function describeWheelSegment(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
+  const start = polarToPoint(cx, cy, radius, startAngle);
+  const end = polarToPoint(cx, cy, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+  return [
+    `M ${cx} ${cy}`,
+    `L ${start.x.toFixed(3)} ${start.y.toFixed(3)}`,
+    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`,
+    'Z',
+  ].join(' ');
 }
 
 function getBaseSegmentWeight(segment: WheelSegment): number {
@@ -3363,6 +3461,24 @@ function pickRandomFetish(previousName?: string): FetishEntry {
 
 function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function clearWheelSssEffectTimer() {
+  if (!wheelSssEffectTimer) return;
+  clearTimeout(wheelSssEffectTimer);
+  wheelSssEffectTimer = null;
+}
+
+function triggerWheelSssEffect(itemNames: string[]) {
+  clearWheelSssEffectTimer();
+  wheelSssEffect.value = {
+    title: itemNames.length > 1 ? `SSS装备命中 x${itemNames.length}` : 'SSS装备命中',
+    itemText: itemNames.join('、'),
+  };
+  wheelSssEffectTimer = setTimeout(() => {
+    wheelSssEffect.value = null;
+    wheelSssEffectTimer = null;
+  }, 3600);
 }
 
 function openFetishDecisionModal(fetish: FetishEntry): Promise<FetishDecision> {
@@ -3440,14 +3556,61 @@ function addLotteryTickets(backpack: Record<string, any>, quantity: number) {
 }
 
 function addEquipmentToBackpack(statData: any, equipment: any) {
-  statData.物品系统.背包[equipment.name] = {
+  const itemData = {
     类型: '装备',
     等级: equipment.grade,
     描述: equipment.description,
     加成属性: equipment.bonuses || {},
     部位: getSlotType(equipment.slot),
+  };
+  const existing = statData.物品系统.背包[equipment.name];
+  if (existing && typeof existing === 'object' && existing.类型 === '装备') {
+    const currentQuantity = Math.max(1, Number(existing.数量 ?? 1) || 1);
+    statData.物品系统.背包[equipment.name] = {
+      ...existing,
+      ...itemData,
+      数量: currentQuantity + 1,
+    };
+    return;
+  }
+
+  statData.物品系统.背包[equipment.name] = {
+    ...itemData,
     数量: 1,
   };
+}
+
+function isOwnedInventoryEntry(entry: any): boolean {
+  if (!entry) return false;
+  if (typeof entry !== 'object') return true;
+  const quantity = Number(entry.数量 ?? 1);
+  return !Number.isFinite(quantity) || quantity > 0;
+}
+
+function isEquipmentOwned(statData: any, equipmentName: string): boolean {
+  const backpack = statData?.物品系统?.背包;
+  if (backpack && typeof backpack === 'object') {
+    const directEntry = backpack[equipmentName];
+    if (isOwnedInventoryEntry(directEntry)) return true;
+
+    const hasNamedEntry = Object.values(backpack).some((entry: any) => {
+      if (!isOwnedInventoryEntry(entry)) return false;
+      return String(entry?.名称 || entry?.name || '') === equipmentName;
+    });
+    if (hasNamedEntry) return true;
+  }
+
+  const equipmentSlots = statData?.物品系统?._装备栏;
+  if (equipmentSlots && typeof equipmentSlots === 'object') {
+    return Object.values(equipmentSlots).some((slot: any) => String(slot?.名称 || slot?.name || '') === equipmentName);
+  }
+
+  return false;
+}
+
+function pickWheelSSSEquipmentReward(statData: any) {
+  const missingPool = wheelSSSEquipmentPool.filter(equipment => !isEquipmentOwned(statData, equipment.name));
+  return pickRandom(missingPool.length > 0 ? missingPool : wheelSSSEquipmentPool);
 }
 
 function addConsumableToBackpack(statData: any, consumable: any, quantity: number) {
@@ -3642,6 +3805,12 @@ function applyWheelReward(segmentId: WheelSegmentId, statData: any): WheelReward
       addEquipmentToBackpack(statData, reward);
       return { text: `SS级装备「${reward.name}」` };
     }
+    case 'grand_sss_equipment': {
+      if (wheelSSSEquipmentPool.length <= 0) return { text: 'SSS装备池为空' };
+      const reward = pickWheelSSSEquipmentReward(statData);
+      addEquipmentToBackpack(statData, reward);
+      return { text: `SSS装备「${reward.name}」`, specialEffect: 'sssEquipment', itemName: reward.name };
+    }
     case 'grand_attr': {
       const attrPoint = randomInt(1, 3);
       statData.核心状态.$属性点 = (statData.核心状态.$属性点 || 0) + attrPoint;
@@ -3675,6 +3844,8 @@ async function drawWheel(times: 1 | 10) {
   const isTenDraw = times === 10;
 
   isWheelDrawing.value = true;
+  clearWheelSssEffectTimer();
+  wheelSssEffect.value = null;
   try {
     const mvuData = await getLatestMvuData();
     if (!mvuData || !mvuData.stat_data) return;
@@ -3696,13 +3867,13 @@ async function drawWheel(times: 1 | 10) {
 
     const luck = getPlayerDerivedStats(mvuData.stat_data || {}).luck;
     const rareMultiplier = getRareMultiplierByLuck(luck);
-    const drawResults: Array<{ segment: WheelSegment; text: string }> = [];
+    const drawResults: Array<{ segment: WheelSegment } & WheelRewardResult> = [];
     const pendingFetishRewards: Array<{ resultIndex: number; fetish: FetishEntry }> = [];
 
     for (let i = 0; i < times; i++) {
       const hitSegment = rollWheelSegment(config.segments, rareMultiplier);
       const rewardResult = applyWheelReward(hitSegment.id, mvuData.stat_data);
-      drawResults.push({ segment: hitSegment, text: rewardResult.text });
+      drawResults.push({ segment: hitSegment, ...rewardResult });
       if (rewardResult.pendingFetish) {
         pendingFetishRewards.push({ resultIndex: i, fetish: rewardResult.pendingFetish });
       }
@@ -3720,6 +3891,12 @@ async function drawWheel(times: 1 | 10) {
 
     const previewText = drawResults.map(result => result.text).join('、');
     wheelLastResultText.value = isTenDraw ? `十连结果：${previewText}` : `获得：${drawResults[0].text}`;
+    const sssRewardNames = drawResults
+      .filter(result => result.specialEffect === 'sssEquipment' && result.itemName)
+      .map(result => result.itemName as string);
+    if (sssRewardNames.length > 0) {
+      triggerWheelSssEffect(sssRewardNames);
+    }
 
     const rareCount = drawResults.filter(result => result.segment.rare).length;
     if (typeof toastr !== 'undefined') {
@@ -3827,16 +4004,7 @@ async function purchaseItem() {
 
     // 根据物品类型处理
     if (item.category === 'equipment') {
-      // 装备类：添加到背包（使用name作为key）
-      const itemKey = item.name;
-      mvuData.stat_data.物品系统.背包[itemKey] = {
-        类型: '装备',
-        等级: item.grade,
-        描述: item.description,
-        加成属性: item.bonuses || {},
-        部位: getSlotType(item.slot),
-        数量: 1,
-      };
+      addEquipmentToBackpack(mvuData.stat_data, item);
     } else if (item.category === 'gift') {
       // 礼物类：添加到背包（使用name作为key）
       const itemKey = item.name;
@@ -5026,6 +5194,7 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   align-items: center;
   justify-content: center;
   height: 320px;
+  isolation: isolate;
 }
 
 .wheel-disc {
@@ -5033,9 +5202,64 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   width: 280px;
   height: 280px;
   border-radius: 50%;
-  border: 6px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  background: #07111f;
+  border: 7px solid rgba(226, 232, 240, 0.42);
+  box-shadow:
+    0 18px 38px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(250, 204, 21, 0.12),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.16),
+    inset 0 0 36px rgba(2, 6, 23, 0.46);
   transition: transform 2.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.wheel-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.wheel-segment-path {
+  stroke: none;
+  stroke-linejoin: round;
+
+  &.rare {
+    filter: saturate(1.12) brightness(1.04);
+  }
+}
+
+.wheel-surface-light {
+  opacity: 0.74;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.wheel-separator-line {
+  stroke: rgba(2, 6, 23, 0.8);
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.wheel-outer-ring,
+.wheel-inner-ring {
+  fill: none;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.wheel-outer-ring {
+  stroke: rgba(248, 250, 252, 0.72);
+  stroke-width: 2.2;
+}
+
+.wheel-inner-ring {
+  stroke: rgba(2, 6, 23, 0.72);
+  stroke-width: 2.6;
+  pointer-events: none;
 }
 
 .wheel-segment-label {
@@ -5060,24 +5284,120 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   position: absolute;
   top: 2px;
   z-index: 3;
-  color: #facc15;
+  color: #fde68a;
   font-size: 34px;
-  text-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  text-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.58),
+    0 0 12px rgba(250, 204, 21, 0.42);
 }
 
 .wheel-center {
   position: absolute;
-  width: 56px;
-  height: 56px;
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1e293b, #0f172a);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.24), transparent 30%),
+    linear-gradient(135deg, #334155, #020617);
+  border: 3px solid rgba(248, 250, 252, 0.34);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #f8fafc;
   font-size: 18px;
   z-index: 2;
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.34),
+    0 0 0 4px rgba(2, 6, 23, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.wheel-sss-burst {
+  position: absolute;
+  inset: 18px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-align: center;
+  pointer-events: none;
+  color: #fffbeb;
+  animation: wheel-sss-burst-fade 3.6s ease forwards;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 24px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, rgba(254, 243, 199, 0.26) 0%, rgba(250, 204, 21, 0.14) 36%, transparent 68%),
+      conic-gradient(
+        from 20deg,
+        rgba(56, 189, 248, 0.04),
+        rgba(250, 204, 21, 0.72),
+        rgba(236, 72, 153, 0.42),
+        rgba(56, 189, 248, 0.28),
+        rgba(250, 204, 21, 0.72),
+        rgba(56, 189, 248, 0.04)
+      );
+    filter: blur(0.2px);
+    opacity: 0.94;
+    animation: wheel-sss-halo-spin 1.45s linear infinite;
+  }
+
+  i,
+  span {
+    position: relative;
+    z-index: 1;
+  }
+
+  i {
+    font-size: 44px;
+    color: #fef3c7;
+    text-shadow:
+      0 0 10px rgba(250, 204, 21, 0.9),
+      0 0 22px rgba(236, 72, 153, 0.38),
+      0 2px 6px rgba(0, 0, 0, 0.45);
+    animation: wheel-sss-crown-pop 0.72s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+}
+
+.wheel-sss-ring {
+  position: absolute;
+  width: 210px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgba(254, 243, 199, 0.76);
+  box-shadow:
+    0 0 0 8px rgba(250, 204, 21, 0.08),
+    0 0 34px rgba(250, 204, 21, 0.58),
+    inset 0 0 28px rgba(56, 189, 248, 0.2);
+  animation: wheel-sss-ring-pulse 1.15s ease-out infinite;
+}
+
+.wheel-sss-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff7ed;
+  text-shadow:
+    0 0 9px rgba(250, 204, 21, 0.82),
+    0 2px 7px rgba(0, 0, 0, 0.48);
+}
+
+.wheel-sss-name {
+  max-width: 230px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(254, 243, 199, 0.56);
+  background: rgba(15, 23, 42, 0.72);
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.28);
 }
 
 .wheel-action-row {
@@ -5190,6 +5510,57 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   font-weight: 700;
 }
 
+@keyframes wheel-sss-burst-fade {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  12%,
+  78% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes wheel-sss-halo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes wheel-sss-crown-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.72);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wheel-sss-ring-pulse {
+  0% {
+    opacity: 0.82;
+    transform: scale(0.82);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
 @media (max-width: 768px) {
   .wheel-stage {
     height: 290px;
@@ -5203,6 +5574,26 @@ function getSlotType(slot: string): '主装备' | '副装备' | '饰品' | '特�
   .wheel-segment-label {
     width: 66px;
     font-size: 9px;
+  }
+
+  .wheel-sss-burst {
+    inset: 12px;
+
+    i {
+      font-size: 38px;
+    }
+  }
+
+  .wheel-sss-ring {
+    width: 184px;
+  }
+
+  .wheel-sss-title {
+    font-size: 16px;
+  }
+
+  .wheel-sss-name {
+    max-width: 204px;
   }
 }
 
