@@ -74,10 +74,14 @@
               :data="characterData"
               :is-life-sim-unlocked="isLifeSimUnlocked"
               :is-life-sim-mode="isLifeSimMode"
+              :player-presets="playerPresets"
+              :selected-player-preset-name="selectedPlayerPresetName"
               @update-data="updateCharacterData"
               @update-life-sim-mode="(v: boolean) => (isLifeSimMode = v)"
               @select-npc="handleNpcSelect"
               @request-life-sim-confirm="showLifeSimConfirmModal"
+              @load-player-preset="handleLoadPlayerPreset"
+              @update-selected-player-preset="(name: string) => (selectedPlayerPresetName = name)"
             />
             <Step2_Archetype v-if="step === 3" :data="characterData" @update-data="updateCharacterData" />
             <Step3_Attributes
@@ -94,7 +98,6 @@
               :selected-player-preset-name="selectedPlayerPresetName"
               @update-data="updateCharacterData"
               @save-player-preset="handleSavePlayerPreset"
-              @load-player-preset="handleLoadPlayerPreset"
               @update-selected-player-preset="(name: string) => (selectedPlayerPresetName = name)"
               @update-player-preset="handleUpdateSelectedPlayerPreset"
               @rename-player-preset="handleRenamePlayerPreset"

@@ -20,6 +20,44 @@
 
     <!-- 正常模式：角色创建 -->
     <template v-if="!isLifeSimMode">
+      <div class="rounded-2xl border border-white/10 bg-white/[0.07] p-4 shadow-inner shadow-white/5 backdrop-blur-sm">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div class="flex items-center gap-2 text-sm font-semibold text-white">
+              <i class="fas fa-id-card text-secondary"></i>
+              人物预设
+            </div>
+            <div class="mt-1 text-xs text-gray-400">
+              {{ playerPresets.length > 0 ? '选择一个保存的人设并填入当前表单。' : '当前角色卡还没有保存的人设。' }}
+            </div>
+          </div>
+          <div class="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <div class="relative min-w-0 sm:min-w-[160px]">
+              <select
+                :value="selectedPlayerPresetName"
+                :disabled="playerPresets.length === 0"
+                class="focus:ring-secondary/40 w-full appearance-none rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 pr-9 text-sm font-semibold text-white shadow-inner shadow-white/5 backdrop-blur-sm transition-all hover:border-white/25 hover:bg-white/15 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                @change="e => emit('update-selected-player-preset', (e.target as HTMLSelectElement).value)"
+              >
+                <option v-if="playerPresets.length === 0" value="">暂无预设</option>
+                <option v-for="preset in playerPresets" :key="preset.name" :value="preset.name">
+                  {{ preset.name }}
+                </option>
+              </select>
+              <i class="fas fa-chevron-down pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-gray-300"></i>
+            </div>
+            <button
+              type="button"
+              class="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-white/10 transition-all hover:scale-[1.02] hover:shadow-white/20 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="playerPresets.length === 0"
+              @click="emit('load-player-preset')"
+            >
+              <i class="fas fa-download"></i> 载入预设
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <!-- Name Input -->
         <div class="group relative">
@@ -224,6 +262,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { NpcCharacter } from '../data/npcCharacters';
+import type { PlayerPresetSummary } from '../../shared/playerPresetStore';
 import { CharacterData, Difficulty, Gender, MainlineTimeline } from '../types';
 import NpcCharacterSelect from './NpcCharacterSelect.vue';
 
@@ -231,6 +270,8 @@ const props = defineProps<{
   data: CharacterData;
   isLifeSimUnlocked?: boolean;
   isLifeSimMode?: boolean;
+  playerPresets: PlayerPresetSummary[];
+  selectedPlayerPresetName?: string;
 }>();
 
 const emit = defineEmits<{
@@ -238,6 +279,8 @@ const emit = defineEmits<{
   (e: 'update-life-sim-mode', isActive: boolean): void;
   (e: 'select-npc', npc: NpcCharacter | null): void;
   (e: 'request-life-sim-confirm'): void;
+  (e: 'load-player-preset'): void;
+  (e: 'update-selected-player-preset', name: string): void;
 }>();
 
 // 本地状态

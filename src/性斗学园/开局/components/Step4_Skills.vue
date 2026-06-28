@@ -234,7 +234,7 @@
               人物预设
             </div>
             <div class="mt-1 text-xs text-gray-400">
-              保存、载入并管理完整开局配置。载入后可返回前面步骤继续调整。
+              保存当前完整开局配置，或修改已保存的人物预设。
             </div>
           </div>
           <div class="flex shrink-0 flex-col gap-2 sm:flex-row">
@@ -270,14 +270,7 @@
               </select>
               <i class="fas fa-chevron-down pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-gray-300"></i>
             </div>
-            <button
-              type="button"
-              class="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:border-white/25 hover:bg-white/15 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="playerPresets.length === 0"
-              @click="emit('load-player-preset')"
-            >
-              <i class="fas fa-download mr-1"></i> 载入
-            </button>
+            <div class="text-xs text-gray-400">选择已有预设后可改名、用当前表单覆盖，或删除。</div>
           </div>
 
           <div v-if="playerPresets.length > 0" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -340,7 +333,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update-data', fields: Partial<CharacterData>): void;
   (e: 'save-player-preset', name: string): void;
-  (e: 'load-player-preset'): void;
   (e: 'update-selected-player-preset', name: string): void;
   (e: 'update-player-preset'): void;
   (e: 'rename-player-preset', name: string): void;
