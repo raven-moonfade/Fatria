@@ -3,6 +3,16 @@
     <button class="help-btn" @click="showHelp = true" title="玩法说明">
       <i class="fas fa-question"></i>
     </button>
+    <button
+      class="avatar-reset-btn"
+      type="button"
+      :disabled="!hasCustomAvatar"
+      title="恢复默认头像"
+      aria-label="恢复默认头像"
+      @click="resetAvatarToDefault"
+    >
+      <i class="fas fa-rotate-left"></i>
+    </button>
 
     <div v-if="showHelp" class="help-overlay" @click.self="showHelp = false">
       <div class="help-modal" @click.stop>
@@ -339,11 +349,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { resolveStoredPlayerAvatar, saveStoredPlayerAvatarBlob } from '../../../shared/localPreferences';
+import { computed, onMounted, ref, watch } from 'vue';
+import {
+  clearStoredPlayerAvatar,
+  resolveStoredPlayerAvatar,
+  saveStoredPlayerAvatarBlob,
+} from '../../../shared/localPreferences';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import { getPermanentBonus, getPlayerDerivedStats, getTemporaryBonus } from '../../../shared/statSelectors';
 import { getDailyTalentEffect } from '../../data/talentDatabase';
+import { getDefaultPlayerAvatarUrl } from '../../phone/backstreetAvatarSettings';
 
 const props = defineProps<{
   characterData: any;
@@ -352,11 +367,19 @@ const props = defineProps<{
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const avatarUrl = ref<string>('');
+const hasCustomAvatar = ref(false);
 const showHelp = ref(false);
 const isUpgrading = ref(false); // 防抖锁，防止快速点击
 const pointCostMultiplier = ref<1 | 10>(1);
 
 const derivedStats = computed(() => getPlayerDerivedStats(props.characterData || {}));
+const defaultAvatarUrl = computed(() => getDefaultPlayerAvatarUrl(props.characterData?.角色基础?.性别));
+
+watch(defaultAvatarUrl, url => {
+  if (!hasCustomAvatar.value) {
+    avatarUrl.value = url;
+  }
+});
 
 // 可用属性点
 const availablePoints = computed(() => {
@@ -491,23 +514,33 @@ async function loadAvatarUrl() {
     const localSaved = await resolveStoredPlayerAvatar();
     if (localSaved && localSaved.trim()) {
       avatarUrl.value = localSaved;
+      hasCustomAvatar.value = true;
       return;
     }
   } catch (err) {
     console.warn('[状态栏] 读取头像失败:', err);
   }
-  avatarUrl.value = '';
+  avatarUrl.value = defaultAvatarUrl.value;
+  hasCustomAvatar.value = false;
 }
 
 // 保存头像到本地偏好
 async function saveAvatarFile(file: Blob) {
   try {
     avatarUrl.value = await saveStoredPlayerAvatarBlob(file);
+    hasCustomAvatar.value = true;
     toastr.success('头像上传成功', '成功', { timeOut: 2000 });
   } catch (err) {
     console.error('[状态栏] 保存头像失败:', err);
     toastr.error('头像保存失败', '错误', { timeOut: 3000 });
   }
+}
+
+function resetAvatarToDefault() {
+  clearStoredPlayerAvatar();
+  avatarUrl.value = defaultAvatarUrl.value;
+  hasCustomAvatar.value = false;
+  toastr.success('已恢复默认头像', '成功', { timeOut: 2000 });
 }
 
 function handleAvatarClick() {
@@ -540,6 +573,12 @@ async function handleAvatarChange(event: Event) {
 }
 
 function handleImageError() {
+  if (hasCustomAvatar.value) {
+    avatarUrl.value = defaultAvatarUrl.value;
+    hasCustomAvatar.value = false;
+    return;
+  }
+
   avatarUrl.value = '';
 }
 
@@ -630,7 +669,8 @@ onMounted(() => {
   position: relative;
 }
 
-.help-btn {
+.help-btn,
+.avatar-reset-btn {
   width: 28px;
   height: 28px;
   border-radius: 999px;
@@ -643,7 +683,6 @@ onMounted(() => {
   justify-content: center;
   transition: all 0.2s ease;
   position: absolute;
-  top: 12px;
   right: 12px;
   z-index: 30;
 
@@ -659,6 +698,24 @@ onMounted(() => {
   i {
     font-size: 13px;
     line-height: 1;
+  }
+}
+
+.help-btn {
+  top: 12px;
+}
+
+.avatar-reset-btn {
+  top: 46px;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.42;
+  }
+
+  &:disabled:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: none;
   }
 }
 
@@ -835,7 +892,7 @@ onMounted(() => {
 }
 
 .profile-name {
-  margin-top: 12px;
+  margin-top: 10px;
   font-size: 18px;
   font-weight: 700;
   color: white;

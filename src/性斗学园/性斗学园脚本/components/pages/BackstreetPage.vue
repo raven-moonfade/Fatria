@@ -158,7 +158,12 @@
           type="button"
           @click="selectContact(contact)"
         >
-          <span class="contact-avatar">
+          <span
+            class="contact-avatar"
+            :class="{ flippable: contact.type !== 'group', flipping: isAvatarFlipping(contact.name) }"
+            :title="contact.type === 'group' ? '' : avatarToggleTitle(contact.name)"
+            @click.stop="contact.type !== 'group' && toggleContactAvatarMode(contact.name)"
+          >
             <i v-if="contact.type === 'group'" class="fas fa-users"></i>
             <img
               v-else-if="shouldUseAvatarImage(contact.name)"
@@ -559,6 +564,18 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { backstreetService } from '../../phone/backstreetService';
 import type { BackstreetContact, BackstreetMessage, BackstreetThreadKind } from '../../phone/types';
 import { makeId } from '../../phone/text';
+import {
+  BACKSTREET_CONTACT_AVATAR_STORAGE_KEY,
+  DEFAULT_BACKSTREET_AVATAR_MODE,
+  getChibiAvatarName,
+  getChibiAvatarUrl,
+  getDefaultPlayerAvatarUrl,
+  getNormalAvatarUrl,
+  loadContactAvatarModes,
+  normalizeBackstreetAvatarMode,
+  saveContactAvatarModes,
+  type BackstreetAvatarMode,
+} from '../../phone/backstreetAvatarSettings';
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
 import {
   getIndexedImageObjectUrl,
@@ -623,6 +640,9 @@ const messageListRef = ref<HTMLElement | null>(null);
 const composerInputRef = ref<HTMLTextAreaElement | null>(null);
 const imageInputRef = ref<HTMLInputElement | null>(null);
 const failedAvatars = ref(new Set<string>());
+const flippingAvatars = ref(new Set<string>());
+const contactAvatarModes = ref<Record<string, BackstreetAvatarMode>>(loadContactAvatarModes());
+const defaultAvatarMode = ref<BackstreetAvatarMode>(readDefaultAvatarMode());
 const playerAvatarUrl = ref('');
 const messageImageUrls = ref<Record<string, string>>({});
 const pendingImageAttachments = ref<PendingImageAttachment[]>([]);
@@ -708,6 +728,7 @@ watch(
   () => props.characterData,
   () => {
     loadContacts();
+    void loadPlayerAvatar();
   },
   { deep: false },
 );
@@ -756,22 +777,46 @@ function readVisibleMessageCount(): number {
   }
 }
 
+function readDefaultAvatarMode(): BackstreetAvatarMode {
+  try {
+    const raw = window.localStorage?.getItem(PHONE_PREFS_STORAGE_KEY);
+    if (!raw) return DEFAULT_BACKSTREET_AVATAR_MODE;
+
+    const parsed = JSON.parse(raw) as { backstreetAvatarMode?: unknown };
+    return normalizeBackstreetAvatarMode(parsed.backstreetAvatarMode);
+  } catch {
+    return DEFAULT_BACKSTREET_AVATAR_MODE;
+  }
+}
+
 function syncVisibleMessageCount() {
   visibleMessageCount.value = readVisibleMessageCount();
+}
+
+function syncAvatarPreferences() {
+  defaultAvatarMode.value = readDefaultAvatarMode();
+  contactAvatarModes.value = loadContactAvatarModes();
 }
 
 function handlePhonePreferencesUpdated(event: Event) {
   const detail = (event as CustomEvent).detail;
   if (detail && Object.prototype.hasOwnProperty.call(detail, 'backstreetVisibleMessageCount')) {
     visibleMessageCount.value = clampVisibleMessageCount(detail.backstreetVisibleMessageCount);
-    return;
+  } else {
+    syncVisibleMessageCount();
   }
-  syncVisibleMessageCount();
+
+  if (detail && Object.prototype.hasOwnProperty.call(detail, 'backstreetAvatarMode')) {
+    defaultAvatarMode.value = normalizeBackstreetAvatarMode(detail.backstreetAvatarMode);
+  } else {
+    defaultAvatarMode.value = readDefaultAvatarMode();
+  }
 }
 
 function handlePhonePreferencesStorage(event: StorageEvent) {
-  if (event.key && event.key !== PHONE_PREFS_STORAGE_KEY) return;
+  if (event.key && event.key !== PHONE_PREFS_STORAGE_KEY && event.key !== BACKSTREET_CONTACT_AVATAR_STORAGE_KEY) return;
   syncVisibleMessageCount();
+  syncAvatarPreferences();
 }
 
 function getHostWindow(): any {
@@ -821,9 +866,9 @@ function setupChatChangeListener() {
 async function loadPlayerAvatar() {
   try {
     const url = await resolveStoredPlayerAvatar();
-    playerAvatarUrl.value = url?.trim() || '';
+    playerAvatarUrl.value = url?.trim() || getDefaultPlayerAvatarUrl(props.characterData?.角色基础?.性别);
   } catch {
-    playerAvatarUrl.value = '';
+    playerAvatarUrl.value = getDefaultPlayerAvatarUrl(props.characterData?.角色基础?.性别);
   }
 }
 
@@ -1544,21 +1589,89 @@ function resolveAvatarFullName(rawName: string): string {
   return name;
 }
 
-function getAvatarUrl(name: string): string {
+function getAvatarFailureKey(mode: BackstreetAvatarMode, avatarName: string): string {
+  return `${mode}:${avatarName}`;
+}
+
+function getPreferredAvatarMode(fullName: string): BackstreetAvatarMode {
+  return contactAvatarModes.value[fullName] || defaultAvatarMode.value;
+}
+
+function resolveAvatarDisplay(name: string): { mode: BackstreetAvatarMode; avatarName: string; url: string } | null {
   const fullName = resolveAvatarFullName(name);
-  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fullName)}.png`;
+  if (!fullName) return null;
+
+  const preferredMode = getPreferredAvatarMode(fullName);
+  if (preferredMode === 'chibi') {
+    const chibiName = getChibiAvatarName(fullName);
+    if (chibiName && !failedAvatars.value.has(getAvatarFailureKey('chibi', chibiName))) {
+      return {
+        mode: 'chibi',
+        avatarName: chibiName,
+        url: getChibiAvatarUrl(chibiName),
+      };
+    }
+  }
+
+  if (failedAvatars.value.has(getAvatarFailureKey('normal', fullName))) {
+    return null;
+  }
+
+  return {
+    mode: 'normal',
+    avatarName: fullName,
+    url: getNormalAvatarUrl(fullName),
+  };
+}
+
+function getAvatarUrl(name: string): string {
+  return resolveAvatarDisplay(name)?.url || '';
 }
 
 function shouldUseAvatarImage(name: string): boolean {
-  const fullName = resolveAvatarFullName(name);
-  return !!fullName && !failedAvatars.value.has(fullName);
+  return Boolean(resolveAvatarDisplay(name));
 }
 
 function markAvatarFailed(name: string) {
-  const fullName = resolveAvatarFullName(name);
+  const avatar = resolveAvatarDisplay(name);
+  if (!avatar) return;
+
   const next = new Set(failedAvatars.value);
-  next.add(fullName);
+  next.add(getAvatarFailureKey(avatar.mode, avatar.avatarName));
   failedAvatars.value = next;
+}
+
+function isAvatarFlipping(name: string): boolean {
+  const fullName = resolveAvatarFullName(name);
+  return fullName ? flippingAvatars.value.has(fullName) : false;
+}
+
+function avatarToggleTitle(name: string): string {
+  const fullName = resolveAvatarFullName(name);
+  const currentMode = getPreferredAvatarMode(fullName);
+  return currentMode === 'chibi' ? '切换为正常头像' : '切换为 Q 版头像';
+}
+
+function toggleContactAvatarMode(name: string) {
+  const fullName = resolveAvatarFullName(name);
+  if (!fullName) return;
+
+  const currentMode = getPreferredAvatarMode(fullName);
+  const nextMode: BackstreetAvatarMode = currentMode === 'chibi' ? 'normal' : 'chibi';
+  contactAvatarModes.value = {
+    ...contactAvatarModes.value,
+    [fullName]: nextMode,
+  };
+  saveContactAvatarModes(contactAvatarModes.value);
+
+  const nextFlipping = new Set(flippingAvatars.value);
+  nextFlipping.add(fullName);
+  flippingAvatars.value = nextFlipping;
+  window.setTimeout(() => {
+    const settled = new Set(flippingAvatars.value);
+    settled.delete(fullName);
+    flippingAvatars.value = settled;
+  }, 520);
 }
 
 function contactInitial(name: string): string {
@@ -2124,6 +2237,26 @@ async function scrollToBottom() {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
+  transform-style: preserve-3d;
+  transition:
+    transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+
+  &.flippable {
+    cursor: pointer;
+  }
+
+  &.flippable:hover {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+      0 0 16px rgba(255, 255, 255, 0.14);
+    filter: brightness(1.08);
+  }
+
+  &.flipping {
+    transform: rotateY(180deg) scale(1.04);
+  }
 
   img {
     width: 100%;

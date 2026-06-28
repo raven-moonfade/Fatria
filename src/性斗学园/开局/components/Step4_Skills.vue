@@ -224,11 +224,107 @@
         </div>
       </div>
     </div>
+
+    <div class="rounded-2xl border border-white/10 bg-white/[0.07] p-4 shadow-inner shadow-white/5 backdrop-blur-sm">
+      <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div class="flex items-center gap-2 text-sm font-semibold text-white">
+              <i class="fas fa-id-card text-secondary"></i>
+              人物预设
+            </div>
+            <div class="mt-1 text-xs text-gray-400">
+              保存、载入并管理完整开局配置。载入后可返回前面步骤继续调整。
+            </div>
+          </div>
+          <div class="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <input
+              v-model="presetName"
+              type="text"
+              class="focus:ring-secondary/40 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm font-semibold text-white placeholder-gray-400 shadow-inner shadow-white/5 backdrop-blur-sm transition-all hover:border-white/25 hover:bg-white/15 focus:ring-2 focus:outline-none"
+              placeholder="新预设名称"
+            />
+            <button
+              type="button"
+              class="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-white/10 transition-all hover:scale-[1.02] hover:shadow-white/20 active:scale-95"
+              @click="emit('save-player-preset', normalizedPresetName)"
+            >
+              <i class="fas fa-save mr-1"></i> 保存当前人设
+            </button>
+          </div>
+        </div>
+
+        <div class="grid gap-3 border-t border-white/10 pt-4">
+          <div class="flex flex-col gap-2 md:flex-row md:items-center">
+            <div class="relative min-w-0 md:w-56">
+              <select
+                :value="selectedPlayerPresetName"
+                :disabled="playerPresets.length === 0"
+                class="focus:ring-secondary/40 w-full appearance-none rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 pr-9 text-sm font-semibold text-white shadow-inner shadow-white/5 backdrop-blur-sm transition-all hover:border-white/25 hover:bg-white/15 focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                @change="e => emit('update-selected-player-preset', (e.target as HTMLSelectElement).value)"
+              >
+                <option v-if="playerPresets.length === 0" value="">暂无预设</option>
+                <option v-for="preset in playerPresets" :key="preset.name" :value="preset.name">
+                  {{ preset.name }}
+                </option>
+              </select>
+              <i class="fas fa-chevron-down pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-gray-300"></i>
+            </div>
+            <button
+              type="button"
+              class="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:border-white/25 hover:bg-white/15 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="playerPresets.length === 0"
+              @click="emit('load-player-preset')"
+            >
+              <i class="fas fa-download mr-1"></i> 载入
+            </button>
+          </div>
+
+          <div v-if="playerPresets.length > 0" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <div class="relative">
+                <i class="fas fa-pen pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs text-gray-400"></i>
+                <input
+                  v-model="editingPresetName"
+                  type="text"
+                  class="focus:ring-secondary/40 w-full rounded-xl border border-white/15 bg-white/10 px-9 py-2.5 text-sm font-semibold text-white placeholder-gray-400 shadow-inner shadow-white/5 backdrop-blur-sm transition-all hover:border-white/25 hover:bg-white/15 focus:ring-2 focus:outline-none"
+                  placeholder="选中预设的新名称"
+                />
+              </div>
+              <button
+                type="button"
+                class="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:border-white/25 hover:bg-white/15 active:scale-95"
+                @click="emit('rename-player-preset', normalizedEditingPresetName)"
+              >
+                <i class="fas fa-i-cursor mr-1"></i> 改名
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 sm:flex">
+              <button
+                type="button"
+                class="rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-all hover:bg-emerald-400/20 active:scale-95"
+                @click="emit('update-player-preset')"
+              >
+                <i class="fas fa-save mr-1"></i> 覆盖信息
+              </button>
+              <button
+                type="button"
+                class="rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-2.5 text-sm font-semibold text-red-100 transition-all hover:bg-red-400/20 active:scale-95"
+                @click="emit('delete-player-preset')"
+              >
+                <i class="fas fa-trash mr-1"></i> 删除
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+import type { PlayerPresetSummary } from '../../shared/playerPresetStore';
 import { ConstitutionRarity, getConstitutionsForGender } from '../data/constitutions';
 import { DamageSource, SkillRarity, STARTER_SKILLS } from '../data/skills';
 import { getIconClass } from '../icon-helper';
@@ -237,14 +333,47 @@ import { CharacterData, Gender } from '../types';
 const props = defineProps<{
   data: CharacterData;
   isLifeSimMode?: boolean;
+  playerPresets: PlayerPresetSummary[];
+  selectedPlayerPresetName?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'update-data', fields: Partial<CharacterData>): void;
+  (e: 'save-player-preset', name: string): void;
+  (e: 'load-player-preset'): void;
+  (e: 'update-selected-player-preset', name: string): void;
+  (e: 'update-player-preset'): void;
+  (e: 'rename-player-preset', name: string): void;
+  (e: 'delete-player-preset'): void;
 }>();
 
 const MAX_ACTIVE_SKILLS = 5;
 const MAX_PASSIVE_SKILLS = 2;
+const presetName = ref('');
+const editingPresetName = ref('');
+
+const normalizedPresetName = computed(() => presetName.value.trim() || props.data.name.trim() || '默认预设');
+const normalizedEditingPresetName = computed(
+  () => editingPresetName.value.trim() || props.selectedPlayerPresetName || '默认预设',
+);
+
+watch(
+  () => props.data.name,
+  name => {
+    if (!presetName.value.trim()) {
+      presetName.value = name.trim();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.selectedPlayerPresetName,
+  name => {
+    editingPresetName.value = name || '';
+  },
+  { immediate: true },
+);
 
 // 使用新的数据结构
 const starterSkills = computed(() => STARTER_SKILLS);

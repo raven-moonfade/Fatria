@@ -389,6 +389,18 @@
                       只影响后街窗口首次显示数量；聊天顶部可继续加载更早消息。
                     </div>
 
+                    <label class="settings-text-field">
+                      <span>联系人头像</span>
+                      <select v-model="phonePrefs.backstreetAvatarMode">
+                        <option value="chibi">默认 Q 版头像</option>
+                        <option value="normal">默认正常头像</option>
+                      </select>
+                    </label>
+
+                    <div class="settings-helper">
+                      没有 Q 版头像的联系人会自动使用正常头像；在后街联系人页点击头像可单独切换并记住该联系人。
+                    </div>
+
                     <details class="settings-advanced-panel">
                       <summary>
                         <span>高级参数</span>
@@ -859,6 +871,11 @@ import {
   saveBackstreetGenerationSettings,
   type BackstreetGenerationSettings,
 } from '../phone/backstreetGenerationSettings';
+import {
+  DEFAULT_BACKSTREET_AVATAR_MODE,
+  normalizeBackstreetAvatarMode,
+  type BackstreetAvatarMode,
+} from '../phone/backstreetAvatarSettings';
 import { testNovelAiImageConnection } from '../phone/novelAiImageClient';
 import {
   DEFAULT_NOVELAI_IMAGE_SETTINGS,
@@ -990,6 +1007,7 @@ interface PhonePreferences {
   wallpaperBlur: number;
   tintStrength: number;
   backstreetVisibleMessageCount: number;
+  backstreetAvatarMode: BackstreetAvatarMode;
   backstreetPresentPrivateMessageCount: number;
   backstreetPresentGroupMessageCount: number;
   backstreetGlobalRecentMessageCount: number;
@@ -1018,6 +1036,7 @@ const DEFAULT_PHONE_PREFS: PhonePreferences = {
   wallpaperBlur: 0,
   tintStrength: 15,
   backstreetVisibleMessageCount: 30,
+  backstreetAvatarMode: DEFAULT_BACKSTREET_AVATAR_MODE,
   backstreetPresentPrivateMessageCount: 20,
   backstreetPresentGroupMessageCount: 20,
   backstreetGlobalRecentMessageCount: 20,
@@ -1233,6 +1252,9 @@ function loadPhonePreferences(): PhonePreferences {
         5,
         100,
       ),
+      backstreetAvatarMode: normalizeBackstreetAvatarMode(
+        parsed.backstreetAvatarMode ?? DEFAULT_PHONE_PREFS.backstreetAvatarMode,
+      ),
       backstreetPresentPrivateMessageCount: clampNumber(
         Number(parsed.backstreetPresentPrivateMessageCount ?? DEFAULT_PHONE_PREFS.backstreetPresentPrivateMessageCount),
         0,
@@ -1369,6 +1391,7 @@ function resetBackstreetSettings() {
   phonePrefs.value = {
     ...phonePrefs.value,
     backstreetVisibleMessageCount: DEFAULT_PHONE_PREFS.backstreetVisibleMessageCount,
+    backstreetAvatarMode: DEFAULT_PHONE_PREFS.backstreetAvatarMode,
     backstreetPresentPrivateMessageCount: DEFAULT_PHONE_PREFS.backstreetPresentPrivateMessageCount,
     backstreetPresentGroupMessageCount: DEFAULT_PHONE_PREFS.backstreetPresentGroupMessageCount,
     backstreetGlobalRecentMessageCount: DEFAULT_PHONE_PREFS.backstreetGlobalRecentMessageCount,

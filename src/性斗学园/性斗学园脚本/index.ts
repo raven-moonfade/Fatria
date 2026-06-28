@@ -17,6 +17,7 @@ import {
   unlockMaxFavorCharacterCGsFromMvuData,
 } from '../shared/cgUnlockStore';
 import { getLatestMvuData, replaceLatestMvuData, waitForMvu } from '../shared/mvuStore';
+import { syncCurrentChatUserInfoToWorldbook } from '../shared/userWorldbookSync';
 import { shouldTriggerOrgasm } from '../开局/utils/combat-calculator';
 import StatusBarWrapper from './components/StatusBarWrapper.vue';
 import { getDailyTalentEffect } from './data/talentDatabase';
@@ -903,6 +904,7 @@ function registerMvuEventListeners() {
      * 在变量初始化后，计算初始的依赖变量值
      */
     eventOn(Mvu.events.VARIABLE_INITIALIZED, async () => {
+      scheduleCurrentChatUserInfoSync('变量初始化', [200, 1000, 2500, 5000]);
       await enforcePotentialCapOnStartup();
       await normalizeLatestCharacterNames('变量初始化');
       await updateDependentVariables();
@@ -991,6 +993,52 @@ if (typeof tavern_events !== 'undefined' && tavern_events.MESSAGE_RECEIVED) {
   console.warn('[性斗学园脚本] tavern_events.MESSAGE_RECEIVED 不可用，无法监听对话事件');
 }
 
+let syncUserInfoTimers: ReturnType<typeof setTimeout>[] = [];
+
+function clearUserInfoSyncTimers() {
+  for (const timer of syncUserInfoTimers) {
+    clearTimeout(timer);
+  }
+  syncUserInfoTimers = [];
+}
+
+function getCurrentChatIdForLog(): string {
+  const globalAny = window as any;
+  return String(globalAny.SillyTavern?.getCurrentChatId?.() || 'unknown');
+}
+
+function scheduleCurrentChatUserInfoSync(reason: string, delays: number[] = [300, 1000, 2500, 5000, 8000]) {
+  clearUserInfoSyncTimers();
+
+  const scheduledChatId = getCurrentChatIdForLog();
+  syncUserInfoTimers = delays.map((delay, index) =>
+    setTimeout(() => {
+      errorCatched(async () => {
+        const currentChatId = getCurrentChatIdForLog();
+        console.info(
+          `[性斗学园脚本] ${reason}：第 ${index + 1}/${delays.length} 次同步当前聊天用户信息到世界书 user 条目`,
+          { scheduledChatId, currentChatId, delay },
+        );
+
+        const synced = await syncCurrentChatUserInfoToWorldbook('[性斗学园脚本]');
+        if (synced) {
+          clearUserInfoSyncTimers();
+        }
+      })();
+    }, delay),
+  );
+}
+
+
+if (typeof tavern_events !== 'undefined' && tavern_events.CHAT_CHANGED) {
+  eventOn(tavern_events.CHAT_CHANGED, () => {
+    scheduleCurrentChatUserInfoSync('聊天切换', [300, 1000, 2500, 5000, 8000]);
+  });
+  console.info('[性斗学园脚本] 已注册聊天切换用户信息同步监听器');
+} else {
+  console.warn('[性斗学园脚本] tavern_events.CHAT_CHANGED 不可用，无法监听聊天切换同步用户信息');
+}
+
 /**
  * 等待 MVU 初始化完成（带重试机制）
  */
@@ -1028,6 +1076,7 @@ $(() => {
     registerMvuEventListeners();
 
     console.info('[性斗学园脚本] 初始化：开始首次计算');
+    scheduleCurrentChatUserInfoSync('脚本初始化', [100, 800, 2000, 5000]);
     await updateDependentVariables();
     // 初始化时也更新段位
     await updateRank();
