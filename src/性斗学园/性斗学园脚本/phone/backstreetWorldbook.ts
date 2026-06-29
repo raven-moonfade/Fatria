@@ -265,6 +265,47 @@ function getMessageDisplayText(message: Partial<BackstreetMessage>): string {
   return `【图片】${text || '后街插图'}`;
 }
 
+function formatMemoryMessageLine(message: BackstreetMessage, thread: BackstreetThreadData): string {
+  return `${formatMessageTimestamp(message)} ${getMessageSpeaker(message, thread)}: ${getMessageDisplayText(message)}`;
+}
+
+function extractReadableArchiveFallback(rawContent: string): string {
+  const stripped = safeString(rawContent)
+    .replace(/<\/?backstreet_(?:thread|archive)[^>]*>/gi, '')
+    .trim();
+  const parsed = parseJsonBlock<Record<string, unknown>>(stripped);
+  const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+  const lines = messages
+    .map(item => normalizeMessage((item || {}) as Partial<BackstreetMessage>))
+    .filter((message): message is BackstreetMessage => !!message)
+    .slice(-12)
+    .map(message => {
+      const speaker = message.sender === 'user' ? '<user>' : message.sender === 'system' ? '系统' : '对方';
+      return `${formatMessageTimestamp(message)} ${speaker}: ${getMessageDisplayText(message)}`;
+    });
+  if (lines.length > 0) return lines.join('\n');
+
+  const textMatches = [...stripped.matchAll(/"text"\s*:\s*"((?:\\.|[^"\\])*)"/g)]
+    .map(match => {
+      try {
+        return JSON.parse(`"${match[1]}"`) as string;
+      } catch {
+        return match[1];
+      }
+    })
+    .map(text => safeString(text))
+    .filter(Boolean)
+    .slice(-12);
+  return textMatches.join('\n');
+}
+
+function formatMemoryHitContent(rawContent: string, contact: string, thread: BackstreetThreadData): string {
+  if (thread.messages.length > 0) {
+    return thread.messages.slice(-12).map(message => formatMemoryMessageLine(message, thread)).join('\n');
+  }
+  return extractReadableArchiveFallback(rawContent) || `过往后街记录存在，但无法解析为可读消息。${contact ? `联系人：${contact}` : ''}`;
+}
+
 function createGroupSystemMessage(text: string, date: string, time: string): BackstreetMessage {
   return {
     id: makeId('bst_group_event'),
@@ -308,20 +349,13 @@ function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit 
     parseWrappedJson<BackstreetThreadData>(rawContent, 'backstreet_thread') ||
     parseWrappedJson<BackstreetThreadData>(rawContent, 'backstreet_archive');
   const normalizedThread = normalizeThread(contact || safeString(thread?.contact), thread);
-  const messageLines =
-    normalizedThread.messages.length > 0
-      ? normalizedThread.messages
-          .slice(-12)
-          .map(message => `${formatMessageTimestamp(message)} ${getMessageSpeaker(message, normalizedThread)}: ${getMessageDisplayText(message)}`)
-          .join('\n')
-      : '';
 
   return {
     title,
     contact,
     source: '后街手机世界书',
     score,
-    content: clipText(messageLines || rawContent, 900),
+    content: clipText(formatMemoryHitContent(rawContent, contact || '', normalizedThread), 900),
   };
 }
 

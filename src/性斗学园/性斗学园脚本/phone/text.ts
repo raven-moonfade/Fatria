@@ -18,8 +18,11 @@ export function uniqueStrings(values: unknown[]): string[] {
   return result;
 }
 
-export function clipText(text: string, _maxLength: number): string {
-  return safeString(text);
+export function clipText(text: string, maxLength: number): string {
+  const value = safeString(text);
+  const limit = Math.max(0, Math.floor(Number(maxLength) || 0));
+  if (!limit || value.length <= limit) return value;
+  return `${value.slice(0, Math.max(0, limit - 1))}…`;
 }
 
 export function stripHtmlTags(text: string): string {

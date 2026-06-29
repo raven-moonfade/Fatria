@@ -496,16 +496,70 @@
             <span class="mention-name">@{{ member }}</span>
           </button>
         </div>
-        <div v-if="showEmojiPanel" class="emoji-panel" aria-label="emoji 列表">
-          <button
-            v-for="emoji in EMOJI_OPTIONS"
-            :key="emoji"
-            class="emoji-option"
-            type="button"
-            @mousedown.prevent="insertEmoji(emoji)"
-          >
-            {{ emoji }}
-          </button>
+        <div v-if="showEmojiPanel" class="emoji-panel" aria-label="emoji 与表情包列表">
+          <div class="emoji-tabs">
+            <button
+              class="emoji-tab"
+              :class="{ active: emojiPanelTab === 'emoji' }"
+              type="button"
+              @mousedown.prevent="emojiPanelTab = 'emoji'"
+            >
+              emoji
+            </button>
+            <button
+              class="emoji-tab"
+              :class="{ active: emojiPanelTab === 'sticker' }"
+              type="button"
+              @mousedown.prevent="openStickerTab"
+            >
+              表情包
+            </button>
+          </div>
+          <div v-if="emojiPanelTab === 'emoji'" class="emoji-grid">
+            <button
+              v-for="emoji in EMOJI_OPTIONS"
+              :key="emoji"
+              class="emoji-option"
+              type="button"
+              @mousedown.prevent="insertEmoji(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+          <div v-else class="sticker-panel">
+            <div v-if="stickerPreview" class="sticker-preview">
+              <img :src="stickerPreview.url" :alt="stickerPreview.name" />
+              <span>{{ stickerPreview.name }}</span>
+            </div>
+            <label class="sticker-prompt-toggle" :title="stickerPromptToggleHelp" :data-help="stickerPromptToggleHelp">
+              <input v-model="stickerHiddenFromPrompt" type="checkbox" />
+              <span>将表情包图片改为表情描述</span>
+              <i class="fas fa-circle-question"></i>
+            </label>
+            <div class="sticker-grid">
+              <button
+                v-for="sticker in stickerOptions"
+                :key="sticker.id"
+                class="sticker-option"
+                type="button"
+                :title="sticker.name"
+                :aria-label="sticker.name"
+                @pointerenter="showStickerPreview(sticker)"
+                @pointerleave="hideStickerPreview(sticker)"
+                @pointercancel="clearStickerPreviewTimer"
+                @pointerdown="startStickerPreviewPress(sticker)"
+                @pointerup="clearStickerPreviewTimer"
+                @click.prevent="sendSticker(sticker)"
+              >
+                <img :src="sticker.url" :alt="sticker.name" loading="lazy" />
+              </button>
+              <div v-if="isLoadingStickers" class="sticker-state">加载中</div>
+              <button v-else-if="stickerLoadError" class="sticker-state retry" type="button" @mousedown.prevent="loadStickerManifest(true)">
+                重新加载
+              </button>
+              <div v-else-if="stickerOptions.length === 0" class="sticker-state">暂无表情包</div>
+            </div>
+          </div>
         </div>
         <div v-if="pendingImageAttachments.length > 0" class="composer-attachment-preview">
           <div v-for="(attachment, index) in pendingImageAttachments" :key="attachment.previewUrl" class="composer-attachment-item">
@@ -579,6 +633,7 @@ import {
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
 import {
   getIndexedImageObjectUrl,
+  isIndexedImageRef,
   makeIndexedImageRef,
   revokeIndexedImageObjectUrl,
   saveIndexedImageBlob,
@@ -597,6 +652,12 @@ const emit = defineEmits<{
 const PHONE_PREFS_STORAGE_KEY = 'fatria-status-phone-preferences-v1';
 const PHONE_PREFS_UPDATED_EVENT = 'fatria-status-phone-preferences-updated';
 const DEFAULT_VISIBLE_MESSAGE_COUNT = 30;
+const STICKER_MANIFEST_BASE_URL = 'https://img.vinsimage.org/性斗学园/表情包/';
+const STICKER_MANIFEST_SCRIPT_URL = `${STICKER_MANIFEST_BASE_URL}manifest.js`;
+const STICKER_MANIFEST_JSON_URL = `${STICKER_MANIFEST_BASE_URL}manifest.json`;
+const STICKER_MANIFEST_GLOBAL = 'FATRIA_BACKSTREET_STICKERS';
+const STICKER_PROMPT_STORAGE_KEY = 'fatria-backstreet-sticker-hidden-from-prompt-v1';
+const STICKER_PROMPT_TOGGLE_HELP = '适用于非多模态模型：勾选后聊天里仍显示表情包，但发送给 AI 的内容会改为文字描述，不再发送图片输入。';
 const EMOJI_OPTIONS = [
   '😀',
   '😄',
@@ -625,6 +686,27 @@ const EMOJI_OPTIONS = [
 interface PendingImageAttachment {
   file: File;
   previewUrl: string;
+}
+
+interface StickerManifestItem {
+  id?: string;
+  name?: string;
+  description?: string;
+  file?: string;
+  url?: string;
+}
+
+interface StickerManifest {
+  version?: string;
+  baseUrl?: string;
+  stickers?: StickerManifestItem[];
+}
+
+interface StickerOption {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
 }
 
 const contacts = ref<BackstreetContact[]>([]);
@@ -661,9 +743,18 @@ const mentionQuery = ref('');
 const mentionStartIndex = ref(-1);
 const selectedMentionIndex = ref(0);
 const showEmojiPanel = ref(false);
+const emojiPanelTab = ref<'emoji' | 'sticker'>('emoji');
+const stickerOptions = ref<StickerOption[]>([]);
+const isLoadingStickers = ref(false);
+const stickerLoadError = ref('');
+const stickerHiddenFromPrompt = ref(readStickerHiddenFromPrompt());
+const stickerPreview = ref<StickerOption | null>(null);
+const stickerPromptToggleHelp = STICKER_PROMPT_TOGGLE_HELP;
 let currentChatId = '';
 let stopChatChangeListener: (() => void) | null = null;
 let messageImageSyncId = 0;
+let stickerPreviewPressTimer: number | null = null;
+let stickerLongPressPreviewed = false;
 
 const privateContacts = computed(() => contacts.value.filter(contact => contact.type !== 'group'));
 const groupContacts = computed(() => contacts.value.filter(contact => contact.type === 'group'));
@@ -733,6 +824,14 @@ watch(
   { deep: false },
 );
 
+watch(stickerHiddenFromPrompt, value => {
+  try {
+    window.localStorage?.setItem(STICKER_PROMPT_STORAGE_KEY, value ? '1' : '0');
+  } catch {
+    // ignore storage failures
+  }
+});
+
 onMounted(() => {
   loadContacts();
   void loadPlayerAvatar();
@@ -745,6 +844,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopChatChangeListener?.();
   stopChatChangeListener = null;
+  clearStickerPreviewTimer();
   window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.removeEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.removeEventListener('storage', handlePhonePreferencesStorage);
@@ -789,6 +889,14 @@ function readDefaultAvatarMode(): BackstreetAvatarMode {
   }
 }
 
+function readStickerHiddenFromPrompt(): boolean {
+  try {
+    return window.localStorage?.getItem(STICKER_PROMPT_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 function syncVisibleMessageCount() {
   visibleMessageCount.value = readVisibleMessageCount();
 }
@@ -825,6 +933,130 @@ function getHostWindow(): any {
   } catch {
     return window;
   }
+}
+
+function withCacheBust(url: string): string {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}t=${Date.now()}`;
+}
+
+function trimSlashes(value: string): string {
+  return value.replace(/^\/+|\/+$/g, '');
+}
+
+function resolveStickerUrl(item: StickerManifestItem, baseUrl: string, version: string): string {
+  const rawUrl = String(item.url || '').trim();
+  const rawFile = String(item.file || '').trim();
+  const source = rawUrl || rawFile;
+  if (!source) return '';
+
+  const url =
+    /^https?:\/\//i.test(source) || /^data:image\//i.test(source)
+      ? source
+      : `${baseUrl.replace(/\/+$/, '')}/${trimSlashes(source)
+          .split('/')
+          .map(part => encodeURIComponent(part))
+          .join('/')}`;
+  if (!version || /^data:image\//i.test(url)) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${encodeURIComponent(version)}`;
+}
+
+function stripStickerExtension(value: string): string {
+  return value.replace(/\.(?:png|jpe?g|webp|gif|avif|bmp)$/i, '');
+}
+
+function cleanStickerText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normalizeStickerLabel(value: string): string {
+  return stripStickerExtension(cleanStickerText(value))
+    .replace(/[_-]*表情包[_-]*/g, ' ')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function describeSticker(item: StickerManifestItem, displayName: string): string {
+  const explicitDescription = cleanStickerText(item.description);
+  if (explicitDescription) return explicitDescription;
+
+  const label = normalizeStickerLabel(displayName || item.file || item.id || '表情包');
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const character = parts[0];
+    const meaning = parts.slice(1).join(' ');
+    return `${character}表情包，画面文字/含义是「${meaning}」，通常表示发送者用这个表情包表达「${meaning}」的情绪或吐槽。`;
+  }
+  return `表情包「${label || '未命名'}」，请结合图片内容理解发送者此刻的情绪、吐槽或反应。`;
+}
+
+function formatStickerMessageText(sticker: StickerOption, textOnly: boolean): string {
+  if (!textOnly) return '';
+  const description = cleanStickerText(sticker.description) || `表情包「${sticker.name || '未命名'}」`;
+  return `用户发送了一个表情包，表情包描述：${description}`;
+}
+
+function normalizeStickerManifest(manifest: StickerManifest | null | undefined): StickerOption[] {
+  const items = Array.isArray(manifest?.stickers) ? manifest.stickers : [];
+  const baseUrl = String(manifest?.baseUrl || STICKER_MANIFEST_BASE_URL).trim() || STICKER_MANIFEST_BASE_URL;
+  const version = String(manifest?.version || '').trim();
+  return items
+    .map((item, index) => {
+      const url = resolveStickerUrl(item, baseUrl, version);
+      const name = String(item.name || item.id || item.file || `表情包 ${index + 1}`).trim();
+      const id = String(item.id || item.file || item.url || `${name}-${index}`).trim();
+      const description = describeSticker(item, name);
+      return url ? { id, name, url, description } : null;
+    })
+    .filter((item): item is StickerOption => Boolean(item));
+}
+
+function loadStickerManifestScript(): Promise<StickerManifest | null> {
+  return new Promise(resolve => {
+    const globalTarget = window as typeof window & Record<string, unknown>;
+    delete globalTarget[STICKER_MANIFEST_GLOBAL];
+    const script = document.createElement('script');
+    script.src = withCacheBust(STICKER_MANIFEST_SCRIPT_URL);
+    script.async = true;
+    script.onload = () => {
+      script.remove();
+      resolve((globalTarget[STICKER_MANIFEST_GLOBAL] as StickerManifest | undefined) || null);
+    };
+    script.onerror = () => {
+      script.remove();
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+async function loadStickerManifest(force = false) {
+  if (isLoadingStickers.value || (!force && stickerOptions.value.length > 0)) return;
+  isLoadingStickers.value = true;
+  stickerLoadError.value = '';
+  try {
+    const scriptManifest = await loadStickerManifestScript();
+    const manifest =
+      scriptManifest ||
+      ((await fetch(withCacheBust(STICKER_MANIFEST_JSON_URL), { cache: 'no-store' }).then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<StickerManifest>;
+      })) as StickerManifest);
+    stickerOptions.value = normalizeStickerManifest(manifest);
+  } catch (error) {
+    console.warn('[后街页面] 表情包清单加载失败:', error);
+    stickerLoadError.value = '表情包加载失败';
+    stickerOptions.value = [];
+  } finally {
+    isLoadingStickers.value = false;
+  }
+}
+
+function openStickerTab() {
+  emojiPanelTab.value = 'sticker';
+  void loadStickerManifest();
 }
 
 function readCurrentChatId(): string {
@@ -885,7 +1117,8 @@ function canRerollImageMessage(message: BackstreetMessage): boolean {
 }
 
 function canToggleUserImagePrompt(message: BackstreetMessage): boolean {
-  return message.sender === 'user' && isImageMessage(message) && Boolean(message.imageRef?.trim());
+  const ref = message.imageRef?.trim();
+  return message.sender === 'user' && isImageMessage(message) && Boolean(ref);
 }
 
 function imagePromptToggleTitle(message: BackstreetMessage): string {
@@ -894,7 +1127,9 @@ function imagePromptToggleTitle(message: BackstreetMessage): string {
 
 function getMessageImageUrl(message: BackstreetMessage): string {
   const ref = message.imageRef?.trim();
-  return ref ? messageImageUrls.value[ref] || '' : '';
+  if (!ref) return '';
+  if (/^https?:\/\//i.test(ref) || /^data:image\//i.test(ref)) return ref;
+  return messageImageUrls.value[ref] || '';
 }
 
 function revokeMessageImageUrls() {
@@ -911,6 +1146,7 @@ async function syncMessageImageUrls() {
   const next: Record<string, string> = {};
 
   for (const ref of refs) {
+    if (!isIndexedImageRef(ref)) continue;
     if (previous[ref]) {
       next[ref] = previous[ref];
       continue;
@@ -1045,6 +1281,48 @@ async function savePendingImageAttachments(contact: string): Promise<string[]> {
     refs.push(ref);
   }
   return refs;
+}
+
+function getStickerFileName(sticker: StickerOption, contentType: string): string {
+  const fallbackExtension = contentType.split('/')[1] || 'png';
+  try {
+    const url = new URL(sticker.url, window.location.href);
+    const name = decodeURIComponent(url.pathname.split('/').filter(Boolean).at(-1) || '');
+    if (name) return name;
+  } catch {
+    // fall back to id-based file name below
+  }
+  return `${sticker.id || makeId('sticker')}.${fallbackExtension}`;
+}
+
+async function fetchStickerAsFile(sticker: StickerOption): Promise<File> {
+  let response: Response;
+  try {
+    response = await fetch(sticker.url, { cache: 'no-store' });
+  } catch (error) {
+    throw new Error(
+      `表情包图片读取失败：图床未允许当前页面跨域读取图片。请在 R2 CORS Policy 中允许 ${window.location.origin} 后重试。`,
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`表情包图片读取失败：HTTP ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const contentType = blob.type || response.headers.get('content-type') || 'image/png';
+  if (!contentType.startsWith('image/')) {
+    throw new Error('表情包图片读取失败：图床返回的不是图片文件');
+  }
+
+  return new File([blob], getStickerFileName(sticker, contentType), { type: contentType });
+}
+
+async function saveStickerImageAttachment(contact: string, sticker: StickerOption): Promise<string> {
+  const file = await fetchStickerAsFile(sticker);
+  const ref = makeIndexedImageRef(`backstreet-user:${contact}:${makeId('sticker')}:${file.name}`);
+  await saveIndexedImageBlob(ref, file);
+  return ref;
 }
 
 async function loadContacts(characterDataOverride: any = props.characterData || {}) {
@@ -1327,6 +1605,8 @@ function hideMentionPanel() {
 
 function hideEmojiPanel() {
   showEmojiPanel.value = false;
+  stickerPreview.value = null;
+  clearStickerPreviewTimer();
 }
 
 function toggleEmojiPanel() {
@@ -1336,6 +1616,71 @@ function toggleEmojiPanel() {
   nextTick(() => {
     composerInputRef.value?.focus();
   });
+}
+
+function showStickerPreview(sticker: StickerOption) {
+  stickerPreview.value = sticker;
+}
+
+function hideStickerPreview(sticker?: StickerOption) {
+  clearStickerPreviewTimer();
+  if (!sticker || stickerPreview.value?.id === sticker.id) {
+    stickerPreview.value = null;
+  }
+}
+
+function clearStickerPreviewTimer() {
+  if (stickerPreviewPressTimer === null) return;
+  window.clearTimeout(stickerPreviewPressTimer);
+  stickerPreviewPressTimer = null;
+}
+
+function startStickerPreviewPress(sticker: StickerOption) {
+  clearStickerPreviewTimer();
+  stickerLongPressPreviewed = false;
+  stickerPreviewPressTimer = window.setTimeout(() => {
+    stickerPreview.value = sticker;
+    stickerLongPressPreviewed = true;
+    stickerPreviewPressTimer = null;
+  }, 420);
+}
+
+async function sendSticker(sticker: StickerOption) {
+  if (stickerLongPressPreviewed) {
+    stickerLongPressPreviewed = false;
+    return;
+  }
+  const contact = activeContact.value;
+  if (!contact || isSending.value || activeIsDissolved.value) return;
+
+  hideMentionPanel();
+  hideEmojiPanel();
+  isSending.value = true;
+  errorText.value = '';
+
+  try {
+    clearPendingImageAttachments();
+    const text = formatStickerMessageText(sticker, stickerHiddenFromPrompt.value);
+    const imageRef = await saveStickerImageAttachment(contact, sticker);
+    await backstreetService.appendUserMessage(contact, text, props.characterData || {}, {
+      imageRefs: [imageRef],
+      imageHiddenFromPrompt: stickerHiddenFromPrompt.value,
+    });
+    await loadThread(contact);
+    await scrollToBottom();
+    await loadContacts();
+
+    await backstreetService.generateContactReply(contact, props.characterData || {});
+    await loadThread(contact);
+    await loadContacts();
+  } catch (error) {
+    console.error('[后街页面] 表情包发送失败:', error);
+    errorText.value = error instanceof Error ? error.message : '表情包发送失败';
+    await loadThread(contact);
+  } finally {
+    isSending.value = false;
+    await scrollToBottom();
+  }
 }
 
 function updateMentionState(event?: Event) {
@@ -3202,15 +3547,11 @@ async function scrollToBottom() {
   position: absolute;
   right: 55px;
   bottom: calc(100% + 8px);
-  width: min(244px, calc(100% - 20px));
-  max-height: 156px;
-  overflow-y: auto;
+  width: min(330px, calc(100% - 20px));
+  overflow: visible;
   border: 1px solid rgba(251, 191, 36, 0.22);
   border-radius: 16px;
   padding: 8px;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 5px;
   background:
     linear-gradient(155deg, rgba(15, 23, 42, 0.94), rgba(42, 31, 55, 0.78)),
     rgba(10, 14, 28, 0.86);
@@ -3219,6 +3560,158 @@ async function scrollToBottom() {
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(16px);
   z-index: 9;
+}
+
+.emoji-tabs {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding-bottom: 7px;
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.96), rgba(42, 31, 55, 0.88));
+  z-index: 1;
+}
+
+.emoji-tab {
+  height: 28px;
+  border: 0;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 800;
+
+  &.active {
+    color: #fff;
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.86), rgba(236, 72, 153, 0.78));
+  }
+}
+
+.emoji-grid {
+  max-height: 158px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.sticker-grid {
+  max-height: 244px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sticker-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sticker-prompt-toggle {
+  position: relative;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  font-weight: 800;
+
+  input {
+    width: 14px;
+    height: 14px;
+    accent-color: #f59e0b;
+    flex-shrink: 0;
+  }
+
+  span {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  i {
+    color: rgba(254, 243, 199, 0.78);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  &::after {
+    content: attr(data-help);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    box-sizing: border-box;
+    min-height: 34px;
+    padding: 8px 10px;
+    border: 1px solid rgba(251, 191, 36, 0.24);
+    border-radius: 10px;
+    display: none;
+    align-items: center;
+    color: #fef3c7;
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
+    z-index: 5;
+  }
+
+  &:hover::after,
+  &:active::after,
+  &:focus-within::after {
+    display: flex;
+  }
+}
+
+.sticker-preview {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  min-height: 184px;
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-radius: 13px;
+  padding: 10px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 6px;
+  background:
+    linear-gradient(155deg, rgba(15, 23, 42, 0.97), rgba(42, 31, 55, 0.9)),
+    rgba(10, 14, 28, 0.94);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.36);
+  pointer-events: none;
+  z-index: 4;
+
+  img {
+    width: 100%;
+    height: 154px;
+    object-fit: contain;
+    display: block;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 12px;
+    font-weight: 800;
+    text-align: center;
+  }
 }
 
 .emoji-option {
@@ -3243,6 +3736,52 @@ async function scrollToBottom() {
 
   &:active {
     transform: scale(0.94);
+  }
+}
+
+.sticker-option {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 11px;
+  padding: 7px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  transition:
+    background 0.15s,
+    transform 0.15s;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  &:hover {
+    background: rgba(251, 191, 36, 0.18);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.94);
+  }
+}
+
+.sticker-state {
+  min-height: 78px;
+  grid-column: 1 / -1;
+  border: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.68);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+
+  &.retry {
+    color: #fef3c7;
   }
 }
 

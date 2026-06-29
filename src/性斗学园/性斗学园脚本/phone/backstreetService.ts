@@ -22,7 +22,7 @@ import type {
   PhoneMemoryQuery,
 } from './types';
 import { getLatestStatData } from '../../shared/mvuStore';
-import { deleteIndexedImage, getIndexedImageBlob } from '../../shared/indexedImageStore';
+import { deleteIndexedImage, getIndexedImageBlob, isIndexedImageRef } from '../../shared/indexedImageStore';
 import { clipText, makeId, normalizeName, safeString, uniqueStrings } from './text';
 import { extractXmlTag, normalizePhoneMemoryQuery, parseJsonBlock } from './xmlToolCall';
 
@@ -34,6 +34,7 @@ interface SendBackstreetResult {
 interface AppendUserMessageOptions {
   imageRef?: string;
   imageRefs?: string[];
+  imageHiddenFromPrompt?: boolean;
 }
 
 interface BackstreetReplyRecoveryOptions {
@@ -110,7 +111,7 @@ function formatMessageTextForPrompt(
   if (!isImageMessage(message)) return text;
   if (message.imageError) return `【图片生成失败：${safeString(message.imageError)}】${text}`;
   if (message.sender === 'user') {
-    if (message.imageHiddenFromPrompt) return text;
+    if (message.imageHiddenFromPrompt) return text || '【用户发送了一张图片，但图片未发送给模型，且没有附言/描述】';
     const description = text ? `附言/描述：${text}` : '没有附言';
     return options.inlineImageAttached
       ? `【用户发送了一张图片；图片已随本轮请求以内联媒体发送给模型。${description}】`
@@ -159,7 +160,7 @@ function extractFallbackQuery(text: string, limit = 6): PhoneMemoryQuery {
 function formatMemoryHits(hits: PhoneMemoryHit[], title: string): string {
   if (hits.length === 0) return '';
   return `【${title}】\n${hits
-    .map(hit => `- ${hit.title}\n${clipText(hit.content, 900)}`)
+    .map(hit => `- ${hit.contact ? `相关记录：${hit.contact}` : hit.title}\n${clipText(hit.content, 900)}`)
     .join('\n\n')}`;
 }
 
@@ -563,9 +564,10 @@ function getPromptVisibleUserImageMessages(messages: BackstreetMessage[]): Backs
   return messages.filter(isPromptVisibleUserImageMessage);
 }
 
-async function buildInlineImageFile(message: BackstreetMessage): Promise<File> {
+async function buildInlineImageFile(message: BackstreetMessage): Promise<File | string> {
   const ref = safeString(message.imageRef);
   if (!ref) throw new Error('图片附件缺少引用，无法发送给小手机 AI');
+  if (!isIndexedImageRef(ref) && (/^https?:\/\//i.test(ref) || /^data:image\//i.test(ref))) return ref;
   const blob = await getIndexedImageBlob(ref).catch(() => null);
   if (!blob) throw new Error('图片附件读取失败，无法发送给小手机 AI');
   const type = blob.type || 'image/png';
@@ -573,13 +575,13 @@ async function buildInlineImageFile(message: BackstreetMessage): Promise<File> {
   return new File([blob], `${message.id || 'backstreet-image'}.${extension}`, { type });
 }
 
-async function buildInlineImagesForPrompt(messages: BackstreetMessage[]): Promise<{ images: File[]; refs: Set<string> }> {
+async function buildInlineImagesForPrompt(messages: BackstreetMessage[]): Promise<{ images: (File | string)[]; refs: Set<string> }> {
   const generationSettings = loadBackstreetGenerationSettings();
   const promptImageMessages =
     generationSettings.maxUserImagesInPrompt > 0
       ? getPromptVisibleUserImageMessages(messages).slice(-generationSettings.maxUserImagesInPrompt)
       : [];
-  const images: File[] = [];
+  const images: (File | string)[] = [];
   const refs = new Set<string>();
 
   for (const message of promptImageMessages) {
@@ -806,6 +808,7 @@ export class BackstreetService {
             text: index === 0 ? safeString(text) : '',
             imageRef,
             imageSource: 'user',
+            imageHiddenFromPrompt: options.imageHiddenFromPrompt || undefined,
             createdAt: Date.now() + index,
           }))
         : [
