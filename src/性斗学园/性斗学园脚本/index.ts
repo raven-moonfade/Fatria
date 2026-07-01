@@ -17,7 +17,7 @@ import {
   unlockMaxFavorCharacterCGsFromMvuData,
 } from '../shared/cgUnlockStore';
 import { getLatestMvuData, replaceLatestMvuData, waitForMvu } from '../shared/mvuStore';
-import { syncCurrentChatUserInfoToWorldbook } from '../shared/userWorldbookSync';
+import { syncCurrentChatUserInfoToPersona } from '../shared/userWorldbookSync';
 import { shouldTriggerOrgasm } from '../开局/utils/combat-calculator';
 import StatusBarWrapper from './components/StatusBarWrapper.vue';
 import { getDailyTalentEffect } from './data/talentDatabase';
@@ -1016,11 +1016,11 @@ function scheduleCurrentChatUserInfoSync(reason: string, delays: number[] = [300
       errorCatched(async () => {
         const currentChatId = getCurrentChatIdForLog();
         console.info(
-          `[性斗学园脚本] ${reason}：第 ${index + 1}/${delays.length} 次同步当前聊天用户信息到世界书 user 条目`,
+          `[性斗学园脚本] ${reason}：第 ${index + 1}/${delays.length} 次同步当前聊天用户信息到酒馆用户人设`,
           { scheduledChatId, currentChatId, delay },
         );
 
-        const synced = await syncCurrentChatUserInfoToWorldbook('[性斗学园脚本]');
+        const synced = await syncCurrentChatUserInfoToPersona('[性斗学园脚本]');
         if (synced) {
           clearUserInfoSyncTimers();
         }
@@ -1034,9 +1034,9 @@ if (typeof tavern_events !== 'undefined' && tavern_events.CHAT_CHANGED) {
   eventOn(tavern_events.CHAT_CHANGED, () => {
     scheduleCurrentChatUserInfoSync('聊天切换', [300, 1000, 2500, 5000, 8000]);
   });
-  console.info('[性斗学园脚本] 已注册聊天切换用户信息同步监听器');
+  console.info('[性斗学园脚本] 已注册聊天切换用户人设同步监听器');
 } else {
-  console.warn('[性斗学园脚本] tavern_events.CHAT_CHANGED 不可用，无法监听聊天切换同步用户信息');
+  console.warn('[性斗学园脚本] tavern_events.CHAT_CHANGED 不可用，无法监听聊天切换同步用户人设');
 }
 
 /**

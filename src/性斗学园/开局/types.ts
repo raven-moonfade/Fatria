@@ -95,6 +95,9 @@ export interface CharacterData {
   gender: Gender;
   appearance: string;
   personality: string;
+  palettePersonaOverview: string;
+  palettePersona: string;
+  openingSceneOutline: string;
   background: string;
   difficulty: Difficulty;
   mainlineTimeline: MainlineTimeline;
@@ -155,6 +158,9 @@ export const INITIAL_CHARACTER_DATA: CharacterData = {
   gender: Gender.FEMALE,
   appearance: '',
   personality: '',
+  palettePersonaOverview: '',
+  palettePersona: '',
+  openingSceneOutline: '',
   background: '',
   difficulty: Difficulty.NORMAL,
   mainlineTimeline: MainlineTimeline.NONE,

@@ -77,9 +77,14 @@ function normalizePresetData(rawData: unknown): CharacterData | null {
   }
 
   const data = rawData as Partial<CharacterData>;
+  const legacyOpeningScene =
+    !data.openingSceneOutline && data.personality?.includes('[生活模拟模式开局场景]')
+      ? data.personality.replace('[生活模拟模式开局场景]\n', '').trim()
+      : '';
   return {
     ...cloneValue(INITIAL_CHARACTER_DATA),
     ...cloneValue(data),
+    openingSceneOutline: data.openingSceneOutline || legacyOpeningScene,
     background: '',
     attributes: {
       角色基础: {

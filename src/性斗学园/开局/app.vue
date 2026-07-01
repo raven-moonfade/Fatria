@@ -76,12 +76,17 @@
               :is-life-sim-mode="isLifeSimMode"
               :player-presets="playerPresets"
               :selected-player-preset-name="selectedPlayerPresetName"
+              :is-creating-user-persona="isCreatingUserPersona"
+              :user-persona-message="userPersonaMessage"
+              :user-persona-message-type="userPersonaMessageType"
+              :is-using-tavern-user-persona="isUsingTavernUserPersona"
               @update-data="updateCharacterData"
               @update-life-sim-mode="(v: boolean) => (isLifeSimMode = v)"
               @select-npc="handleNpcSelect"
               @request-life-sim-confirm="showLifeSimConfirmModal"
               @load-player-preset="handleLoadPlayerPreset"
               @update-selected-player-preset="(name: string) => (selectedPlayerPresetName = name)"
+              @create-user-persona="handleCreateUserPersona"
             />
             <Step2_Archetype v-if="step === 3" :data="characterData" @update-data="updateCharacterData" />
             <Step3_Attributes
@@ -562,7 +567,11 @@ import {
   savePlayerPreset,
   type PlayerPresetSummary,
 } from '@/性斗学园/shared/playerPresetStore';
-import { saveCurrentChatUserInfo, writeUserInfoToWorldbook } from '@/性斗学园/shared/userWorldbookSync';
+import {
+  clearUserInfoWorldbook,
+  saveCurrentChatUserInfo,
+  writeUserInfoToWorldbook,
+} from '@/性斗学园/shared/userWorldbookSync';
 import { computed, onMounted, ref } from 'vue';
 import FloatingShapes from './components/FloatingShapes.vue';
 import Step0_Welcome from './components/Step0_Welcome.vue';
@@ -581,6 +590,12 @@ import {
   INITIAL_CHARACTER_DATA,
   MainlineTimeline,
 } from './types';
+import {
+  buildPlayerPersonaDescription,
+  createOrReplacePlayerPersonaFromCharacter,
+  getPlayerPersonaNameMatchCount,
+  normalizePlayerPersonaName,
+} from './utils/playerPersonaWriter';
 import { convertSkillsToMvu } from './utils/skill-converter';
 
 const step = ref(1);
@@ -591,6 +606,10 @@ const selectedPlayerPresetName = ref('');
 const showModal = ref(false);
 const modalTitle = ref('');
 const modalContent = ref('');
+const isCreatingUserPersona = ref(false);
+const isUsingTavernUserPersona = ref(false);
+const userPersonaMessage = ref('');
+const userPersonaMessageType = ref<'success' | 'warning' | 'error'>('success');
 
 // 作弊码相关
 const showCheatInput = ref(false);
@@ -1549,8 +1568,29 @@ const progress = computed(() => {
   return (step.value / MAX_STEPS) * 100;
 });
 
+const USER_PERSONA_SOURCE_FIELDS: Array<keyof CharacterData> = [
+  'name',
+  'age',
+  'gender',
+  'appearance',
+  'personality',
+  'palettePersonaOverview',
+  'palettePersona',
+  'configFeatures',
+];
+
 const updateCharacterData = (fields: Partial<CharacterData>) => {
+  const shouldResetUserPersonaMode =
+    isUsingTavernUserPersona.value &&
+    Object.keys(fields).some(field => USER_PERSONA_SOURCE_FIELDS.includes(field as keyof CharacterData));
+
   characterData.value = { ...characterData.value, ...fields };
+
+  if (shouldResetUserPersonaMode) {
+    isUsingTavernUserPersona.value = false;
+    userPersonaMessageType.value = 'warning';
+    userPersonaMessage.value = '表单内容已变更。如仍要使用酒馆用户人设，请重新点击“创建用户人设”。';
+  }
 };
 
 const getDefaultPresetName = () => characterData.value.name.trim() || '默认预设';
@@ -1604,8 +1644,96 @@ const handleLoadPlayerPreset = () => {
 
   characterData.value = preset;
   isLifeSimMode.value = false;
+  isUsingTavernUserPersona.value = false;
+  userPersonaMessage.value = '';
+  userPersonaMessageType.value = 'success';
   selectedPlayerPresetName.value = presetName;
   toastr.success(`已载入预设「${presetName || '默认预设'}」。`, '人物预设');
+};
+
+const handleCreateUserPersona = async () => {
+  if (isCreatingUserPersona.value) {
+    return;
+  }
+
+  const personaName = normalizePlayerPersonaName(characterData.value.name);
+  if (!personaName) {
+    userPersonaMessageType.value = 'warning';
+    userPersonaMessage.value = '请先填写姓名，再创建酒馆用户人设。';
+    toastr.warning(userPersonaMessage.value, '用户人设');
+    return;
+  }
+
+  if (!characterData.value.palettePersona?.trim()) {
+    userPersonaMessageType.value = 'warning';
+    userPersonaMessage.value = '请先生成用户信息，再创建酒馆用户人设。';
+    toastr.warning(userPersonaMessage.value, '用户人设');
+    return;
+  }
+
+  let matchCount = 0;
+  try {
+    matchCount = getPlayerPersonaNameMatchCount(personaName);
+  } catch (error) {
+    console.warn('[开局] 检查酒馆用户人设失败:', error);
+    userPersonaMessageType.value = 'error';
+    userPersonaMessage.value = error instanceof Error ? error.message : '检查酒馆用户人设失败。';
+    toastr.error(userPersonaMessage.value, '用户人设');
+    return;
+  }
+
+  if (matchCount > 1) {
+    userPersonaMessageType.value = 'error';
+    userPersonaMessage.value = `酒馆中存在多个名为「${personaName}」的用户人设，无法安全覆盖。请先在用户人设管理里处理重名项。`;
+    toastr.error(userPersonaMessage.value, '用户人设');
+    return;
+  }
+
+  if (matchCount === 1) {
+    const confirmed = window.confirm(
+      `已存在名为「${personaName}」的酒馆用户人设。\n继续会覆盖该用户人设的当前内容，并切换启用它。是否继续？`,
+    );
+    if (!confirmed) {
+      userPersonaMessageType.value = 'warning';
+      userPersonaMessage.value = '已取消覆盖同名酒馆用户人设。';
+      return;
+    }
+  }
+
+  isCreatingUserPersona.value = true;
+  userPersonaMessage.value = '';
+  userPersonaMessageType.value = 'success';
+
+  try {
+    const result = await createOrReplacePlayerPersonaFromCharacter(characterData.value);
+    const personaDescription = buildPlayerPersonaDescription(characterData.value);
+    const chatSaved = saveCurrentChatUserInfo(personaDescription, result.name);
+    const worldbookCleared = await clearUserInfoWorldbook('[开局]');
+    const clearProblems = [
+      chatSaved ? '' : '聊天变量保存失败',
+      worldbookCleared ? '' : '世界书 user 条目清空失败',
+    ].filter(Boolean);
+    const actionText = result.status === 'created' ? '新建' : '覆盖';
+
+    isUsingTavernUserPersona.value = true;
+    userPersonaMessageType.value = clearProblems.length ? 'warning' : 'success';
+    userPersonaMessage.value = clearProblems.length
+      ? `已${actionText}并启用酒馆用户人设「${result.name}」，后续切换聊天会按当前存档恢复此用户人设；但${clearProblems.join('、')}，请手动检查。`
+      : `已${actionText}并启用酒馆用户人设「${result.name}」。后续切换聊天会按当前存档恢复此用户人设，当前 user 条目已清空。`;
+
+    if (clearProblems.length) {
+      toastr.warning(userPersonaMessage.value, '用户人设');
+    } else {
+      toastr.success(userPersonaMessage.value, '用户人设');
+    }
+  } catch (error) {
+    console.warn('[开局] 创建酒馆用户人设失败:', error);
+    userPersonaMessageType.value = 'error';
+    userPersonaMessage.value = error instanceof Error ? error.message : '创建酒馆用户人设失败。';
+    toastr.error(userPersonaMessage.value, '用户人设');
+  } finally {
+    isCreatingUserPersona.value = false;
+  }
 };
 
 const handleUpdateSelectedPlayerPreset = () => {
@@ -2172,13 +2300,10 @@ const sendCharacterDataToTavern = async () => {
     };
     const mvuDifficultyText = difficultyMap[characterData.value.difficulty] || characterData.value.difficulty;
 
-    // 获取开局场景（从personality字段读取，生活模拟模式会将场景写入此字段）
-    let openingScene = '';
-    if (characterData.value.personality?.includes('[生活模拟模式开局场景]')) {
-      openingScene = characterData.value.personality.replace('[生活模拟模式开局场景]\n', '').trim();
-    } else {
-      openingScene = characterData.value.personality?.trim() || '';
-    }
+    const legacyOpeningScene = characterData.value.personality?.includes('[生活模拟模式开局场景]')
+      ? characterData.value.personality.replace('[生活模拟模式开局场景]\n', '').trim()
+      : '';
+    const openingScene = characterData.value.openingSceneOutline?.trim() || legacyOpeningScene;
 
     const lifeSimParts: string[] = [
       `【学员档案】`,
@@ -2237,8 +2362,21 @@ const sendCharacterDataToTavern = async () => {
     if (characterData.value.appearance?.trim()) {
       infoParts.push('', `【外貌】`, characterData.value.appearance.trim());
     }
-    if (characterData.value.personality?.trim()) {
-      infoParts.push('', `【性格与背景】`, characterData.value.personality.trim());
+    const backgroundText = characterData.value.personality?.includes('[生活模拟模式开局场景]')
+      ? ''
+      : characterData.value.personality?.trim();
+    if (backgroundText) {
+      infoParts.push('', `【背景】`, backgroundText);
+    }
+    const palettePersona = characterData.value.palettePersona?.trim();
+    const palettePersonaOverview = characterData.value.palettePersonaOverview?.trim();
+    if (palettePersona) {
+      infoParts.push('', `【用户信息】`, palettePersona);
+    } else if (palettePersonaOverview) {
+      infoParts.push('', `【用户信息概述】`, palettePersonaOverview);
+    }
+    if (characterData.value.openingSceneOutline?.trim()) {
+      infoParts.push('', `【开局情景大纲】`, characterData.value.openingSceneOutline.trim());
     }
 
     infoParts.push('', `【校园身份】`);
@@ -2249,7 +2387,15 @@ const sendCharacterDataToTavern = async () => {
     characterDescription = `<用户信息>\n${infoParts.join('\n')}\n</用户信息>`;
   }
 
-  if (saveCurrentChatUserInfo(characterDescription)) {
+  if (isUsingTavernUserPersona.value) {
+    const personaDescription = buildPlayerPersonaDescription(characterData.value);
+    const personaName = normalizePlayerPersonaName(characterData.value.name);
+    if (saveCurrentChatUserInfo(personaDescription, personaName)) {
+      console.info('[开局] 已使用酒馆用户人设，当前聊天用户信息已保存到聊天变量');
+    } else {
+      console.warn('[开局] 已使用酒馆用户人设，但当前聊天用户信息保存到聊天变量失败');
+    }
+  } else if (saveCurrentChatUserInfo(characterDescription)) {
     console.info('[开局] 当前聊天用户信息已保存到聊天变量');
   } else {
     console.warn('[开局] 当前聊天用户信息保存到聊天变量失败');
@@ -2269,12 +2415,20 @@ const sendCharacterDataToTavern = async () => {
         },
       ]);
 
-      // 2. 将角色信息写入世界书「性斗学园」中名字为 user 的条目
-      try {
-        await writeUserInfoToWorldbook(characterDescription, '[开局]');
-      } catch (worldbookError) {
-        console.warn('[开局] 更新世界书失败:', worldbookError);
-        // 继续执行，不阻止主流程
+      // 2. 旧世界书 user 仅保留非用户人设模式；用户人设模式只清空旧条目，避免混用。
+      if (isUsingTavernUserPersona.value) {
+        try {
+          await clearUserInfoWorldbook('[开局]');
+        } catch (worldbookError) {
+          console.warn('[开局] 清空世界书 user 条目失败:', worldbookError);
+        }
+      } else {
+        try {
+          await writeUserInfoToWorldbook(characterDescription, '[开局]');
+        } catch (worldbookError) {
+          console.warn('[开局] 更新世界书失败:', worldbookError);
+          // 继续执行，不阻止主流程
+        }
       }
 
       // @ts-ignore - triggerSlash 为全局注入
@@ -2284,8 +2438,13 @@ const sendCharacterDataToTavern = async () => {
       }
 
       // @ts-ignore - toastr 为全局注入
-      toastr.success('角色信息已发送并写入世界书，学园生活即将开始...', '命运的序章');
-      console.info('[开局] 角色数据已发送到酒馆并写入世界书');
+      if (isUsingTavernUserPersona.value) {
+        toastr.success('角色信息已发送，并使用酒馆用户人设进入学园生活...', '命运的序章');
+        console.info('[开局] 角色数据已发送到酒馆，已跳过世界书 user 写入');
+      } else {
+        toastr.success('角色信息已发送并写入世界书，学园生活即将开始...', '命运的序章');
+        console.info('[开局] 角色数据已发送到酒馆并写入世界书');
+      }
     }
   } catch (error) {
     console.warn('[开局] 无法发送到酒馆或写入世界书:', error);
