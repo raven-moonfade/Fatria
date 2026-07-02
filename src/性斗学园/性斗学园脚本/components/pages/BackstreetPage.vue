@@ -167,6 +167,7 @@
             <i v-if="contact.type === 'group'" class="fas fa-users"></i>
             <img
               v-else-if="shouldUseAvatarImage(contact.name)"
+              :class="getAvatarImageClass(contact.name)"
               :src="getAvatarUrl(contact.name)"
               :alt="contact.name"
               @error="markAvatarFailed(contact.name)"
@@ -234,6 +235,7 @@
             <i v-if="activeIsGroup" class="fas fa-users"></i>
             <img
               v-else-if="shouldUseAvatarImage(activeDisplayName)"
+              :class="getAvatarImageClass(activeDisplayName)"
               :src="getAvatarUrl(activeDisplayName)"
               :alt="activeDisplayName"
               @error="markAvatarFailed(activeDisplayName)"
@@ -346,6 +348,7 @@
               <template v-if="activeIsGroup && message.sender === 'contact'">
                 <img
                   v-if="shouldUseAvatarImage(messageSpeaker(message))"
+                  :class="getAvatarImageClass(messageSpeaker(message))"
                   :src="getAvatarUrl(messageSpeaker(message))"
                   :alt="messageSpeaker(message)"
                   @error="markAvatarFailed(messageSpeaker(message))"
@@ -354,6 +357,7 @@
               </template>
               <img
                 v-else-if="shouldUseAvatarImage(activeDisplayName)"
+                :class="getAvatarImageClass(activeDisplayName)"
                 :src="getAvatarUrl(activeDisplayName)"
                 :alt="activeDisplayName"
                 @error="markAvatarFailed(activeDisplayName)"
@@ -455,6 +459,7 @@
             <i v-if="activeIsGroup" class="fas fa-users"></i>
             <img
               v-else-if="shouldUseAvatarImage(activeDisplayName)"
+              :class="getAvatarImageClass(activeDisplayName)"
               :src="getAvatarUrl(activeDisplayName)"
               :alt="activeDisplayName"
               @error="markAvatarFailed(activeDisplayName)"
@@ -487,6 +492,7 @@
             <span class="mention-avatar">
               <img
                 v-if="shouldUseAvatarImage(member)"
+                :class="getAvatarImageClass(member)"
                 :src="getAvatarUrl(member)"
                 :alt="member"
                 @error="markAvatarFailed(member)"
@@ -1977,6 +1983,12 @@ function shouldUseAvatarImage(name: string): boolean {
   return Boolean(resolveAvatarDisplay(name));
 }
 
+function getAvatarImageClass(name: string): Record<string, boolean> {
+  return {
+    'avatar-image-chibi': resolveAvatarDisplay(name)?.mode === 'chibi',
+  };
+}
+
 function markAvatarFailed(name: string) {
   const avatar = resolveAvatarDisplay(name);
   if (!avatar) return;
@@ -2614,6 +2626,12 @@ async function scrollToBottom() {
     font-size: 16px;
     opacity: 0.82;
   }
+}
+
+.avatar-image-chibi {
+  object-position: center 14%;
+  transform: scale(1.75) translateY(9%);
+  transform-origin: center 16%;
 }
 
 .contact-main {
