@@ -80,7 +80,7 @@
                 </button>
                 <div class="app-page-title">
                   <span class="page-icon" :class="currentApp?.colorClass">
-                    <i :class="currentApp?.icon || 'fas fa-mobile-screen-button'"></i>
+                    <i :class="currentApp?.icon || 'fas fa-mobile-alt'"></i>
                     <span
                       v-if="currentPage === 'settings' && hasScriptUpdate"
                       class="script-update-dot"
@@ -1044,17 +1044,17 @@ const DEFAULT_PHONE_PREFS: PhonePreferences = {
 };
 
 const phoneApps: PhoneApp[] = [
-  { page: 'dashboard', label: '状态', icon: 'fas fa-house-chimney', colorClass: 'app-cyan' },
+  { page: 'dashboard', label: '状态', icon: 'fas fa-home', colorClass: 'app-cyan' },
   { page: 'profile', label: '档案', icon: 'fas fa-id-card', colorClass: 'app-blue', dock: true },
-  { page: 'skills', label: '技能', icon: 'fas fa-wand-magic-sparkles', colorClass: 'app-violet', dock: true },
+  { page: 'skills', label: '技能', icon: 'fas fa-magic', colorClass: 'app-violet', dock: true },
   { page: 'inventory', label: '背包', icon: 'fas fa-briefcase', colorClass: 'app-amber', dock: true },
-  { page: 'quest', label: '任务', icon: 'fas fa-list-check', colorClass: 'app-green' },
+  { page: 'quest', label: '任务', icon: 'fas fa-tasks', colorClass: 'app-green' },
   { page: 'relationship', label: '关系', icon: 'fas fa-heart', colorClass: 'app-pink' },
   { page: 'backstreet', label: '后街', icon: 'fas fa-comments', colorClass: 'app-backstreet' },
-  { page: 'map', label: '地图', icon: 'fas fa-map-location-dot', colorClass: 'app-teal' },
+  { page: 'map', label: '地图', icon: 'fas fa-map-marker-alt', colorClass: 'app-teal' },
   { page: 'shop', label: '商店', icon: 'fas fa-store', colorClass: 'app-orange' },
   { page: 'cg', label: '相册', icon: 'fas fa-images', colorClass: 'app-rose' },
-  { page: 'settings', label: '设置', icon: 'fas fa-gear', colorClass: 'app-slate', dock: true },
+  { page: 'settings', label: '设置', icon: 'fas fa-cog', colorClass: 'app-slate', dock: true },
 ];
 
 const currentPage = ref<PageKey>('home');
@@ -2078,9 +2078,10 @@ onUnmounted(() => {
 
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 76px);
   row-gap: 26px;
   column-gap: 20px;
+  justify-content: space-between;
   justify-items: center;
   align-content: start;
 }
@@ -2089,14 +2090,19 @@ onUnmounted(() => {
 .dock-app {
   width: 76px;
   min-width: 0;
+  min-height: 88px;
   border: 0;
   padding: 0;
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   color: #fff;
   background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   transition: transform 0.16s ease;
@@ -2114,6 +2120,13 @@ onUnmounted(() => {
   position: relative;
   width: 58px;
   height: 58px;
+  min-width: 58px;
+  max-width: 58px;
+  min-height: 58px;
+  max-height: 58px;
+  flex: 0 0 58px;
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 16px;
   overflow: hidden;
@@ -2150,6 +2163,7 @@ onUnmounted(() => {
     position: relative;
     z-index: 1;
     font-size: 25px;
+    line-height: 1;
   }
 }
 
@@ -2365,6 +2379,11 @@ onUnmounted(() => {
   .app-icon {
     width: 50px;
     height: 50px;
+    min-width: 50px;
+    max-width: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    flex-basis: 50px;
     border-radius: 14px;
 
     i {
@@ -3337,17 +3356,24 @@ onUnmounted(() => {
   }
 
   .app-grid {
+    grid-template-columns: repeat(3, 68px);
     column-gap: 10px;
     row-gap: 20px;
   }
 
   .phone-app {
     width: 68px;
+    min-height: 82px;
   }
 
   .app-icon {
     width: 52px;
     height: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    min-height: 52px;
+    max-height: 52px;
+    flex-basis: 52px;
   }
 
   .app-label {
@@ -3372,6 +3398,11 @@ onUnmounted(() => {
   .app-icon {
     width: 50px;
     height: 50px;
+    min-width: 50px;
+    max-width: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    flex-basis: 50px;
   }
 
   .dock {
