@@ -794,7 +794,7 @@ import {
   resolvePlayerCustomAvatar,
   savePlayerCustomAvatarBlob,
 } from './constants';
-import { normalizeEnemyName, resolveEnemyName } from './enemyDatabase';
+import { ENEMY_DATABASE, NAME_ALIASES, normalizeEnemyName, resolveEnemyName } from './enemyDatabase';
 import type { Character, CombatLogEntry, Item, Skill, SkillData, TurnState } from './types';
 import { executeAttack } from './combatCalculator';
 import {
@@ -818,6 +818,7 @@ import {
   type EquippedEquipmentSkill,
   type EquipmentSkillDefinition,
 } from '../shared/legendaryEquipment';
+import { XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME } from '../shared/xiaoyeyueMagicGirl';
 
 // 延迟加载数据库模块的辅助函数
 let enemyDbModule: any = null;
@@ -959,6 +960,14 @@ let skillEffectClickGuardId: string | null = null;
 
 // 玩家立绘上传 input
 const playerPortraitInput = ref<HTMLInputElement | null>(null);
+
+const PLAYER_GALLERY_PORTRAIT_OVERRIDES: Record<string, string> = {
+  [XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME]: XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME,
+  沐芯兰: '沐芯兰_2',
+  克莉丝汀: '克莉丝汀_2',
+  艾格妮丝蔷薇: '艾格妮丝',
+  伊甸芙宁: '伊甸芙宁_2',
+};
 
 // CG相关状态
 const cgImageUrl = ref<string | null>(null);
@@ -1211,6 +1220,48 @@ function getUserName(): string {
 
   // 默认值
   return '玩家';
+}
+
+function resolveKnownPortraitName(name: string): string | null {
+  const normalizedName = normalizeEnemyName(String(name || '').trim());
+  if (!normalizedName || normalizedName === '玩家') {
+    return null;
+  }
+
+  const overrideName = PLAYER_GALLERY_PORTRAIT_OVERRIDES[normalizedName];
+  if (overrideName) {
+    return overrideName;
+  }
+
+  if (normalizedName in ENEMY_DATABASE) {
+    return normalizedName;
+  }
+
+  const aliasName = NAME_ALIASES[normalizedName];
+  if (aliasName && aliasName in ENEMY_DATABASE) {
+    return aliasName;
+  }
+
+  const enemyDbNames = Object.keys(ENEMY_DATABASE).sort((a, b) => b.length - a.length);
+  for (const fullName of enemyDbNames) {
+    if (normalizedName.includes(fullName)) {
+      return fullName;
+    }
+  }
+
+  const enemyAliases = Object.entries(NAME_ALIASES).sort((a, b) => b[0].length - a[0].length);
+  for (const [alias, fullName] of enemyAliases) {
+    if (normalizedName.includes(alias) && fullName in ENEMY_DATABASE) {
+      return fullName;
+    }
+  }
+
+  return null;
+}
+
+function resolvePlayerGalleryPortraitUrl(playerName: string): string | null {
+  const portraitName = resolveKnownPortraitName(playerName);
+  return portraitName ? getEnemyPortraitUrl(portraitName) : null;
 }
 
 function setSharedClimaxLimit(limit: number) {
@@ -6879,14 +6930,19 @@ watch(
   },
 );
 
-async function refreshPlayerCustomAvatar() {
+async function refreshPlayerAvatar() {
   try {
-    const avatarUrl = await resolvePlayerCustomAvatar();
+    const customAvatarUrl = await resolvePlayerCustomAvatar();
+    const galleryAvatarUrl = resolvePlayerGalleryPortraitUrl(player.value.name);
+    const avatarUrl = customAvatarUrl || galleryAvatarUrl;
     if (avatarUrl) {
       player.value = {
         ...player.value,
         avatarUrl,
       };
+      if (!customAvatarUrl && galleryAvatarUrl) {
+        console.info('[战斗界面] 已根据玩家姓名匹配图库立绘:', player.value.name, galleryAvatarUrl);
+      }
     }
   } catch (error) {
     console.warn('[战斗界面] 玩家头像加载失败:', error);
@@ -6939,7 +6995,7 @@ onMounted(async () => {
   if (userName && userName !== '玩家') {
     player.value.name = userName;
   }
-  await refreshPlayerCustomAvatar();
+  await refreshPlayerAvatar();
 
   // 重新计算所有属性（包括加成）
   await reloadStatusFromMvu();
