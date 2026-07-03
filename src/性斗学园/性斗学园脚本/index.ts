@@ -393,6 +393,83 @@ function normalizeCharacterNamesInMvuData(mvuData: Mvu.MvuData): { changed: bool
   return { changed, logs };
 }
 
+function clonePlainData<T>(value: T): T {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function isBackpackEquipmentItem(item: any): boolean {
+  return !!item && typeof item === 'object' && item.类型 === '装备';
+}
+
+function collectEquippedEquipmentNames(statData: Record<string, any>): Set<string> {
+  const equippedNames = new Set<string>();
+  const slots = get(statData, '物品系统._装备栏', {}) as Record<string, any>;
+
+  if (!slots || typeof slots !== 'object') {
+    return equippedNames;
+  }
+
+  for (const slot of Object.values(slots)) {
+    const equipmentName = String((slot as any)?.名称 || '').trim();
+    if (equipmentName) {
+      equippedNames.add(equipmentName);
+    }
+  }
+
+  return equippedNames;
+}
+
+function normalizeBackpackEquipmentsInMvuData(
+  mvuData: Mvu.MvuData,
+  previousMvuData?: Mvu.MvuData | null,
+): { changed: boolean; logs: string[] } {
+  const statData = mvuData?.stat_data as Record<string, any> | undefined;
+  if (!statData) return { changed: false, logs: [] };
+
+  const backpack = get(statData, '物品系统.背包', {}) as Record<string, any>;
+  if (!backpack || typeof backpack !== 'object') {
+    return { changed: false, logs: [] };
+  }
+
+  const previousBackpack = get(previousMvuData?.stat_data, '物品系统.背包', {}) as Record<string, any>;
+  const equippedNames = collectEquippedEquipmentNames(statData);
+  let changed = false;
+  const logs: string[] = [];
+
+  for (const [itemName, item] of Object.entries(backpack)) {
+    if (!isBackpackEquipmentItem(item)) continue;
+
+    const previousItem = previousBackpack?.[itemName];
+    if (isBackpackEquipmentItem(previousItem)) {
+      if (!isEqual(item, previousItem)) {
+        backpack[itemName] = clonePlainData(previousItem);
+        changed = true;
+        logs.push(`重复装备 "${itemName}" 已还原`);
+      }
+      continue;
+    }
+
+    if (equippedNames.has(itemName)) {
+      delete backpack[itemName];
+      changed = true;
+      logs.push(`已装备的重复装备 "${itemName}" 已忽略`);
+      continue;
+    }
+
+    if ((item as any).数量 !== 1) {
+      (item as any).数量 = 1;
+      changed = true;
+      logs.push(`装备 "${itemName}" 数量已固定为 1`);
+    }
+  }
+
+  if (changed) {
+    set(statData, '物品系统.背包', backpack);
+  }
+
+  return { changed, logs };
+}
+
 // 等待 MVU 初始化（带安全检查和超时）
 const globalAny = window as any;
 installBackstreetMainPromptInjector();
@@ -500,6 +577,7 @@ await enforcePotentialCapOnStartup();
 // 防止重复更新的标志
 let isUpdating = false;
 let isNormalizingCharacterNames = false;
+let isNormalizingBackpackEquipments = false;
 
 // 状态栏相关
 let statusBarApp: any = null;
@@ -536,6 +614,37 @@ async function normalizeLatestCharacterNames(reason: string) {
 }
 
 await normalizeLatestCharacterNames('脚本启动');
+
+async function normalizeLatestBackpackEquipments(reason: string, previousMvuData?: Mvu.MvuData | null) {
+  if (isNormalizingBackpackEquipments) {
+    return false;
+  }
+
+  try {
+    isNormalizingBackpackEquipments = true;
+    const mvuData = await getLatestMvuData();
+    if (!mvuData || !mvuData.stat_data) {
+      console.warn(`[性斗学园脚本] 无法获取 MVU 数据，跳过背包装备去重（${reason}）`);
+      return false;
+    }
+
+    const result = normalizeBackpackEquipmentsInMvuData(mvuData, previousMvuData);
+    if (!result.changed) {
+      return false;
+    }
+
+    await replaceLatestMvuData(mvuData);
+    console.info(`[性斗学园脚本] 背包装备去重完成（${reason}）：${result.logs.join('；')}`);
+    return true;
+  } catch (error) {
+    console.error('[性斗学园脚本] 背包装备去重时出错:', error);
+    return false;
+  } finally {
+    isNormalizingBackpackEquipments = false;
+  }
+}
+
+await normalizeLatestBackpackEquipments('脚本启动');
 
 /**
  * 从 MVU 数据中获取变量值（安全获取）
@@ -861,6 +970,17 @@ function registerMvuEventListeners() {
         }, 50);
       }
 
+      const backpackEquipmentPreview = normalizeBackpackEquipmentsInMvuData(
+        clonePlainData(variables),
+        variables_before_update,
+      );
+      if (backpackEquipmentPreview.changed) {
+        console.info(`[性斗学园脚本] 检测到重复装备需要忽略：${backpackEquipmentPreview.logs.join('；')}`);
+        setTimeout(async () => {
+          await normalizeLatestBackpackEquipments('MVU变量更新', variables_before_update);
+        }, 50);
+      }
+
       // 检查会影响持久派生事务的变量变化：高潮处理、升级、段位、满好感CG。
       const basePaths = [
         '角色基础._等级',
@@ -907,6 +1027,7 @@ function registerMvuEventListeners() {
       scheduleCurrentChatUserInfoSync('变量初始化', [200, 1000, 2500, 5000]);
       await enforcePotentialCapOnStartup();
       await normalizeLatestCharacterNames('变量初始化');
+      await normalizeLatestBackpackEquipments('变量初始化');
       await updateDependentVariables();
     });
 
