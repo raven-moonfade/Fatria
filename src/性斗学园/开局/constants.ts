@@ -1,7 +1,11 @@
-import { Archetype, Gender, Skill } from './types';
+import { Archetype, CharacterData, Gender, Skill } from './types';
+import { XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME } from '../shared/xiaoyeyueMagicGirl';
 
 // --- Archetypes (10M, 10F, 6O) ---
 // 每个角色只有不同的 passiveSkill 和 permanentState，没有 baseBonus
+
+export const MAGIC_GIRL_ARCHETYPE_ID = 'f_magic_girl';
+export const MAGIC_GIRL_REQUIRED_NAME = XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME;
 
 export const ARCHETYPES: Record<Gender, Archetype[]> = {
   [Gender.MALE]: [
@@ -528,6 +532,34 @@ export const ARCHETYPES: Record<Gender, Archetype[]> = {
       },
     },
     {
+      id: MAGIC_GIRL_ARCHETYPE_ID,
+      name: '魔法少女',
+      description: '来自于星见市的现代最强魔法少女。',
+      icon: 'Wand',
+      passiveSkill: {
+        id: 'p_magic_armor_shadow_princess',
+        name: '魔装影姬',
+        description: '仅小夜月静夜能够唤醒的魔装奇迹。',
+        effectDescription: '魅力+30，幸运+30，性斗力成算+50%，忍耐力成算+50%，闪避率+15%，暴击率+15%。仅小夜月静夜可选择',
+        type: 'constitution',
+        icon: 'Sparkles',
+      },
+      permanentState: {
+        name: '魔装影姬',
+        bonus: {
+          魅力加成: 30,
+          幸运加成: 30,
+          基础性斗力加成: 0,
+          基础性斗力成算: 50,
+          基础忍耐力加成: 0,
+          基础忍耐力成算: 50,
+          闪避率加成: 15,
+          暴击率加成: 15,
+        },
+      },
+      hidden: true,
+    },
+    {
       id: 'f_bimbo',
       name: '笨蛋美人',
       description: '拥有顶级的身材与美貌，但脑袋空空，极易被诱骗。',
@@ -686,6 +718,22 @@ export const ARCHETYPES: Record<Gender, Archetype[]> = {
       },
     },
   ],
+};
+
+export const canSelectArchetype = (
+  archetype: Archetype,
+  data: Pick<CharacterData, 'name' | 'gender'>,
+): boolean => {
+  if (archetype.id !== MAGIC_GIRL_ARCHETYPE_ID) {
+    return true;
+  }
+
+  return data.gender === Gender.FEMALE && data.name.trim() === MAGIC_GIRL_REQUIRED_NAME;
+};
+
+export const getAvailableArchetypes = (data: Pick<CharacterData, 'name' | 'gender'>): Archetype[] => {
+  const archetypes = ARCHETYPES[data.gender] || ARCHETYPES[Gender.OTHER];
+  return archetypes.filter(archetype => canSelectArchetype(archetype, data));
 };
 
 // --- Active Skills (20+) ---

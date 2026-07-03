@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import { getLatestMvuData, replaceLatestMvuData } from '../shared/mvuStore';
+import { syncXiaoyeyueLightDarkStatusBonus } from '../shared/xiaoyeyueMagicGirl';
 import type { TimedStatusEffect } from '../shared/statusEngine';
 import { normalizeCombatClimaxLimit } from '../shared/combatLimits';
 import type { Item } from './types';
@@ -38,6 +39,10 @@ export async function readCombatStatData<T>(
     return null;
   }
 
+  if (syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data)) {
+    await replaceLatestMvuData(mvuData);
+  }
+
   return reader(mvuData.stat_data, mvuData);
 }
 
@@ -62,9 +67,15 @@ export async function readNormalizedCombatStatData(): Promise<{
     return null;
   }
 
+  const syncedLightDarkBonus = syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data);
+  const maxClimaxCount = await normalizeStoredClimaxLimit(mvuData);
+  if (syncedLightDarkBonus) {
+    await replaceLatestMvuData(mvuData);
+  }
+
   return {
     statData: mvuData.stat_data,
-    maxClimaxCount: await normalizeStoredClimaxLimit(mvuData),
+    maxClimaxCount,
   };
 }
 

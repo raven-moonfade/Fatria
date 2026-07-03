@@ -17,6 +17,7 @@ import {
   resolveEnemyName,
 } from '../战斗界面/enemyDatabase';
 import { normalizeCombatClimaxLimit } from './combatLimits';
+import { getXiaoyeyueLightDarkDynamicBonusCorrection } from './xiaoyeyueMagicGirl';
 
 const FALLBACK_ENEMY_BASE_DATA: EnemyBaseData = {
   对手等级: 1,
@@ -85,7 +86,11 @@ export function calculateEquipmentBonus(statData: any): BonusStats {
 }
 
 export function getPermanentBonus(statData: any): BonusStats {
-  return calculateBonusFromStatusList(_.get(statData, '永久状态.状态列表', {}) as StatusList);
+  const permanentStatusList = _.get(statData, '永久状态.状态列表', {}) as StatusList;
+  return mergeBonusStats(
+    calculateBonusFromStatusList(permanentStatusList),
+    getXiaoyeyueLightDarkDynamicBonusCorrection(statData, permanentStatusList),
+  );
 }
 
 export function getTemporaryBonus(statData: any): BonusStats {

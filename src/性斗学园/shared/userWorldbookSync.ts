@@ -75,27 +75,31 @@ function getGlobalApi(name: string): unknown {
 
 type PersonaApi = {
   getPersonaNames: typeof getPersonaNames;
+  getPersona: typeof getPersona;
   createPersona: typeof createPersona;
-  createOrReplacePersona: typeof createOrReplacePersona;
+  updatePersonaWith: typeof updatePersonaWith;
 };
 
 function getPersonaApi(): PersonaApi | null {
   const getPersonaNamesApi = getGlobalApi('getPersonaNames');
+  const getPersonaApi = getGlobalApi('getPersona');
   const createPersonaApi = getGlobalApi('createPersona');
-  const createOrReplacePersonaApi = getGlobalApi('createOrReplacePersona');
+  const updatePersonaWithApi = getGlobalApi('updatePersonaWith');
 
   if (
     typeof getPersonaNamesApi !== 'function' ||
+    typeof getPersonaApi !== 'function' ||
     typeof createPersonaApi !== 'function' ||
-    typeof createOrReplacePersonaApi !== 'function'
+    typeof updatePersonaWithApi !== 'function'
   ) {
     return null;
   }
 
   return {
     getPersonaNames: getPersonaNamesApi as typeof getPersonaNames,
+    getPersona: getPersonaApi as typeof getPersona,
     createPersona: createPersonaApi as typeof createPersona,
-    createOrReplacePersona: createOrReplacePersonaApi as typeof createOrReplacePersona,
+    updatePersonaWith: updatePersonaWithApi as typeof updatePersonaWith,
   };
 }
 
@@ -335,6 +339,25 @@ function resolveUserPersonaNameForSync(userInfo: string, personaName = ''): stri
   );
 }
 
+function normalizePersonaDescription(value: string): string {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+}
+
+async function writePersonaDescription(api: PersonaApi, personaName: string, description: string): Promise<void> {
+  await api.updatePersonaWith(
+    personaName,
+    persona => ({
+      ...persona,
+      name: personaName,
+      title: personaName,
+      description,
+    }),
+    { render: 'immediate' },
+  );
+}
+
 export async function writeUserInfoToPersona(
   userInfo: string,
   personaName = '',
@@ -367,13 +390,23 @@ export async function writeUserInfoToPersona(
 
   try {
     if (matchCount === 0) {
-      const created = await api.createPersona(resolvedPersonaName, personaPayload, { render: 'immediate' });
+      const created = await api.createPersona(resolvedPersonaName, personaPayload, { render: 'none' });
       if (!created) {
         console.warn(`${logPrefix} 创建用户人设「${resolvedPersonaName}」失败`);
         return false;
       }
-    } else {
-      await api.createOrReplacePersona(resolvedPersonaName, personaPayload, { render: 'immediate' });
+    }
+
+    await writePersonaDescription(api, resolvedPersonaName, content);
+
+    const savedPersona = api.getPersona(resolvedPersonaName);
+    const expectedDescription = normalizePersonaDescription(content);
+    const savedDescription = normalizePersonaDescription(savedPersona?.description || '');
+    if (savedDescription !== expectedDescription) {
+      console.warn(
+        `${logPrefix} 用户人设「${resolvedPersonaName}」写入后读回校验失败：酒馆保存的 description 长度 ${savedDescription.length}，本次应写入 ${expectedDescription.length}`,
+      );
+      return false;
     }
 
     const activated = await activateUserPersona(resolvedPersonaName);

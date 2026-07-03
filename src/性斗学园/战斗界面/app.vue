@@ -6934,9 +6934,11 @@ onMounted(async () => {
 
   await loadFromMvu();
 
-  // 确保玩家名字已设置
+  // 优先保留 MVU 中的角色基础._姓名，避免默认聊天名“玩家”覆盖专名立绘。
   const userName = getUserName();
-  player.value.name = userName;
+  if (userName && userName !== '玩家') {
+    player.value.name = userName;
+  }
   await refreshPlayerCustomAvatar();
 
   // 重新计算所有属性（包括加成）

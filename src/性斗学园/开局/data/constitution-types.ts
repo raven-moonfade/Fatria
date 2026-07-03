@@ -35,6 +35,8 @@ export enum ConstitutionRarity {
   LEGENDARY = 'S',
   /** 神话 */
   MYTHIC = 'SS',
+  /** 超规格 */
+  EX = 'EX',
 }
 
 /** 触发时机 */
@@ -198,6 +200,7 @@ export const CONSTITUTION_RARITY_COLORS: Record<ConstitutionRarity, string> = {
   [ConstitutionRarity.EPIC]: '#a78bfa',
   [ConstitutionRarity.LEGENDARY]: '#fbbf24',
   [ConstitutionRarity.MYTHIC]: '#f472b6',
+  [ConstitutionRarity.EX]: '#67e8f9',
 };
 
 /** 身体部位列表 */

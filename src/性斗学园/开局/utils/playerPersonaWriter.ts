@@ -12,8 +12,9 @@ export type PlayerPersonaWriteResult = {
 
 type PersonaApi = {
   getPersonaNames: typeof getPersonaNames;
+  getPersona: typeof getPersona;
   createPersona: typeof createPersona;
-  createOrReplacePersona: typeof createOrReplacePersona;
+  updatePersonaWith: typeof updatePersonaWith;
 };
 
 function getGlobalApi(name: string): unknown {
@@ -23,21 +24,24 @@ function getGlobalApi(name: string): unknown {
 
 function getPersonaApi(): PersonaApi {
   const getPersonaNamesApi = getGlobalApi('getPersonaNames');
+  const getPersonaApi = getGlobalApi('getPersona');
   const createPersonaApi = getGlobalApi('createPersona');
-  const createOrReplacePersonaApi = getGlobalApi('createOrReplacePersona');
+  const updatePersonaWithApi = getGlobalApi('updatePersonaWith');
 
   if (
     typeof getPersonaNamesApi !== 'function' ||
+    typeof getPersonaApi !== 'function' ||
     typeof createPersonaApi !== 'function' ||
-    typeof createOrReplacePersonaApi !== 'function'
+    typeof updatePersonaWithApi !== 'function'
   ) {
     throw new Error('当前酒馆助手没有暴露用户人设管理接口，无法自动创建用户人设。');
   }
 
   return {
     getPersonaNames: getPersonaNamesApi as typeof getPersonaNames,
+    getPersona: getPersonaApi as typeof getPersona,
     createPersona: createPersonaApi as typeof createPersona,
-    createOrReplacePersona: createOrReplacePersonaApi as typeof createOrReplacePersona,
+    updatePersonaWith: updatePersonaWithApi as typeof updatePersonaWith,
   };
 }
 
@@ -130,6 +134,25 @@ async function activatePlayerPersona(personaName: string): Promise<boolean> {
   return false;
 }
 
+function normalizePersonaDescription(value: string): string {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+}
+
+async function writePlayerPersonaDescription(api: PersonaApi, personaName: string, description: string): Promise<void> {
+  await api.updatePersonaWith(
+    personaName,
+    persona => ({
+      ...persona,
+      name: personaName,
+      title: personaName,
+      description,
+    }),
+    { render: 'immediate' },
+  );
+}
+
 export async function createOrReplacePlayerPersonaFromCharacter(data: CharacterData): Promise<PlayerPersonaWriteResult> {
   const personaName = normalizePlayerPersonaName(data.name);
   const description = buildPlayerPersonaDescription(data);
@@ -147,12 +170,21 @@ export async function createOrReplacePlayerPersonaFromCharacter(data: CharacterD
   };
 
   if (matchCount === 0) {
-    const created = await api.createPersona(personaName, personaPayload, { render: 'immediate' });
+    const created = await api.createPersona(personaName, personaPayload, { render: 'none' });
     if (!created) {
       throw new Error(`创建用户人设「${personaName}」失败，可能已经存在同名或同头像用户人设。`);
     }
-  } else {
-    await api.createOrReplacePersona(personaName, personaPayload, { render: 'immediate' });
+  }
+
+  await writePlayerPersonaDescription(api, personaName, description);
+
+  const savedPersona = api.getPersona(personaName);
+  const expectedDescription = normalizePersonaDescription(description);
+  const savedDescription = normalizePersonaDescription(savedPersona?.description || '');
+  if (savedDescription !== expectedDescription) {
+    throw new Error(
+      `用户人设「${personaName}」写入后读回校验失败：酒馆保存的 description 长度 ${savedDescription.length}，本次应写入 ${expectedDescription.length}。`,
+    );
   }
 
   const activated = await activatePlayerPersona(personaName);

@@ -11,7 +11,8 @@
       <div class="text-sm text-gray-300">
         <p>
           当前难度: <span class="text-white font-bold">{{ data.difficulty }}</span>
-          <span v-if="cheatMode" class="ml-2 text-xs text-yellow-400">[作弊模式]</span>
+          <span v-if="hasMagicGirlTalentPoints" class="ml-2 text-xs text-pink-300">[小夜月特典]</span>
+          <span v-else-if="cheatMode" class="ml-2 text-xs text-yellow-400">[作弊模式]</span>
         </p>
         <p class="text-xs text-gray-500 mt-1">初始点数: {{ totalPointsAvailable }}</p>
       </div>
@@ -95,8 +96,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { DIFFICULTY_POINTS, MAX_STATS } from '../constants';
-import { CharacterAttributes, CharacterData, INITIAL_ATTRIBUTES } from '../types';
+import { DIFFICULTY_POINTS, MAGIC_GIRL_REQUIRED_NAME, MAX_STATS } from '../constants';
+import { CharacterAttributes, CharacterData, Gender, INITIAL_ATTRIBUTES } from '../types';
 import { updateLatestStatData } from '../../shared/mvuStore';
 
 const props = defineProps<{
@@ -110,9 +111,15 @@ const emit = defineEmits<{
 
 const isUpdating = ref(false);
 const x10Mode = ref(false);
+const MAGIC_GIRL_TALENT_POINTS = 200;
 
-// 作弊模式下使用999点，否则使用难度对应的点数
+const hasMagicGirlTalentPoints = computed(() => {
+  return props.data.gender === Gender.FEMALE && props.data.name.trim() === MAGIC_GIRL_REQUIRED_NAME;
+});
+
+// 小夜月静夜女性开局固定为200点；否则作弊模式999点，再按难度取点数。
 const totalPointsAvailable = computed(() => {
+  if (hasMagicGirlTalentPoints.value) return MAGIC_GIRL_TALENT_POINTS;
   if (props.cheatMode) return 999;
   return DIFFICULTY_POINTS[props.data.difficulty];
 });

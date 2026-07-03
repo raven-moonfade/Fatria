@@ -560,6 +560,10 @@ import { syncInitialSetupFromMvu as syncFromMvu } from '@/性斗学园/shared/in
 import { getActivatedCheatCodes, saveActivatedCheatCodes } from '@/性斗学园/shared/localPreferences';
 import { getLatestMvuData as getMvuData, updateLatestStatData as updateMvuVariables } from '@/性斗学园/shared/mvuStore';
 import {
+  XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID,
+  calculateXiaoyeyueLightDarkBonus,
+} from '@/性斗学园/shared/xiaoyeyueMagicGirl';
+import {
   deletePlayerPreset,
   listPlayerPresets,
   loadPlayerPreset,
@@ -579,8 +583,8 @@ import Step1_Identity from './components/Step1_Identity.vue';
 import Step2_Archetype from './components/Step2_Archetype.vue';
 import Step3_Attributes from './components/Step3_Attributes.vue';
 import Step4_Skills from './components/Step4_Skills.vue';
-import { ARCHETYPES } from './constants';
-import { getConstitutionById } from './data/constitutions';
+import { getAvailableArchetypes } from './constants';
+import { canSelectConstitution, getConstitutionById } from './data/constitutions';
 import { STARTER_SKILLS } from './data/skills';
 import {
   CharacterData,
@@ -1579,12 +1583,35 @@ const USER_PERSONA_SOURCE_FIELDS: Array<keyof CharacterData> = [
   'configFeatures',
 ];
 
+const sanitizeCharacterData = (data: CharacterData): CharacterData => {
+  let sanitized = data;
+
+  if (data.archetypeId) {
+    const canKeepArchetype = getAvailableArchetypes(data).some(archetype => archetype.id === data.archetypeId);
+    if (!canKeepArchetype) {
+      sanitized = { ...sanitized, archetypeId: null };
+    }
+  }
+
+  const passiveSkillIds = Array.isArray(data.initialPassiveSkills) ? data.initialPassiveSkills : [];
+  const validPassiveSkills = passiveSkillIds.filter(constitutionId => {
+    const constitution = getConstitutionById(constitutionId);
+    return constitution ? canSelectConstitution(constitution, data) : false;
+  });
+
+  if (validPassiveSkills.length !== passiveSkillIds.length || passiveSkillIds !== data.initialPassiveSkills) {
+    sanitized = { ...sanitized, initialPassiveSkills: validPassiveSkills };
+  }
+
+  return sanitized;
+};
+
 const updateCharacterData = (fields: Partial<CharacterData>) => {
   const shouldResetUserPersonaMode =
     isUsingTavernUserPersona.value &&
     Object.keys(fields).some(field => USER_PERSONA_SOURCE_FIELDS.includes(field as keyof CharacterData));
 
-  characterData.value = { ...characterData.value, ...fields };
+  characterData.value = sanitizeCharacterData({ ...characterData.value, ...fields });
 
   if (shouldResetUserPersonaMode) {
     isUsingTavernUserPersona.value = false;
@@ -1642,7 +1669,7 @@ const handleLoadPlayerPreset = () => {
     return;
   }
 
-  characterData.value = preset;
+  characterData.value = sanitizeCharacterData(preset);
   isLifeSimMode.value = false;
   isUsingTavernUserPersona.value = false;
   userPersonaMessage.value = '';
@@ -1944,6 +1971,27 @@ const createPermanentStatusEntry = (bonus: Record<string, any> = {}, description
   描述: description,
 });
 
+const createConstitutionPermanentBonus = (constitution: {
+  id: string;
+  permanentModifiers: Array<{ stat: string; value: number }>;
+}): Record<BonusKey, number> => {
+  const bonus = createEmptyBonusStats();
+  for (const mod of constitution.permanentModifiers) {
+    if (BONUS_KEYS.includes(mod.stat as BonusKey)) {
+      bonus[mod.stat as BonusKey] += mod.value;
+    }
+  }
+
+  if (constitution.id === XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID) {
+    const dynamicBonus = calculateXiaoyeyueLightDarkBonus(characterData.value.attributes?.核心状态?.堕落度 ?? 0);
+    for (const key of BONUS_KEYS) {
+      bonus[key] += dynamicBonus[key];
+    }
+  }
+
+  return bonus;
+};
+
 const handleStartGame = async () => {
   loading.value = true;
 
@@ -2092,13 +2140,8 @@ const handleStartGame = async () => {
       // 添加选中的体质到永久状态
       for (const constitutionId of characterData.value.initialPassiveSkills) {
         const constitution = getConstitutionById(constitutionId);
-        if (constitution) {
-          const bonus = createEmptyBonusStats();
-          for (const mod of constitution.permanentModifiers) {
-            if (BONUS_KEYS.includes(mod.stat as BonusKey)) {
-              bonus[mod.stat as BonusKey] += mod.value;
-            }
-          }
+        if (constitution && canSelectConstitution(constitution, characterData.value)) {
+          const bonus = createConstitutionPermanentBonus(constitution);
           permanentStatusList[constitution.name] = createPermanentStatusEntry(
             bonus,
             constitution.effectDescription || '',
@@ -2173,7 +2216,7 @@ const handleStartGame = async () => {
     const activeSkillsRecord = convertSkillsToMvu(STARTER_SKILLS, characterData.value.initialActiveSkills);
 
     // 获取当前角色类型的永久状态
-    const currentArchetypes = ARCHETYPES[characterData.value.gender] || ARCHETYPES[Gender.OTHER];
+    const currentArchetypes = getAvailableArchetypes(characterData.value);
     const selectedArchetype = currentArchetypes.find(a => a.id === characterData.value.archetypeId);
 
     // 构建永久状态列表（状态自身携带加成）
@@ -2190,13 +2233,8 @@ const handleStartGame = async () => {
     // 添加选中的体质到永久状态
     for (const constitutionId of characterData.value.initialPassiveSkills) {
       const constitution = getConstitutionById(constitutionId);
-      if (constitution) {
-        const bonus = createEmptyBonusStats();
-        for (const mod of constitution.permanentModifiers) {
-          if (BONUS_KEYS.includes(mod.stat as BonusKey)) {
-            bonus[mod.stat as BonusKey] += mod.value;
-          }
-        }
+      if (constitution && canSelectConstitution(constitution, characterData.value)) {
+        const bonus = createConstitutionPermanentBonus(constitution);
         permanentStatusList[constitution.name] = createPermanentStatusEntry(
           bonus,
           constitution.effectDescription || '',
@@ -2264,7 +2302,7 @@ const handleStartGame = async () => {
 
 // 发送角色基础数据到酒馆
 const sendCharacterDataToTavern = async () => {
-  const currentArchetypes = ARCHETYPES[characterData.value.gender] || ARCHETYPES[Gender.OTHER];
+  const currentArchetypes = getAvailableArchetypes(characterData.value);
   const selectedArchetype = currentArchetypes.find(a => a.id === characterData.value.archetypeId);
 
   // 根据身体配置决定实际性别输出

@@ -4,6 +4,11 @@
  */
 
 import { ConstitutionCategory, ConstitutionData, ConstitutionRarity, TriggerTiming } from './constitution-types';
+import {
+  XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID,
+  XIAOYEYUE_LIGHT_DARK_CONSTITUTION_NAME,
+  XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME,
+} from '../../shared/xiaoyeyueMagicGirl';
 
 // 重新导出类型
 export { ConstitutionCategory, ConstitutionRarity, TriggerTiming, type ConstitutionData };
@@ -532,6 +537,26 @@ export const FEMALE_CONSTITUTIONS: ConstitutionData[] = [
     hidden: false,
     flavorText: '停不下来了...',
   },
+  {
+    id: XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID,
+    name: XIAOYEYUE_LIGHT_DARK_CONSTITUTION_NAME,
+    description: '光与暗在体内轮转的魔法少女体质',
+    effectDescription:
+      '仅小夜月静夜可选。堕落度0~50时，忍耐力乘算+100%到+0%递减；堕落度51~100时，性斗力乘算+1%到+100%递增',
+    icon: 'Eclipse',
+    category: ConstitutionCategory.SPECIAL,
+    rarity: ConstitutionRarity.EX,
+    permanentModifiers: [],
+    sensitivityModifiers: [],
+    triggerEffects: [],
+    genderRestriction: ['female'],
+    excludeConstitutions: [],
+    requireConstitutions: [],
+    maxCount: 1,
+    isPositive: true,
+    hidden: true,
+    flavorText: '光守护尚未坠落的心，暗回应已经觉醒的欲望。',
+  },
 ];
 
 // ==================== 导出所有体质 ====================
@@ -561,4 +586,33 @@ export function getConstitutionsForGender(gender: string): ConstitutionData[] {
     ...(genderLower === 'male' ? MALE_CONSTITUTIONS : []),
     ...(genderLower === 'female' ? FEMALE_CONSTITUTIONS : []),
   ];
+}
+
+function normalizeConstitutionGender(gender: string): string {
+  if (gender === '男') return 'male';
+  if (gender === '女') return 'female';
+  if (gender === '非二元') return 'other';
+  return gender.toLowerCase();
+}
+
+export function canSelectConstitution(
+  constitution: ConstitutionData,
+  data: { name?: string; gender?: string },
+): boolean {
+  const gender = normalizeConstitutionGender(data.gender || '');
+  if (constitution.genderRestriction.length > 0 && !constitution.genderRestriction.includes(gender)) {
+    return false;
+  }
+
+  if (constitution.id !== XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID) {
+    return true;
+  }
+
+  return gender === 'female' && (data.name || '').trim() === XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME;
+}
+
+export function getConstitutionsForCharacter(data: { name?: string; gender?: string }): ConstitutionData[] {
+  return getConstitutionsForGender(normalizeConstitutionGender(data.gender || '')).filter(constitution =>
+    canSelectConstitution(constitution, data),
+  );
 }

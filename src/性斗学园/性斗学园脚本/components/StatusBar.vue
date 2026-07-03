@@ -846,6 +846,7 @@ import {
   saveIndexedImageDataUrl,
 } from '../../shared/indexedImageStore';
 import { getLatestMvuData, replaceLatestMvuData } from '../../shared/mvuStore';
+import { syncXiaoyeyueLightDarkStatusBonus } from '../../shared/xiaoyeyueMagicGirl';
 import { getDailyTalentEffect } from '../data/talentDatabase';
 import BackstreetPage from './pages/BackstreetPage.vue';
 import CGPage from './pages/CGPage.vue';
@@ -1628,6 +1629,11 @@ async function loadMvuData() {
           needsUpdate = true;
         }
       }
+    }
+
+    if (syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data)) {
+      needsUpdate = true;
+      console.info('[状态栏] 已同步光与暗交融的魔法少女动态加成');
     }
 
     // 如果有变更，写回 MVU

@@ -192,7 +192,7 @@
           <div class="mt-2 space-y-1 rounded-xl border border-white/10 bg-black/15 px-3 py-2 text-xs leading-relaxed text-gray-400">
             <p>写一两句就够，不用写完整人设。</p>
             <p>不抢话：写容易被误读的动作或语气。例：我沉默是在想措辞；说“过来/别动”通常是关心；拉手是着急挽留，不是控制。</p>
-            <p>抢话：写 AI 续写你时要抓住的口吻和限制。例：我刚认识话少，熟了会吐槽；紧张会话多；发色/身高只在有用时提，别每段重复。</p>
+            <p>抢话：会生成简化用户调色盘，让 AI 能续写 user 的口吻和行为，但仍限制重大决定。</p>
           </div>
         </div>
         <div class="mt-3 rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-inner shadow-white/5 backdrop-blur-sm">
@@ -247,7 +247,7 @@
             </div>
           </div>
           <p class="mt-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2 text-xs leading-relaxed text-gray-400">
-            不抢话：你自己写 user 的话和动作，AI 只理解含义。抢话：你希望 AI 也能续写 user，要告诉它口吻、日常反应和哪些特征别滥写。
+            不抢话：你自己写 user 的话和动作，AI 只理解含义，不生成调色盘。抢话：AI 会生成简化用户调色盘，用来续写 user 的口吻和行为，但不能替 user 做重大决定。
           </p>
           <p
             v-if="palettePersonaMessage"

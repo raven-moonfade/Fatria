@@ -379,8 +379,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { CharacterData, Gender, Archetype } from '../types';
-import { ARCHETYPES, CUP_SIZES, GENITAL_TYPES } from '../constants';
+import { CharacterData, Gender } from '../types';
+import { CUP_SIZES, GENITAL_TYPES, getAvailableArchetypes } from '../constants';
 import { getIconClass } from '../icon-helper';
 import { updateLatestStatData } from '../../shared/mvuStore';
 
@@ -394,7 +394,7 @@ const emit = defineEmits<{
 
 const isUpdating = ref(false);
 
-const currentArchetypes = computed(() => ARCHETYPES[props.data.gender] || ARCHETYPES[Gender.OTHER]);
+const currentArchetypes = computed(() => getAvailableArchetypes(props.data));
 
 const isMale = computed(() => props.data.gender === Gender.MALE);
 const isFemale = computed(() => props.data.gender === Gender.FEMALE);

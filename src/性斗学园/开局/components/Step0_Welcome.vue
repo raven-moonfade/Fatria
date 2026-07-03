@@ -48,7 +48,7 @@
     <div class="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
       <h3 class="mb-3 text-xl font-bold text-white">温馨提示</h3>
       <div class="space-y-4 text-sm leading-relaxed text-gray-200">
-        <p>你好，这里是前端作者“𝒱𝒾𝓃 ”，本卡𝒱𝒾𝓃”共同创作，仅在类脑与旅程免费发布/更新。</p>
+        <p>你好，这里是前端作者“𝒱𝒾𝓃 ”，本卡由“芙芙可爱捏”，“𝒱𝒾𝓃”与“114514·Remilia”共同创作，仅在类脑与旅程免费发布/更新。</p>
         <div class="flex flex-col gap-2">
           <a
             class="text-secondary decoration-secondary/40 underline underline-offset-4 hover:decoration-secondary"

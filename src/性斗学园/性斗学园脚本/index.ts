@@ -11,7 +11,7 @@
  */
 
 import { get, isEqual, set } from '@/util/common';
-import { createScriptIdDiv, destroyScriptIdDiv, deteleportStyle, teleportStyle } from '@/util/script';
+import { createScriptIdDiv, deteleportStyle, teleportStyle } from '@/util/script';
 import {
   migrateLegacyCGUnlocksToCharacterVariables,
   unlockMaxFavorCharacterCGsFromMvuData,
@@ -1344,7 +1344,6 @@ $(window).on('pagehide', () => {
     statusBarContainer.remove();
     statusBarContainer = null;
   }
-  destroyScriptIdDiv();
   deteleportStyle();
 });
 

@@ -188,9 +188,9 @@
             </div>
 
             <!-- 属性加成 -->
-            <div v-if="constitution.permanentModifiers.length > 0" class="flex flex-wrap gap-1.5">
+            <div v-if="getConstitutionDisplayModifiers(constitution).length > 0" class="flex flex-wrap gap-1.5">
               <span
-                v-for="(mod, idx) in constitution.permanentModifiers"
+                v-for="(mod, idx) in getConstitutionDisplayModifiers(constitution)"
                 :key="idx"
                 :class="[
                   'text-xs px-2 py-0.5 rounded border',
@@ -318,10 +318,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { PlayerPresetSummary } from '../../shared/playerPresetStore';
-import { ConstitutionRarity, getConstitutionsForGender } from '../data/constitutions';
+import {
+  XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID,
+  calculateXiaoyeyueLightDarkBonus,
+} from '../../shared/xiaoyeyueMagicGirl';
+import { ConstitutionRarity, getConstitutionsForCharacter } from '../data/constitutions';
 import { DamageSource, SkillRarity, STARTER_SKILLS } from '../data/skills';
 import { getIconClass } from '../icon-helper';
-import { CharacterData, Gender } from '../types';
+import { CharacterData } from '../types';
+
+interface DisplayModifier {
+  stat: string;
+  value: number;
+  isPercent: boolean;
+}
 
 const props = defineProps<{
   data: CharacterData;
@@ -370,15 +380,23 @@ watch(
 // 使用新的数据结构
 const starterSkills = computed(() => STARTER_SKILLS);
 
-// 获取当前性别可用的体质
-const currentConstitutions = computed(() => {
-  const genderMap: Record<Gender, string> = {
-    [Gender.MALE]: 'male',
-    [Gender.FEMALE]: 'female',
-    [Gender.OTHER]: 'other',
-  };
-  return getConstitutionsForGender(genderMap[props.data.gender] || 'other');
-});
+// 获取当前角色可用的体质
+const currentConstitutions = computed(() => getConstitutionsForCharacter(props.data));
+
+const getConstitutionDisplayModifiers = (constitution: { id: string; permanentModifiers: DisplayModifier[] }) => {
+  if (constitution.id !== XIAOYEYUE_LIGHT_DARK_CONSTITUTION_ID) {
+    return constitution.permanentModifiers;
+  }
+
+  const bonus = calculateXiaoyeyueLightDarkBonus(props.data.attributes?.核心状态?.堕落度 ?? 0);
+  return Object.entries(bonus)
+    .filter(([, value]) => Number(value) !== 0)
+    .map(([stat, value]) => ({
+      stat,
+      value: Number(value),
+      isPercent: stat.endsWith('成算'),
+    }));
+};
 
 // 获取技能稀有度样式
 const getRarityClass = (rarity: SkillRarity): string => {
@@ -409,6 +427,8 @@ const getConstitutionRarityClass = (rarity: ConstitutionRarity): string => {
       return 'bg-orange-500/20 text-orange-400';
     case ConstitutionRarity.MYTHIC:
       return 'bg-pink-500/20 text-pink-400';
+    case ConstitutionRarity.EX:
+      return 'bg-cyan-300/20 text-cyan-200';
     default:
       return 'bg-gray-500/20 text-gray-400';
   }
@@ -467,6 +487,10 @@ const toggleActiveSkill = (skillId: string) => {
 };
 
 const toggleConstitution = (constitutionId: string) => {
+  if (!currentConstitutions.value.some(constitution => constitution.id === constitutionId)) {
+    return;
+  }
+
   const current = [...props.data.initialPassiveSkills];
   const index = current.indexOf(constitutionId);
   if (index >= 0) {
