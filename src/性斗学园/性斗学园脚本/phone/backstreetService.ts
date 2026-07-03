@@ -796,7 +796,11 @@ export class BackstreetService {
     if (thread.kind === 'group' && thread.dissolved) throw new Error('群聊已解散，不能继续发送消息');
     const currentDate = getCurrentDate(characterData);
     const currentTime = getCurrentTime(characterData);
+    const messageText = safeString(text);
     const imageRefs = normalizeAppendImageRefs(options);
+    if (!messageText && imageRefs.length === 0) {
+      throw new Error('不能发送空消息');
+    }
     const userMessages: BackstreetMessage[] =
       imageRefs.length > 0
         ? imageRefs.map((imageRef, index) => ({
@@ -805,7 +809,7 @@ export class BackstreetService {
             kind: 'image',
             date: currentDate,
             time: currentTime,
-            text: index === 0 ? safeString(text) : '',
+            text: index === 0 ? messageText : '',
             imageRef,
             imageSource: 'user',
             imageHiddenFromPrompt: options.imageHiddenFromPrompt || undefined,
@@ -818,7 +822,7 @@ export class BackstreetService {
               kind: 'text',
               date: currentDate,
               time: currentTime,
-              text: safeString(text),
+              text: messageText,
               createdAt: Date.now(),
             },
           ];

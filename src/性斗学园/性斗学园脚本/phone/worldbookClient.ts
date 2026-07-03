@@ -397,6 +397,29 @@ export class WorldbookClient {
     }
   }
 
+  async isKnownWorldbookName(name: string): Promise<boolean> {
+    const worldName = safeString(name);
+    if (!worldName) return false;
+
+    const globalAny = getHostWindow();
+    const hostDocument = getHostDocument();
+    const context = this.getContext();
+    const worldInfoModule = await this.loadWorldInfoModule();
+
+    await Promise.resolve(context?.updateWorldInfoList?.()).catch(() => null);
+    await Promise.resolve(worldInfoModule?.updateWorldInfoList?.()).catch(() => null);
+
+    const nameLists = [globalAny.world_names, globalAny.worldNames, worldInfoModule?.world_names].filter(Array.isArray);
+    if (nameLists.some(list => list.includes(worldName))) return true;
+
+    const editor = hostDocument.querySelector<HTMLSelectElement>('#world_editor_select');
+    if (editor && Array.from(editor.options).some(option => option.text === worldName || option.value === worldName)) {
+      return true;
+    }
+
+    return nameLists.length === 0 && !editor;
+  }
+
   private async registerWorldbookName(name: string): Promise<void> {
     const worldName = safeString(name);
     if (!worldName) return;

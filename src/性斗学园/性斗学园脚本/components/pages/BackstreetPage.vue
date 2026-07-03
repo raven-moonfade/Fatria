@@ -597,6 +597,8 @@
           @input="updateMentionState"
           @keyup="updateMentionState"
           @keydown="handleComposerKeydown"
+          @compositionstart="handleComposerCompositionStart"
+          @compositionend="handleComposerCompositionEnd"
           @paste="handleComposerPaste"
         ></textarea>
         <button
@@ -761,6 +763,7 @@ let stopChatChangeListener: (() => void) | null = null;
 let messageImageSyncId = 0;
 let stickerPreviewPressTimer: number | null = null;
 let stickerLongPressPreviewed = false;
+let isComposerComposing = false;
 
 const privateContacts = computed(() => contacts.value.filter(contact => contact.type !== 'group'));
 const groupContacts = computed(() => contacts.value.filter(contact => contact.type === 'group'));
@@ -1383,7 +1386,8 @@ function toggleMessageActions(message: BackstreetMessage) {
 
 async function sendMessage() {
   const contact = activeContact.value;
-  const text = draft.value.trim();
+  if (isComposerComposing) return;
+  const text = getComposerText();
   if (!contact || (!text && pendingImageAttachments.value.length === 0) || isSending.value || activeIsDissolved.value) return;
 
   draft.value = '';
@@ -1766,6 +1770,22 @@ function insertEmoji(emoji: string) {
   });
 }
 
+function getComposerText(): string {
+  const liveValue = composerInputRef.value?.value;
+  const nextText = (liveValue ?? draft.value).trim();
+  if (liveValue != null && draft.value !== liveValue) draft.value = liveValue;
+  return nextText;
+}
+
+function handleComposerCompositionStart() {
+  isComposerComposing = true;
+}
+
+function handleComposerCompositionEnd(event: CompositionEvent) {
+  isComposerComposing = false;
+  updateMentionState(event);
+}
+
 function handleComposerKeydown(event: KeyboardEvent) {
   if (showMentionPanel.value) {
     const candidates = mentionCandidates.value;
@@ -1805,7 +1825,15 @@ function handleComposerKeydown(event: KeyboardEvent) {
     return;
   }
 
-  if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
+  if (
+    event.key === 'Enter' &&
+    !event.shiftKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.isComposing &&
+    !isComposerComposing
+  ) {
     event.preventDefault();
     void sendMessage();
   }

@@ -361,16 +361,20 @@ function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit 
 
 export class BackstreetWorldbookStore {
   private cleanedGeneratedMemoryWorldbooks = new Set<string>();
+  private readyWorldbooks = new Set<string>();
 
   private get worldName(): string {
     return worldbookClient.getPhoneWorldbookName();
   }
 
   async ensureReady(): Promise<void> {
+    const worldName = this.worldName;
+    if (this.readyWorldbooks.has(worldName)) return;
     await worldbookClient.ensureWorldbook(this.worldName);
     await this.ensureGuideEntry();
     await this.ensureEjsInjectionEntries();
     await this.cleanupGeneratedMemoryEntries();
+    this.readyWorldbooks.add(worldName);
   }
 
   async ensureGuideEntry(): Promise<void> {
@@ -385,24 +389,39 @@ export class BackstreetWorldbookStore {
       existing.position !== 4 ||
       existing.order !== 800;
 
-    await worldbookClient.upsertEntry(this.worldName, GUIDE_ENTRY, guideContent, {
-      enabled: true,
-      constant: true,
-      selective: false,
-      key: [],
-      position: 4,
-      role: 0,
-      depth: 0,
-      order: 800,
-    });
-    if (shouldRefresh) await worldbookClient.refreshWorldbookEditor(this.worldName);
+    if (shouldRefresh) {
+      await worldbookClient.upsertEntry(this.worldName, GUIDE_ENTRY, guideContent, {
+        enabled: true,
+        constant: true,
+        selective: false,
+        key: [],
+        position: 4,
+        role: 0,
+        depth: 0,
+        order: 800,
+      });
+      await worldbookClient.refreshWorldbookEditor(this.worldName);
+    }
   }
 
   async ensureEjsInjectionEntries(): Promise<void> {
-    const targets = uniqueStrings([this.worldName, worldbookClient.getCurrentChatWorldbookName()].filter(Boolean));
-    for (const worldName of targets) {
-      await this.ensureEjsInjectionEntry(worldName);
+    await this.ensureEjsInjectionEntry(this.worldName);
+
+    const chatWorldName = worldbookClient.getCurrentChatWorldbookName();
+    if (!chatWorldName || chatWorldName === this.worldName) return;
+
+    const isKnownChatWorldbook = await worldbookClient.isKnownWorldbookName(chatWorldName).catch(() => false);
+    if (!isKnownChatWorldbook) {
+      console.info(`[后街] 当前聊天世界书「${chatWorldName}」未在世界书列表中，跳过后街正文记忆注入条目写入。`);
+      return;
     }
+
+    const chatWorldbook = await worldbookClient.readWorldbook(chatWorldName, { allowMissing: true }).catch(() => null);
+    if (!chatWorldbook) {
+      console.info(`[后街] 当前聊天世界书「${chatWorldName}」不存在，跳过后街正文记忆注入条目写入。`);
+      return;
+    }
+    await this.ensureEjsInjectionEntry(chatWorldName);
   }
 
   private async ensureEjsInjectionEntry(worldName: string): Promise<void> {
@@ -425,17 +444,19 @@ export class BackstreetWorldbookStore {
       existing.depth !== 0 ||
       existing.order !== 801;
 
-    await worldbookClient.upsertEntry(targetWorldName, EJS_MEMORY_ENTRY, content, {
-      enabled: true,
-      constant: true,
-      selective: false,
-      key: [],
-      position: 4,
-      role: 0,
-      depth: 0,
-      order: 801,
-    });
-    if (shouldRefresh) await worldbookClient.refreshWorldbookEditor(targetWorldName);
+    if (shouldRefresh) {
+      await worldbookClient.upsertEntry(targetWorldName, EJS_MEMORY_ENTRY, content, {
+        enabled: true,
+        constant: true,
+        selective: false,
+        key: [],
+        position: 4,
+        role: 0,
+        depth: 0,
+        order: 801,
+      });
+      await worldbookClient.refreshWorldbookEditor(targetWorldName);
+    }
   }
 
   async hasAnyMemory(): Promise<boolean> {
