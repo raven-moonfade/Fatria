@@ -14,7 +14,12 @@
           <span v-if="hasMagicGirlTalentPoints" class="ml-2 text-xs text-pink-300">[小夜月特典]</span>
           <span v-else-if="cheatMode" class="ml-2 text-xs text-yellow-400">[作弊模式]</span>
         </p>
-        <p class="text-xs text-gray-500 mt-1">初始点数: {{ totalPointsAvailable }}</p>
+        <p class="text-xs text-gray-500 mt-1">
+          初始点数: {{ totalPointsAvailable }}
+          <span v-if="timelineTalentBonus > 0" class="ml-1 text-secondary"
+            >({{ data.mainlineTimeline }} +{{ timelineTalentBonus }})</span
+          >
+        </p>
       </div>
       <div class="flex items-center gap-4">
         <!-- x10 切换按钮 -->
@@ -96,7 +101,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { DIFFICULTY_POINTS, MAGIC_GIRL_REQUIRED_NAME, MAX_STATS } from '../constants';
+import { DIFFICULTY_POINTS, MAGIC_GIRL_REQUIRED_NAME, MAINLINE_TIMELINE_TALENT_BONUS, MAX_STATS } from '../constants';
 import { CharacterAttributes, CharacterData, Gender, INITIAL_ATTRIBUTES } from '../types';
 import { updateLatestStatData } from '../../shared/mvuStore';
 
@@ -117,11 +122,16 @@ const hasMagicGirlTalentPoints = computed(() => {
   return props.data.gender === Gender.FEMALE && props.data.name.trim() === MAGIC_GIRL_REQUIRED_NAME;
 });
 
-// 小夜月静夜女性开局固定为200点；否则作弊模式999点，再按难度取点数。
+const timelineTalentBonus = computed(() => MAINLINE_TIMELINE_TALENT_BONUS[props.data.mainlineTimeline] ?? 0);
+
+// 小夜月静夜女性开局基础为200点；否则作弊模式999点，再按难度取点数。主线时间线会追加奖励点数。
 const totalPointsAvailable = computed(() => {
-  if (hasMagicGirlTalentPoints.value) return MAGIC_GIRL_TALENT_POINTS;
-  if (props.cheatMode) return 999;
-  return DIFFICULTY_POINTS[props.data.difficulty];
+  const basePoints = hasMagicGirlTalentPoints.value
+    ? MAGIC_GIRL_TALENT_POINTS
+    : props.cheatMode
+      ? 999
+      : DIFFICULTY_POINTS[props.data.difficulty];
+  return basePoints + timelineTalentBonus.value;
 });
 
 // 根据路径获取当前值

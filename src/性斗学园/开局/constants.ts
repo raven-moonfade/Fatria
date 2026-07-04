@@ -1,4 +1,4 @@
-import { Archetype, CharacterData, Gender, Skill } from './types';
+import { Archetype, CharacterData, Gender, MainlineTimeline, Skill } from './types';
 import { XIAOYEYUE_MAGIC_GIRL_REQUIRED_NAME } from '../shared/xiaoyeyueMagicGirl';
 
 // --- Archetypes (10M, 10F, 6O) ---
@@ -1124,6 +1124,13 @@ export const DIFFICULTY_POINTS = {
   '地狱开局 (困难)': 30,
   作弊者: 999,
   抖M: 400,
+};
+
+export const MAINLINE_TIMELINE_TALENT_BONUS: Record<MainlineTimeline, number> = {
+  [MainlineTimeline.NONE]: 0,
+  [MainlineTimeline.IDOL]: 20,
+  [MainlineTimeline.SPORTS]: 40,
+  [MainlineTimeline.FESTIVAL]: 60,
 };
 
 export const CUP_SIZES = ['AA', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I+', 'Z'];
