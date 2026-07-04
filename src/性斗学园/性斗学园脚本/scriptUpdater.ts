@@ -1,6 +1,6 @@
 import { compare } from 'compare-versions';
 
-export const SCRIPT_VERSION = '3.3.2';
+export const SCRIPT_VERSION = '3.3.3';
 export const SCRIPT_UPDATE_EVENT = 'fatria-script-update-status';
 
 const UPDATE_MANIFEST_URL =
