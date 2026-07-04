@@ -336,12 +336,30 @@ function areStringArraysEqual(lhs: string[], rhs: string[]): boolean {
   return lhs.length === rhs.length && lhs.every((value, index) => value === rhs[index]);
 }
 
+function pickStrongerDominance(existingValue: unknown, incomingValue: unknown): number {
+  const existingDominance = Number(existingValue || 0);
+  const incomingDominance = Number(incomingValue || 0);
+  if (!Number.isFinite(existingDominance)) return Number.isFinite(incomingDominance) ? incomingDominance : 0;
+  if (!Number.isFinite(incomingDominance)) return existingDominance;
+  return Math.abs(incomingDominance) > Math.abs(existingDominance) ? incomingDominance : existingDominance;
+}
+
+function mergeOathValue(existingValue: unknown, incomingValue: unknown): string {
+  const existingOath = String(existingValue || '无');
+  const incomingOath = String(incomingValue || '无');
+  if (existingOath && existingOath !== '无') return existingOath;
+  if (incomingOath && incomingOath !== '无') return incomingOath;
+  return '无';
+}
+
 function mergeRelationshipData(existingData: any, incomingData: any): any {
   if (!existingData || typeof existingData !== 'object') return incomingData;
   if (!incomingData || typeof incomingData !== 'object') return existingData;
 
   const merged = { ...existingData, ...incomingData };
   merged.好感度 = Math.max(Number(existingData.好感度 || 0), Number(incomingData.好感度 || 0));
+  merged.支配度 = pickStrongerDominance(existingData.支配度, incomingData.支配度);
+  merged.誓约 = mergeOathValue(existingData.誓约, incomingData.誓约);
   return merged;
 }
 
@@ -1149,7 +1167,6 @@ function scheduleCurrentChatUserInfoSync(reason: string, delays: number[] = [300
     }, delay),
   );
 }
-
 
 if (typeof tavern_events !== 'undefined' && tavern_events.CHAT_CHANGED) {
   eventOn(tavern_events.CHAT_CHANGED, () => {

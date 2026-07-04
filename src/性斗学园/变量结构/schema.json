@@ -310,6 +310,20 @@
             "default": 0,
             "type": "number"
           },
+          "支配度": {
+            "default": 0,
+            "type": "number"
+          },
+          "誓约": {
+            "default": "无",
+            "type": "string",
+            "enum": [
+              "无",
+              "支配型",
+              "平等型",
+              "被支配型"
+            ]
+          },
           "关系类型": {
             "default": "陌生人",
             "type": "string"

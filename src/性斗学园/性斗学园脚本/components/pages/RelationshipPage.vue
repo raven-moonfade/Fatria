@@ -43,13 +43,19 @@
             </div>
             <div class="rel-info">
               <div class="rel-name">{{ name }}</div>
-              <div v-if="rel.关系类型" class="rel-type" :class="getRelationTypeClass(rel.关系类型)">
-                <i :class="getRelationIcon(rel.关系类型)"></i>
-                {{ rel.关系类型 }}
-              </div>
-              <div v-else class="rel-type type-unknown">
-                <i class="fas fa-user-circle"></i>
-                未建立关系
+              <div class="rel-tags">
+                <div v-if="rel.关系类型" class="rel-type" :class="getRelationTypeClass(rel.关系类型)">
+                  <i :class="getRelationIcon(rel.关系类型)"></i>
+                  {{ rel.关系类型 }}
+                </div>
+                <div v-else class="rel-type type-unknown">
+                  <i class="fas fa-user-circle"></i>
+                  未建立关系
+                </div>
+                <div class="rel-oath" :class="getOathClass(rel.誓约)">
+                  <i :class="getOathIcon(rel.誓约)"></i>
+                  {{ getOathLabel(rel.誓约) }}
+                </div>
               </div>
             </div>
           </div>
@@ -68,6 +74,23 @@
                   class="stat-fill affection"
                   :class="getAffectionClass(rel.好感度)"
                   :style="{ width: `${rel.好感度 || 0}%` }"
+                ></div>
+              </div>
+            </div>
+
+            <div class="stat-item">
+              <div class="stat-header">
+                <span class="stat-label">支配度</span>
+                <span class="stat-value dominance-value" :class="getDominanceClass(rel.支配度)">
+                  {{ formatDominance(rel.支配度) }} {{ getDominanceLabel(rel.支配度) }}
+                </span>
+              </div>
+              <div class="dominance-bar">
+                <div class="dominance-midline"></div>
+                <div
+                  class="dominance-fill"
+                  :class="getDominanceClass(rel.支配度)"
+                  :style="getDominanceStyle(rel.支配度)"
                 ></div>
               </div>
             </div>
@@ -330,6 +353,76 @@ function getAffectionClass(value: number): string {
   return 'very-low';
 }
 
+function getDominanceValue(value: unknown): number {
+  const dominance = Number(value ?? 0);
+  if (!Number.isFinite(dominance)) return 0;
+  return Math.max(-100, Math.min(100, Math.round(dominance)));
+}
+
+function formatDominance(value: unknown): string {
+  const dominance = getDominanceValue(value);
+  return dominance > 0 ? `+${dominance}` : String(dominance);
+}
+
+function getDominanceLabel(value: unknown): string {
+  const dominance = getDominanceValue(value);
+  if (dominance >= 80) return '完全支配';
+  if (dominance >= 50) return '支配';
+  if (dominance <= -80) return '完全被支配';
+  if (dominance <= -50) return '被支配';
+  return '平等';
+}
+
+function getDominanceClass(value: unknown): string {
+  const dominance = getDominanceValue(value);
+  if (dominance >= 80) return 'dominance-user-strong';
+  if (dominance >= 50) return 'dominance-user';
+  if (dominance <= -80) return 'dominance-npc-strong';
+  if (dominance <= -50) return 'dominance-npc';
+  return 'dominance-neutral';
+}
+
+function getDominanceStyle(value: unknown): Record<string, string> {
+  const dominance = getDominanceValue(value);
+  const width = Math.abs(dominance) / 2;
+
+  if (dominance >= 0) {
+    return { left: '50%', width: `${width}%` };
+  }
+
+  return { left: `${50 - width}%`, width: `${width}%` };
+}
+
+function getOathValue(value: unknown): string {
+  const oath = String(value || '无');
+  return ['支配型', '平等型', '被支配型'].includes(oath) ? oath : '无';
+}
+
+function getOathLabel(value: unknown): string {
+  const oath = getOathValue(value);
+  return oath === '无' ? '未誓约' : oath;
+}
+
+function getOathClass(value: unknown): string {
+  const map: Record<string, string> = {
+    无: 'oath-none',
+    支配型: 'oath-dominant',
+    平等型: 'oath-equal',
+    被支配型: 'oath-submissive',
+  };
+  return map[getOathValue(value)] || 'oath-none';
+}
+
+function getOathIcon(value: unknown): string {
+  const map: Record<string, string> = {
+    无: 'fas fa-circle',
+    支配型: 'fas fa-crown',
+    平等型: 'fas fa-heart',
+    被支配型: 'fas fa-link',
+  };
+  return map[getOathValue(value)] || 'fas fa-circle';
+}
+
 function getSubmissionClass(value: number): string {
   if (value >= 80) return 'very-high';
   if (value >= 60) return 'high';
@@ -550,6 +643,7 @@ function handleModalImageError(event: Event) {
 
 .rel-info {
   flex: 1;
+  min-width: 0;
 }
 
 .rel-name {
@@ -557,6 +651,15 @@ function handleModalImageError(event: Event) {
   font-weight: 600;
   color: white;
   margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rel-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .rel-type {
@@ -613,6 +716,40 @@ function handleModalImageError(event: Event) {
   }
 }
 
+.rel-oath {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+
+  i {
+    font-size: 9px;
+  }
+
+  &.oath-none {
+    background: rgba(156, 163, 175, 0.1);
+    color: rgba(255, 255, 255, 0.42);
+  }
+
+  &.oath-dominant {
+    background: rgba(251, 191, 36, 0.16);
+    color: #fcd34d;
+  }
+
+  &.oath-equal {
+    background: rgba(244, 114, 182, 0.16);
+    color: #f9a8d4;
+  }
+
+  &.oath-submissive {
+    background: rgba(167, 139, 250, 0.16);
+    color: #c4b5fd;
+  }
+}
+
 .rel-stats {
   display: flex;
   flex-direction: column;
@@ -658,6 +795,17 @@ function handleModalImageError(event: Event) {
   }
   &.training {
     color: #a78bfa;
+  }
+  &.dominance-user-strong,
+  &.dominance-user {
+    color: #34d399;
+  }
+  &.dominance-neutral {
+    color: #60a5fa;
+  }
+  &.dominance-npc,
+  &.dominance-npc-strong {
+    color: #f472b6;
   }
 }
 
@@ -711,6 +859,51 @@ function handleModalImageError(event: Event) {
     &.very-low {
       background: rgba(255, 255, 255, 0.2);
     }
+  }
+}
+
+.dominance-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(244, 114, 182, 0.16), transparent 48%),
+    linear-gradient(90deg, transparent 52%, rgba(52, 211, 153, 0.16)),
+    rgba(255, 255, 255, 0.1);
+}
+
+.dominance-midline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.dominance-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  border-radius: 999px;
+  transition:
+    left 0.4s ease,
+    width 0.4s ease;
+
+  &.dominance-user-strong,
+  &.dominance-user {
+    background: linear-gradient(90deg, #10b981, #34d399);
+  }
+
+  &.dominance-neutral {
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  }
+
+  &.dominance-npc,
+  &.dominance-npc-strong {
+    background: linear-gradient(90deg, #ec4899, #f472b6);
   }
 }
 

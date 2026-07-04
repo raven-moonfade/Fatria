@@ -102,6 +102,11 @@ const RelationshipSchema = z
       .number()
       .transform(n => clamp(n, 0, 100))
       .prefault(0),
+    支配度: z.coerce
+      .number()
+      .transform(n => clamp(n, -100, 100))
+      .prefault(0),
+    誓约: z.enum(['无', '支配型', '平等型', '被支配型']).catch('无').prefault('无'),
     关系类型: z.string().prefault('陌生人'),
   })
   .prefault({});
