@@ -111,6 +111,14 @@ const RelationshipSchema = z
   })
   .prefault({});
 
+const RaritySchema = z
+  .preprocess(
+    value => (typeof value === 'string' ? value.trim().toUpperCase() : value),
+    z.enum(['C', 'B', 'A', 'S', 'SS', 'SSS', 'EX']),
+  )
+  .catch('C')
+  .prefault('C');
+
 const SkillEffectSchema = z
   .object({
     效果类型: SkillEffectTypeSchema,
@@ -131,7 +139,7 @@ const ActiveSkillSchema = z.object({
         .number()
         .transform(n => clamp(n, 1, 5))
         .prefault(1),
-      稀有度: z.enum(['C', 'B', 'A', 'S', 'SS']).catch('C').prefault('C'),
+      稀有度: RaritySchema,
     })
     .prefault({}),
   冷却与消耗: z
@@ -170,14 +178,14 @@ const TalentSchema = z
 const EquippedItemSchema = z
   .object({
     名称: z.string().prefault(''),
-    等级: z.enum(['C', 'B', 'A', 'S', 'SS']).catch('C').prefault('C'),
+    等级: RaritySchema,
     加成属性: BonusSchema,
     描述: z.string().prefault(''),
   })
   .prefault({});
 
 const BaseItemSchema = z.object({
-  等级: z.enum(['C', 'B', 'A', 'S', 'SS']).catch('C').prefault('C'),
+  等级: RaritySchema,
   描述: z.string().prefault(''),
 });
 

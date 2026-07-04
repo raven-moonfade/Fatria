@@ -689,15 +689,7 @@
                     "type": "number"
                   },
                   "稀有度": {
-                    "default": "C",
-                    "type": "string",
-                    "enum": [
-                      "C",
-                      "B",
-                      "A",
-                      "S",
-                      "SS"
-                    ]
+                    "$ref": "#/$defs/__schema2"
                   }
                 }
               },
@@ -911,7 +903,9 @@
         "B",
         "A",
         "S",
-        "SS"
+        "SS",
+        "SSS",
+        "EX"
       ]
     },
     "__schema3": {
@@ -927,15 +921,7 @@
           "type": "string"
         },
         "等级": {
-          "default": "C",
-          "type": "string",
-          "enum": [
-            "C",
-            "B",
-            "A",
-            "S",
-            "SS"
-          ]
+          "$ref": "#/$defs/__schema2"
         },
         "加成属性": {
           "$ref": "#/$defs/__schema0"
