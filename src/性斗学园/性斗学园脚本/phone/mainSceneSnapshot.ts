@@ -64,7 +64,7 @@ function readRecentMainChat(limit = 16): string[] {
       const rawText = readRawMessageText(message);
       const text = extractTaggedMainContent(rawText);
       if (!text) return '';
-      return clipText(text, 360);
+      return text;
     })
     .filter(Boolean);
 }
@@ -75,7 +75,10 @@ function formatWeekday(value: unknown): string {
   return ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][Math.max(1, Math.min(7, weekday)) - 1] || '';
 }
 
-export function buildMainSceneSnapshot(characterData: any, options: { includeRecentChat?: boolean; recentChatLimit?: number } = {}): string {
+export function buildMainSceneSnapshot(
+  characterData: any,
+  options: { includeRecentChat?: boolean; recentChatLimit?: number } = {},
+): string {
   const time = characterData?.时间系统 || {};
   const location = characterData?.位置系统 || {};
   const relation = characterData?.关系系统 || {};
