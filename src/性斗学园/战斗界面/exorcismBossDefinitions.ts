@@ -1285,7 +1285,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     id: 'exorcism_veil',
     sourceEntry: '驱魔_Boss_薇尔.txt',
     displayName: '薇尔',
-    aliases: ['薇尔', '维斯伊尔'],
+    aliases: ['薇尔'],
     category: 'exorcism',
     status: 'draft',
     phases: [{ phase: 1, displayName: '初拥吸血姬', dataKey: '薇尔', skillPoolKey: 'veil' }],
