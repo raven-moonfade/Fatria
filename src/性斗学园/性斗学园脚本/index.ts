@@ -16,6 +16,7 @@ import {
   migrateLegacyCGUnlocksToCharacterVariables,
   unlockMaxFavorCharacterCGsFromMvuData,
 } from '../shared/cgUnlockStore';
+import { unlockAvatarVariationsFromMvuData } from '../shared/avatarVariationStore';
 import { getLatestMvuData, replaceLatestMvuData, waitForMvu } from '../shared/mvuStore';
 import { syncCurrentChatUserInfoToPersona } from '../shared/userWorldbookSync';
 import { shouldTriggerOrgasm } from '../开局/utils/combat-calculator';
@@ -944,6 +945,7 @@ async function updateDependentVariables() {
     }
     const legacyCGMigration = await migrateLegacyCGUnlocksToCharacterVariables(mvuData);
     const maxFavorCGUnlock = await unlockMaxFavorCharacterCGsFromMvuData(mvuData);
+    const avatarVariationUnlock = await unlockAvatarVariationsFromMvuData(mvuData);
 
     if (legacyCGMigration.changed) {
       console.info(`[性斗学园脚本] 已将旧版本地CG记录迁移至角色变量：${legacyCGMigration.unlockedCount} 张`);
@@ -954,6 +956,11 @@ async function updateDependentVariables() {
         `[性斗学园脚本] 好感度已满，自动解锁角色CG：${maxFavorCGUnlock.characters.join('、')}，新增 ${maxFavorCGUnlock.unlockedCount} 张`,
       );
       notifyCGUnlockRecordsUpdated(maxFavorCGUnlock.characters, maxFavorCGUnlock.unlockedCount);
+    }
+    if (avatarVariationUnlock.changed) {
+      console.info(
+        `[性斗学园脚本] 自动解锁头像差分：${avatarVariationUnlock.characters.join('、')}，新增 ${avatarVariationUnlock.unlockedCount} 张`,
+      );
     }
   } catch (error) {
     console.error('[性斗学园脚本] 更新持久变量时出错:', error);

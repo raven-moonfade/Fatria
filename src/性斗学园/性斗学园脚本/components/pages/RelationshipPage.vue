@@ -10,7 +10,13 @@
       <div class="present-list">
         <div class="present-item" v-for="(name, index) in presentCharacters" :key="index">
           <div class="present-avatar" @click="showAvatarModal(name)">
-            <img :src="getAvatarUrl(name)" :alt="name" @error="handleImageError($event)" class="avatar-img" />
+            <img
+              :src="getAvatarUrl(name)"
+              :alt="name"
+              @load="handleImageLoad($event)"
+              @error="handleImageError($event)"
+              class="avatar-img"
+            />
           </div>
           <span class="present-name">{{ name }}</span>
         </div>
@@ -37,6 +43,7 @@
               <img
                 :src="getAvatarUrl(String(name))"
                 :alt="String(name)"
+                @load="handleImageLoad($event)"
                 @error="handleImageError($event)"
                 class="avatar-img"
               />
@@ -185,16 +192,71 @@
       <div class="modal-header">
         <h3>{{ modalCharacterName }}</h3>
       </div>
-      <div class="modal-body">
-        <img :src="modalAvatarUrl" :alt="modalCharacterName" @error="handleModalImageError" class="modal-avatar-img" />
+      <div class="modal-body avatar-carousel">
+        <button
+          v-if="modalAvatarSlides.length > 1"
+          class="avatar-nav avatar-nav-prev"
+          type="button"
+          title="上一个头像"
+          aria-label="上一个头像"
+          @click="showPreviousAvatarVariation"
+        >
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <img
+          v-if="currentModalAvatarSlide.unlocked"
+          :src="currentModalAvatarSlide.url"
+          :alt="modalCharacterName"
+          @load="handleModalImageLoad($event)"
+          @error="handleModalImageError"
+          class="modal-avatar-img"
+        />
+        <div v-else class="avatar-locked-panel">
+          <i class="fas fa-lock"></i>
+          <span>{{ currentModalAvatarSlide.label }}</span>
+        </div>
+        <button
+          v-if="modalAvatarSlides.length > 1"
+          class="avatar-nav avatar-nav-next"
+          type="button"
+          title="下一个头像"
+          aria-label="下一个头像"
+          @click="showNextAvatarVariation"
+        >
+          <i class="fas fa-chevron-right"></i>
+        </button>
+      </div>
+      <div v-if="modalAvatarSlides.length > 1" class="avatar-carousel-footer">
+        <span class="avatar-slide-label" :class="{ locked: !currentModalAvatarSlide.unlocked }">
+          <i v-if="!currentModalAvatarSlide.unlocked" class="fas fa-lock"></i>
+          {{ currentModalAvatarSlide.label }}
+        </span>
+        <div class="avatar-slide-dots" aria-hidden="true">
+          <span
+            v-for="(slide, index) in modalAvatarSlides"
+            :key="`${slide.label}-${index}`"
+            :class="{ active: index === modalAvatarIndex, locked: !slide.unlocked }"
+          ></span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
+import {
+  AVATAR_VARIATIONS_UPDATED_EVENT,
+  getAllAvatarVariationOptions,
+  getAvatarVariationConfigForCharacter,
+  getSelectedAvatarVariationKey,
+  getSelectedAvatarVariationUrl,
+  getUnlockedAvatarVariationOptions,
+  selectAvatarVariation,
+  type AvatarVariationKey,
+  type AvatarVariationOption,
+} from '../../../shared/avatarVariationStore';
 import { ENEMY_DATABASE, NAME_ALIASES } from '../../../战斗界面/enemyDatabase';
 
 const props = defineProps<{
@@ -226,6 +288,18 @@ const reputations = computed(() => {
 const showModal = ref(false);
 const modalAvatarUrl = ref('');
 const modalCharacterName = ref('');
+const selectedAvatarUrls = ref<Record<string, string>>({});
+const selectedAvatarKeys = ref<Record<string, AvatarVariationKey | null>>({});
+const avatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({});
+const allAvatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({});
+const modalAvatarIndex = ref(0);
+
+interface ModalAvatarSlide {
+  key: AvatarVariationKey | null;
+  label: string;
+  url: string;
+  unlocked: boolean;
+}
 
 /**
  * 解析头像全名（支持包含匹配）
@@ -253,10 +327,148 @@ function resolveAvatarFullName(rawName: string): string {
   return rawName;
 }
 
-// 生成头像 URL
-function getAvatarUrl(name: string): string {
+function getAvatarRecordKey(name: string): string {
+  const fullName = resolveAvatarFullName(name);
+  return getAvatarVariationConfigForCharacter(fullName)?.characterName || fullName;
+}
+
+function getDefaultAvatarUrl(name: string): string {
   const fullName = resolveAvatarFullName(name);
   return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fullName)}.png`;
+}
+
+// 生成头像 URL
+function getAvatarUrl(name: string): string {
+  return selectedAvatarUrls.value[getAvatarRecordKey(name)] || getDefaultAvatarUrl(name);
+}
+
+const modalUnlockedAvatarOptions = computed(() => {
+  if (!modalCharacterName.value) return [];
+  return avatarOptionsByCharacter.value[getAvatarRecordKey(modalCharacterName.value)] || [];
+});
+
+const modalSelectedAvatarKey = computed(() => {
+  if (!modalCharacterName.value) return null;
+  return selectedAvatarKeys.value[getAvatarRecordKey(modalCharacterName.value)] || null;
+});
+
+const modalAvatarSlides = computed<ModalAvatarSlide[]>(() => {
+  if (!modalCharacterName.value) return [];
+
+  const recordKey = getAvatarRecordKey(modalCharacterName.value);
+  const config = getAvatarVariationConfigForCharacter(recordKey);
+  const defaultSlide: ModalAvatarSlide = {
+    key: null,
+    label: '默认',
+    url: getDefaultAvatarUrl(modalCharacterName.value),
+    unlocked: true,
+  };
+
+  if (!config) {
+    return [defaultSlide];
+  }
+
+  const unlockedKeys = new Set(modalUnlockedAvatarOptions.value.map(option => option.key));
+  const variationSlides = (allAvatarOptionsByCharacter.value[config.characterName] || []).map(option => ({
+    key: option.key,
+    label: option.label,
+    url: option.url,
+    unlocked: unlockedKeys.has(option.key),
+  }));
+
+  return [defaultSlide, ...variationSlides];
+});
+
+const currentModalAvatarSlide = computed<ModalAvatarSlide>(() => {
+  return (
+    modalAvatarSlides.value[modalAvatarIndex.value] || {
+      key: null,
+      label: '默认',
+      url: modalAvatarUrl.value || getDefaultAvatarUrl(modalCharacterName.value),
+      unlocked: true,
+    }
+  );
+});
+
+async function refreshAvatarVariationState() {
+  const names = [...presentCharacters.value, ...Object.keys(relationships.value)];
+  const recordKeys = [...new Set(names.map(name => getAvatarRecordKey(String(name))))];
+  const nextUrls: Record<string, string> = {};
+  const nextKeys: Record<string, AvatarVariationKey | null> = {};
+  const nextOptions: Record<string, AvatarVariationOption[]> = {};
+  const nextAllOptions: Record<string, AvatarVariationOption[]> = {};
+
+  for (const recordKey of recordKeys) {
+    const config = getAvatarVariationConfigForCharacter(recordKey);
+    if (!config) continue;
+
+    const [selectedUrl, selectedKey, options] = await Promise.all([
+      getSelectedAvatarVariationUrl(config.characterName),
+      getSelectedAvatarVariationKey(config.characterName),
+      getUnlockedAvatarVariationOptions(config.characterName),
+    ]);
+
+    if (selectedUrl) {
+      nextUrls[config.characterName] = selectedUrl;
+    }
+    nextKeys[config.characterName] = selectedKey;
+    nextOptions[config.characterName] = options;
+    nextAllOptions[config.characterName] = getAllAvatarVariationOptions(config.characterName);
+  }
+
+  selectedAvatarUrls.value = nextUrls;
+  selectedAvatarKeys.value = nextKeys;
+  avatarOptionsByCharacter.value = nextOptions;
+  allAvatarOptionsByCharacter.value = nextAllOptions;
+
+  if (showModal.value && modalCharacterName.value) {
+    modalAvatarUrl.value = getAvatarUrl(modalCharacterName.value);
+    syncModalAvatarIndexToSelection();
+  }
+}
+
+function syncModalAvatarIndexToSelection() {
+  const selectedKey = modalSelectedAvatarKey.value;
+  const selectedIndex = modalAvatarSlides.value.findIndex(slide => slide.key === selectedKey);
+  modalAvatarIndex.value = selectedIndex >= 0 ? selectedIndex : 0;
+}
+
+async function selectModalAvatarVariation(key: AvatarVariationKey | null) {
+  if (!modalCharacterName.value) return;
+
+  await selectAvatarVariation(modalCharacterName.value, key);
+  await refreshAvatarVariationState();
+  modalAvatarUrl.value = getAvatarUrl(modalCharacterName.value);
+}
+
+async function showAvatarVariationByOffset(offset: number) {
+  const slides = modalAvatarSlides.value;
+  if (slides.length <= 1) return;
+
+  modalAvatarIndex.value = (modalAvatarIndex.value + offset + slides.length) % slides.length;
+  const slide = currentModalAvatarSlide.value;
+  if (slide.unlocked) {
+    await selectModalAvatarVariation(slide.key);
+  }
+}
+
+function showPreviousAvatarVariation() {
+  showAvatarVariationByOffset(-1);
+}
+
+function showNextAvatarVariation() {
+  showAvatarVariationByOffset(1);
+}
+
+function removeFallbackIcon(parent: HTMLElement | null) {
+  parent?.querySelector('.fallback-icon')?.remove();
+  parent?.querySelector('.modal-fallback')?.remove();
+}
+
+function handleImageLoad(event: Event) {
+  const img = event.target as HTMLImageElement;
+  img.style.display = '';
+  removeFallbackIcon(img.parentElement);
 }
 
 // 处理图片加载失败
@@ -276,6 +488,7 @@ function handleImageError(event: Event) {
 function showAvatarModal(name: string) {
   modalCharacterName.value = name;
   modalAvatarUrl.value = getAvatarUrl(name);
+  syncModalAvatarIndexToSelection();
   showModal.value = true;
 }
 
@@ -459,6 +672,12 @@ function getReputationPercentage(value: number): number {
 }
 
 // 处理模态框图片加载失败
+function handleModalImageLoad(event: Event) {
+  const img = event.target as HTMLImageElement;
+  img.style.display = '';
+  removeFallbackIcon(img.parentElement);
+}
+
 function handleModalImageError(event: Event) {
   const img = event.target as HTMLImageElement;
   img.style.display = 'none';
@@ -470,6 +689,23 @@ function handleModalImageError(event: Event) {
     parent.appendChild(fallback);
   }
 }
+
+onMounted(() => {
+  refreshAvatarVariationState();
+  window.addEventListener(AVATAR_VARIATIONS_UPDATED_EVENT, refreshAvatarVariationState);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(AVATAR_VARIATIONS_UPDATED_EVENT, refreshAvatarVariationState);
+});
+
+watch(
+  () => props.characterData.关系系统,
+  () => {
+    refreshAvatarVariationState();
+  },
+  { deep: true },
+);
 </script>
 
 <style scoped lang="scss">
@@ -869,8 +1105,7 @@ function handleModalImageError(event: Event) {
   overflow: hidden;
   background:
     linear-gradient(90deg, rgba(244, 114, 182, 0.16), transparent 48%),
-    linear-gradient(90deg, transparent 52%, rgba(52, 211, 153, 0.16)),
-    rgba(255, 255, 255, 0.1);
+    linear-gradient(90deg, transparent 52%, rgba(52, 211, 153, 0.16)), rgba(255, 255, 255, 0.1);
 }
 
 .dominance-midline {
@@ -1129,6 +1364,7 @@ function handleModalImageError(event: Event) {
 }
 
 .modal-body {
+  position: relative;
   padding: 24px;
   display: flex;
   align-items: center;
@@ -1138,11 +1374,129 @@ function handleModalImageError(event: Event) {
   min-height: 0;
 }
 
+.avatar-carousel {
+  min-height: 420px;
+}
+
+.avatar-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  width: 38px;
+  height: 48px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(17, 24, 39, 0.62);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+
+  &:hover {
+    transform: translateY(-50%) scale(1.04);
+    background: rgba(102, 126, 234, 0.72);
+  }
+
+  i {
+    font-size: 16px;
+  }
+}
+
+.avatar-nav-prev {
+  left: 14px;
+}
+
+.avatar-nav-next {
+  right: 14px;
+}
+
 .modal-avatar-img {
   width: 100%;
   max-height: 100%;
   border-radius: 12px;
   object-fit: contain;
+}
+
+.avatar-locked-panel {
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: rgba(255, 255, 255, 0.48);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)), rgba(255, 255, 255, 0.03);
+
+  i {
+    font-size: 42px;
+  }
+
+  span {
+    font-size: 14px;
+    font-weight: 700;
+  }
+}
+
+.avatar-carousel-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar-slide-label {
+  min-height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(102, 126, 234, 0.5);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #fff;
+  background: rgba(102, 126, 234, 0.18);
+  font-size: 12px;
+  font-weight: 800;
+
+  &.locked {
+    border-color: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.48);
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.avatar-slide-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+
+  span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.24);
+    transition:
+      transform 0.16s ease,
+      background 0.16s ease;
+
+    &.active {
+      transform: scale(1.35);
+      background: rgba(102, 126, 234, 0.95);
+    }
+
+    &.locked {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  }
 }
 
 .modal-fallback {
