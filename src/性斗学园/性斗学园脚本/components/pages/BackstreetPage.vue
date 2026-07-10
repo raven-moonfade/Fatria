@@ -161,8 +161,8 @@
           <span
             class="contact-avatar"
             :class="{ flippable: contact.type !== 'group', flipping: isAvatarFlipping(contact.name) }"
-            :title="contact.type === 'group' ? '' : avatarToggleTitle(contact.name)"
-            @click.stop="contact.type !== 'group' && toggleContactAvatarMode(contact.name)"
+            :title="contact.type === 'group' ? '' : '选择头像'"
+            @click.stop="contact.type !== 'group' && showAvatarModal(contact.name)"
           >
             <i v-if="contact.type === 'group'" class="fas fa-users"></i>
             <img
@@ -619,6 +619,65 @@
       </form>
     </section>
   </div>
+
+  <div v-if="showAvatarPicker" class="avatar-modal" @click="closeAvatarModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" @click.stop>
+      <button class="modal-close" type="button" title="关闭" aria-label="关闭" @click="closeAvatarModal">
+        <i class="fas fa-times"></i>
+      </button>
+      <div class="modal-header">
+        <h3>{{ modalCharacterName }}</h3>
+      </div>
+      <div class="modal-body avatar-carousel">
+        <button
+          v-if="modalAvatarSlides.length > 1"
+          class="avatar-nav avatar-nav-prev"
+          type="button"
+          title="上一个头像"
+          aria-label="上一个头像"
+          @click="showPreviousAvatarVariation"
+        >
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <img
+          v-if="currentModalAvatarSlide.unlocked"
+          :key="`${currentModalAvatarSlide.kind}:${currentModalAvatarSlide.variationKey || currentModalAvatarSlide.url}`"
+          :src="currentModalAvatarSlide.url"
+          :alt="modalCharacterName"
+          class="modal-avatar-img"
+          @error="handleModalImageError"
+        />
+        <div v-else class="avatar-locked-panel">
+          <i class="fas fa-lock"></i>
+          <span>{{ currentModalAvatarSlide.label }}</span>
+        </div>
+        <button
+          v-if="modalAvatarSlides.length > 1"
+          class="avatar-nav avatar-nav-next"
+          type="button"
+          title="下一个头像"
+          aria-label="下一个头像"
+          @click="showNextAvatarVariation"
+        >
+          <i class="fas fa-chevron-right"></i>
+        </button>
+      </div>
+      <div v-if="modalAvatarSlides.length > 1" class="avatar-carousel-footer">
+        <span class="avatar-slide-label" :class="{ locked: !currentModalAvatarSlide.unlocked }">
+          <i v-if="!currentModalAvatarSlide.unlocked" class="fas fa-lock"></i>
+          {{ currentModalAvatarSlide.label }}
+        </span>
+        <div class="avatar-slide-dots" aria-hidden="true">
+          <span
+            v-for="(slide, index) in modalAvatarSlides"
+            :key="`${slide.label}-${index}`"
+            :class="{ active: index === modalAvatarIndex, locked: !slide.unlocked }"
+          ></span>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -648,6 +707,17 @@ import {
 } from '../../../shared/indexedImageStore';
 import { PLAYER_AVATAR_UPDATED_EVENT, resolveStoredPlayerAvatar } from '../../../shared/localPreferences';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
+import {
+  AVATAR_VARIATIONS_UPDATED_EVENT,
+  getAllAvatarVariationOptions,
+  getAvatarVariationConfigForCharacter,
+  getSelectedAvatarVariationKey,
+  getSelectedAvatarVariationUrl,
+  getUnlockedAvatarVariationOptions,
+  selectAvatarVariation,
+  type AvatarVariationKey,
+  type AvatarVariationOption,
+} from '../../../shared/avatarVariationStore';
 
 const props = defineProps<{
   characterData: any;
@@ -732,6 +802,10 @@ const imageInputRef = ref<HTMLInputElement | null>(null);
 const failedAvatars = ref(new Set<string>());
 const flippingAvatars = ref(new Set<string>());
 const contactAvatarModes = ref<Record<string, BackstreetAvatarMode>>(loadContactAvatarModes());
+const selectedAvatarUrls = ref<Record<string, string>>({});
+const selectedAvatarKeys = ref<Record<string, AvatarVariationKey | null>>({});
+const avatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({});
+const allAvatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({});
 const defaultAvatarMode = ref<BackstreetAvatarMode>(readDefaultAvatarMode());
 const playerAvatarUrl = ref('');
 const messageImageUrls = ref<Record<string, string>>({});
@@ -758,6 +832,17 @@ const stickerLoadError = ref('');
 const stickerHiddenFromPrompt = ref(readStickerHiddenFromPrompt());
 const stickerPreview = ref<StickerOption | null>(null);
 const stickerPromptToggleHelp = STICKER_PROMPT_TOGGLE_HELP;
+const showAvatarPicker = ref(false);
+const modalCharacterName = ref('');
+const modalAvatarIndex = ref(0);
+
+interface ModalAvatarSlide {
+  kind: 'normal' | 'chibi' | 'variation';
+  variationKey: AvatarVariationKey | null;
+  label: string;
+  url: string;
+  unlocked: boolean;
+}
 let currentChatId = '';
 let stopChatChangeListener: (() => void) | null = null;
 let messageImageSyncId = 0;
@@ -841,11 +926,17 @@ watch(stickerHiddenFromPrompt, value => {
   }
 });
 
+function handleAvatarVariationsUpdated() {
+  void refreshAvatarVariationState(true);
+}
+
 onMounted(() => {
   loadContacts();
   void loadPlayerAvatar();
+  void refreshAvatarVariationState();
   setupChatChangeListener();
   window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
+  window.addEventListener(AVATAR_VARIATIONS_UPDATED_EVENT, handleAvatarVariationsUpdated);
   window.addEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.addEventListener('storage', handlePhonePreferencesStorage);
 });
@@ -855,6 +946,7 @@ onUnmounted(() => {
   stopChatChangeListener = null;
   clearStickerPreviewTimer();
   window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
+  window.removeEventListener(AVATAR_VARIATIONS_UPDATED_EVENT, handleAvatarVariationsUpdated);
   window.removeEventListener(PHONE_PREFS_UPDATED_EVENT, handlePhonePreferencesUpdated);
   window.removeEventListener('storage', handlePhonePreferencesStorage);
   clearPendingImageAttachments();
@@ -928,12 +1020,14 @@ function handlePhonePreferencesUpdated(event: Event) {
   } else {
     defaultAvatarMode.value = readDefaultAvatarMode();
   }
+  void refreshAvatarVariationState(true);
 }
 
 function handlePhonePreferencesStorage(event: StorageEvent) {
   if (event.key && event.key !== PHONE_PREFS_STORAGE_KEY && event.key !== BACKSTREET_CONTACT_AVATAR_STORAGE_KEY) return;
   syncVisibleMessageCount();
   syncAvatarPreferences();
+  void refreshAvatarVariationState(true);
 }
 
 function getHostWindow(): any {
@@ -1337,6 +1431,7 @@ async function saveStickerImageAttachment(contact: string, sticker: StickerOptio
 async function loadContacts(characterDataOverride: any = props.characterData || {}) {
   try {
     contacts.value = await backstreetService.listContacts(characterDataOverride);
+    await refreshAvatarVariationState(true);
   } catch (error) {
     console.warn('[后街页面] 联系人加载失败:', error);
     errorText.value = '联系人加载失败';
@@ -1568,12 +1663,18 @@ async function addPrivateContact() {
 
     const existingRelation = relationSystem[name];
     if (existingRelation && typeof existingRelation === 'object' && !Array.isArray(existingRelation)) {
-      relationSystem[name] = { 好感度: 0, 关系类型: '朋友', ...existingRelation };
+      relationSystem[name] = { 好感度: 0, 支配度: 0, 誓约: '无', 关系类型: '朋友', ...existingRelation };
       if (!relationSystem[name].关系类型 || relationSystem[name].关系类型 === '陌生人') {
         relationSystem[name].关系类型 = '朋友';
       }
+      if (relationSystem[name].支配度 === undefined) {
+        relationSystem[name].支配度 = 0;
+      }
+      if (!relationSystem[name].誓约) {
+        relationSystem[name].誓约 = '无';
+      }
     } else {
-      relationSystem[name] = { 好感度: 0, 关系类型: '朋友' };
+      relationSystem[name] = { 好感度: 0, 支配度: 0, 誓约: '无', 关系类型: '朋友' };
     }
 
     await replaceLatestMvuData(mvuData);
@@ -1968,17 +2069,33 @@ function resolveAvatarFullName(rawName: string): string {
   return name;
 }
 
-function getAvatarFailureKey(mode: BackstreetAvatarMode, avatarName: string): string {
+function getAvatarRecordKey(name: string): string {
+  const fullName = resolveAvatarFullName(name);
+  return getAvatarVariationConfigForCharacter(fullName)?.characterName || fullName;
+}
+
+function getAvatarFailureKey(mode: BackstreetAvatarMode | 'variation', avatarName: string): string {
   return `${mode}:${avatarName}`;
 }
 
 function getPreferredAvatarMode(fullName: string): BackstreetAvatarMode {
-  return contactAvatarModes.value[fullName] || defaultAvatarMode.value;
+  return contactAvatarModes.value[getAvatarRecordKey(fullName)] || defaultAvatarMode.value;
 }
 
-function resolveAvatarDisplay(name: string): { mode: BackstreetAvatarMode; avatarName: string; url: string } | null {
+function resolveAvatarDisplay(name: string): { mode: BackstreetAvatarMode | 'variation'; avatarName: string; url: string } | null {
   const fullName = resolveAvatarFullName(name);
   if (!fullName) return null;
+
+  const recordKey = getAvatarRecordKey(fullName);
+  const selectedUrl = selectedAvatarUrls.value[recordKey];
+  const selectedKey = selectedAvatarKeys.value[recordKey];
+  if (selectedUrl && selectedKey && !failedAvatars.value.has(getAvatarFailureKey('variation', `${recordKey}:${selectedKey}`))) {
+    return {
+      mode: 'variation',
+      avatarName: `${recordKey}:${selectedKey}`,
+      url: selectedUrl,
+    };
+  }
 
   const preferredMode = getPreferredAvatarMode(fullName);
   if (preferredMode === 'chibi') {
@@ -2027,36 +2144,211 @@ function markAvatarFailed(name: string) {
 }
 
 function isAvatarFlipping(name: string): boolean {
-  const fullName = resolveAvatarFullName(name);
-  return fullName ? flippingAvatars.value.has(fullName) : false;
+  const recordKey = getAvatarRecordKey(name);
+  return recordKey ? flippingAvatars.value.has(recordKey) : false;
 }
 
-function avatarToggleTitle(name: string): string {
-  const fullName = resolveAvatarFullName(name);
-  const currentMode = getPreferredAvatarMode(fullName);
-  return currentMode === 'chibi' ? '切换为正常头像' : '切换为 Q 版头像';
+const modalUnlockedAvatarOptions = computed(() => {
+  if (!modalCharacterName.value) return [];
+  return avatarOptionsByCharacter.value[getAvatarRecordKey(modalCharacterName.value)] || [];
+});
+
+const modalSelectedAvatarKey = computed(() => {
+  if (!modalCharacterName.value) return null;
+  return selectedAvatarKeys.value[getAvatarRecordKey(modalCharacterName.value)] || null;
+});
+
+const modalAvatarSlides = computed<ModalAvatarSlide[]>(() => {
+  if (!modalCharacterName.value) return [];
+
+  const recordKey = getAvatarRecordKey(modalCharacterName.value);
+  const fullName = resolveAvatarFullName(modalCharacterName.value);
+  const chibiName = getChibiAvatarName(fullName);
+  const baseSlides: ModalAvatarSlide[] = [
+    {
+      kind: 'normal',
+      variationKey: null,
+      label: '正常头像',
+      url: getNormalAvatarUrl(fullName),
+      unlocked: true,
+    },
+  ];
+
+  if (chibiName) {
+    baseSlides.unshift({
+      kind: 'chibi',
+      variationKey: null,
+      label: 'Q版头像',
+      url: getChibiAvatarUrl(chibiName),
+      unlocked: true,
+    });
+  }
+
+  const config = getAvatarVariationConfigForCharacter(recordKey);
+  if (!config) {
+    return baseSlides;
+  }
+
+  const unlockedKeys = new Set(modalUnlockedAvatarOptions.value.map(option => option.key));
+  const variationSlides = (allAvatarOptionsByCharacter.value[config.characterName] || []).map(option => ({
+    kind: 'variation' as const,
+    variationKey: option.key,
+    label: option.label,
+    url: option.url,
+    unlocked: unlockedKeys.has(option.key),
+  }));
+
+  return [...baseSlides, ...variationSlides];
+});
+
+const currentModalAvatarSlide = computed<ModalAvatarSlide>(() => {
+  return (
+    modalAvatarSlides.value[modalAvatarIndex.value] || {
+      kind: 'normal',
+      variationKey: null,
+      label: '正常头像',
+      url: getNormalAvatarUrl(resolveAvatarFullName(modalCharacterName.value)),
+      unlocked: true,
+    }
+  );
+});
+
+function findModalAvatarSlideIndex(slides: ModalAvatarSlide[], target: Pick<ModalAvatarSlide, 'kind' | 'variationKey'>): number {
+  return slides.findIndex(slide => slide.kind === target.kind && slide.variationKey === target.variationKey);
 }
 
-function toggleContactAvatarMode(name: string) {
-  const fullName = resolveAvatarFullName(name);
-  if (!fullName) return;
+function getCurrentPersistedAvatarSlide(): Pick<ModalAvatarSlide, 'kind' | 'variationKey'> {
+  const selectedKey = modalSelectedAvatarKey.value;
+  if (selectedKey) {
+    return { kind: 'variation', variationKey: selectedKey };
+  }
 
-  const currentMode = getPreferredAvatarMode(fullName);
-  const nextMode: BackstreetAvatarMode = currentMode === 'chibi' ? 'normal' : 'chibi';
-  contactAvatarModes.value = {
-    ...contactAvatarModes.value,
-    [fullName]: nextMode,
+  return {
+    kind: contactAvatarModes.value[getAvatarRecordKey(modalCharacterName.value)] || defaultAvatarMode.value,
+    variationKey: null,
   };
-  saveContactAvatarModes(contactAvatarModes.value);
+}
+
+function syncModalAvatarIndexToSelection() {
+  const selectedIndex = findModalAvatarSlideIndex(modalAvatarSlides.value, getCurrentPersistedAvatarSlide());
+  modalAvatarIndex.value = selectedIndex >= 0 ? selectedIndex : 0;
+}
+
+async function refreshAvatarVariationState(preserveModalIndex = false) {
+  const previousSlide = preserveModalIndex ? currentModalAvatarSlide.value : null;
+  const names = [
+    ...contacts.value.filter(contact => contact.type !== 'group').map(contact => contact.name),
+    activeDisplayName.value,
+    ...selectedGroupMembers.value,
+    ...selectedInviteMembers.value,
+  ].filter(Boolean);
+  const recordKeys = [...new Set(names.map(name => getAvatarRecordKey(String(name))))];
+  const nextUrls: Record<string, string> = {};
+  const nextKeys: Record<string, AvatarVariationKey | null> = {};
+  const nextOptions: Record<string, AvatarVariationOption[]> = {};
+  const nextAllOptions: Record<string, AvatarVariationOption[]> = {};
+
+  for (const recordKey of recordKeys) {
+    const config = getAvatarVariationConfigForCharacter(recordKey);
+    if (!config) continue;
+
+    const [selectedUrl, selectedKey, options] = await Promise.all([
+      getSelectedAvatarVariationUrl(config.characterName),
+      getSelectedAvatarVariationKey(config.characterName),
+      getUnlockedAvatarVariationOptions(config.characterName),
+    ]);
+
+    if (selectedUrl) {
+      nextUrls[config.characterName] = selectedUrl;
+    }
+    nextKeys[config.characterName] = selectedKey;
+    nextOptions[config.characterName] = options;
+    nextAllOptions[config.characterName] = getAllAvatarVariationOptions(config.characterName);
+  }
+
+  contactAvatarModes.value = loadContactAvatarModes();
+  selectedAvatarUrls.value = nextUrls;
+  selectedAvatarKeys.value = nextKeys;
+  avatarOptionsByCharacter.value = nextOptions;
+  allAvatarOptionsByCharacter.value = nextAllOptions;
+
+  if (showAvatarPicker.value && modalCharacterName.value) {
+    if (previousSlide) {
+      const preservedIndex = findModalAvatarSlideIndex(modalAvatarSlides.value, previousSlide);
+      if (preservedIndex >= 0) {
+        modalAvatarIndex.value = preservedIndex;
+        return;
+      }
+    }
+    syncModalAvatarIndexToSelection();
+  }
+}
+
+async function selectModalAvatarVariation(slide: ModalAvatarSlide) {
+  if (!modalCharacterName.value || !slide.unlocked) return;
+
+  const recordKey = getAvatarRecordKey(modalCharacterName.value);
+  if (slide.kind === 'normal' || slide.kind === 'chibi') {
+    contactAvatarModes.value = {
+      ...contactAvatarModes.value,
+      [recordKey]: slide.kind,
+    };
+    saveContactAvatarModes(contactAvatarModes.value);
+    await selectAvatarVariation(modalCharacterName.value, null);
+  } else {
+    await selectAvatarVariation(modalCharacterName.value, slide.variationKey);
+  }
+
+  await refreshAvatarVariationState(true);
 
   const nextFlipping = new Set(flippingAvatars.value);
-  nextFlipping.add(fullName);
+  nextFlipping.add(recordKey);
   flippingAvatars.value = nextFlipping;
   window.setTimeout(() => {
     const settled = new Set(flippingAvatars.value);
-    settled.delete(fullName);
+    settled.delete(recordKey);
     flippingAvatars.value = settled;
   }, 520);
+}
+
+async function showAvatarVariationByOffset(offset: number) {
+  const slides = modalAvatarSlides.value;
+  if (slides.length <= 1) return;
+
+  modalAvatarIndex.value = (modalAvatarIndex.value + offset + slides.length) % slides.length;
+  const slide = currentModalAvatarSlide.value;
+  if (slide.unlocked) {
+    await selectModalAvatarVariation(slide);
+  }
+}
+
+function showPreviousAvatarVariation() {
+  showAvatarVariationByOffset(-1);
+}
+
+function showNextAvatarVariation() {
+  showAvatarVariationByOffset(1);
+}
+
+function showAvatarModal(name: string) {
+  modalCharacterName.value = name;
+  syncModalAvatarIndexToSelection();
+  showAvatarPicker.value = true;
+  void refreshAvatarVariationState(true);
+}
+
+function closeAvatarModal() {
+  showAvatarPicker.value = false;
+}
+
+function handleModalImageError() {
+  const recordKey = getAvatarRecordKey(modalCharacterName.value);
+  const slide = currentModalAvatarSlide.value;
+  const avatarName = slide.kind === 'variation' && slide.variationKey ? `${recordKey}:${slide.variationKey}` : modalCharacterName.value;
+  failedAvatars.value = new Set([
+    ...failedAvatars.value,
+    getAvatarFailureKey(slide.kind, avatarName),
+  ]);
 }
 
 function contactInitial(name: string): string {
@@ -2660,6 +2952,191 @@ async function scrollToBottom() {
   object-position: center 14%;
   transform: scale(1.75) translateY(9%);
   transform-origin: center 16%;
+}
+
+.avatar-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.modal-content {
+  position: relative;
+  width: min(360px, 95%);
+  max-height: 100%;
+  margin-top: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(30, 30, 50, 0.98), rgba(20, 20, 40, 0.98));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 4;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(248, 113, 113, 0.9);
+  cursor: pointer;
+}
+
+.modal-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+  h3 {
+    margin: 0;
+    max-width: calc(100% - 40px);
+    overflow: hidden;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.modal-body {
+  position: relative;
+  min-height: 0;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.avatar-carousel {
+  min-height: 390px;
+}
+
+.avatar-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 38px;
+  height: 48px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(17, 24, 39, 0.62);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.avatar-nav-prev {
+  left: 14px;
+}
+
+.avatar-nav-next {
+  right: 14px;
+}
+
+.modal-avatar-img {
+  width: 100%;
+  max-height: 360px;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+.avatar-locked-panel {
+  width: 100%;
+  min-height: 340px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.04);
+
+  i {
+    font-size: 40px;
+  }
+
+  span {
+    font-size: 14px;
+    font-weight: 700;
+  }
+}
+
+.avatar-carousel-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar-slide-label {
+  min-height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(102, 126, 234, 0.5);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #fff;
+  background: rgba(102, 126, 234, 0.18);
+  font-size: 12px;
+  font-weight: 800;
+
+  &.locked {
+    border-color: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.48);
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.avatar-slide-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+
+  span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.24);
+
+    &.active {
+      transform: scale(1.35);
+      background: rgba(102, 126, 234, 0.95);
+    }
+
+    &.locked {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  }
 }
 
 .contact-main {
