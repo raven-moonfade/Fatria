@@ -105,7 +105,7 @@ function getPersonaApi(): PersonaApi | null {
 
 function normalizeUserPersonaName(name: string): string {
   const normalizedName = String(name || '').trim();
-  if (!normalizedName || normalizedName.toLowerCase() === 'current') {
+  if (!normalizedName || normalizedName.toLowerCase() === 'current' || normalizedName.startsWith('xuedou-player-')) {
     return '';
   }
 

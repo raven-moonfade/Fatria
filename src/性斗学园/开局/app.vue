@@ -80,6 +80,7 @@
               :user-persona-message="userPersonaMessage"
               :user-persona-message-type="userPersonaMessageType"
               :is-using-tavern-user-persona="isUsingTavernUserPersona"
+              :pending-user-persona-overwrite-name="pendingUserPersonaOverwriteName"
               @update-data="updateCharacterData"
               @update-life-sim-mode="(v: boolean) => (isLifeSimMode = v)"
               @select-npc="handleNpcSelect"
@@ -614,6 +615,7 @@ const isCreatingUserPersona = ref(false);
 const isUsingTavernUserPersona = ref(false);
 const userPersonaMessage = ref('');
 const userPersonaMessageType = ref<'success' | 'warning' | 'error'>('success');
+const pendingUserPersonaOverwriteName = ref('');
 
 // 作弊码相关
 const showCheatInput = ref(false);
@@ -1612,6 +1614,7 @@ const updateCharacterData = (fields: Partial<CharacterData>) => {
     Object.keys(fields).some(field => USER_PERSONA_SOURCE_FIELDS.includes(field as keyof CharacterData));
 
   characterData.value = sanitizeCharacterData({ ...characterData.value, ...fields });
+  pendingUserPersonaOverwriteName.value = '';
 
   if (shouldResetUserPersonaMode) {
     isUsingTavernUserPersona.value = false;
@@ -1672,6 +1675,7 @@ const handleLoadPlayerPreset = () => {
   characterData.value = sanitizeCharacterData(preset);
   isLifeSimMode.value = false;
   isUsingTavernUserPersona.value = false;
+  pendingUserPersonaOverwriteName.value = '';
   userPersonaMessage.value = '';
   userPersonaMessageType.value = 'success';
   selectedPlayerPresetName.value = presetName;
@@ -1685,6 +1689,7 @@ const handleCreateUserPersona = async () => {
 
   const personaName = normalizePlayerPersonaName(characterData.value.name);
   if (!personaName) {
+    pendingUserPersonaOverwriteName.value = '';
     userPersonaMessageType.value = 'warning';
     userPersonaMessage.value = '请先填写姓名，再创建酒馆用户人设。';
     toastr.warning(userPersonaMessage.value, '用户人设');
@@ -1692,6 +1697,7 @@ const handleCreateUserPersona = async () => {
   }
 
   if (!characterData.value.palettePersona?.trim()) {
+    pendingUserPersonaOverwriteName.value = '';
     userPersonaMessageType.value = 'warning';
     userPersonaMessage.value = '请先生成用户信息，再创建酒馆用户人设。';
     toastr.warning(userPersonaMessage.value, '用户人设');
@@ -1702,6 +1708,7 @@ const handleCreateUserPersona = async () => {
   try {
     matchCount = getPlayerPersonaNameMatchCount(personaName);
   } catch (error) {
+    pendingUserPersonaOverwriteName.value = '';
     console.warn('[开局] 检查酒馆用户人设失败:', error);
     userPersonaMessageType.value = 'error';
     userPersonaMessage.value = error instanceof Error ? error.message : '检查酒馆用户人设失败。';
@@ -1710,24 +1717,23 @@ const handleCreateUserPersona = async () => {
   }
 
   if (matchCount > 1) {
+    pendingUserPersonaOverwriteName.value = '';
     userPersonaMessageType.value = 'error';
     userPersonaMessage.value = `酒馆中存在多个名为「${personaName}」的用户人设，无法安全覆盖。请先在用户人设管理里处理重名项。`;
     toastr.error(userPersonaMessage.value, '用户人设');
     return;
   }
 
-  if (matchCount === 1) {
-    const confirmed = window.confirm(
-      `已存在名为「${personaName}」的酒馆用户人设。\n继续会覆盖该用户人设的当前内容，并切换启用它。是否继续？`,
-    );
-    if (!confirmed) {
-      userPersonaMessageType.value = 'warning';
-      userPersonaMessage.value = '已取消覆盖同名酒馆用户人设。';
-      return;
-    }
+  if (matchCount === 1 && pendingUserPersonaOverwriteName.value !== personaName) {
+    pendingUserPersonaOverwriteName.value = personaName;
+    userPersonaMessageType.value = 'warning';
+    userPersonaMessage.value = `已存在名为「${personaName}」的酒馆用户人设。再次点击“确认覆盖用户人设”会直接覆写笑脸中的这个用户人设，并切换启用它，请谨慎选择。`;
+    toastr.warning(userPersonaMessage.value, '用户人设');
+    return;
   }
 
   isCreatingUserPersona.value = true;
+  pendingUserPersonaOverwriteName.value = '';
   userPersonaMessage.value = '';
   userPersonaMessageType.value = 'success';
 

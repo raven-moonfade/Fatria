@@ -288,7 +288,15 @@
                   @click="emit('create-user-persona')"
                 >
                   <i :class="['fas', isCreatingUserPersona ? 'fa-spinner fa-spin' : 'fa-user-plus']"></i>
-                  {{ isCreatingUserPersona ? '写入中...' : isUsingTavernUserPersona ? '重新写入用户人设' : '创建用户人设' }}
+                  {{
+                    isCreatingUserPersona
+                      ? '写入中...'
+                      : pendingUserPersonaOverwriteName
+                        ? '确认覆盖用户人设'
+                        : isUsingTavernUserPersona
+                          ? '重新写入用户人设'
+                          : '创建用户人设'
+                  }}
                 </button>
               </div>
               <p
@@ -424,6 +432,7 @@ const props = defineProps<{
   userPersonaMessage?: string;
   userPersonaMessageType?: 'success' | 'warning' | 'error';
   isUsingTavernUserPersona?: boolean;
+  pendingUserPersonaOverwriteName?: string;
 }>();
 
 const emit = defineEmits<{
