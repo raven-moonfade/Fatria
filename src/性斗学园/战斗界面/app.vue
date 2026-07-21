@@ -38,6 +38,7 @@
         :turn-state="turnState"
         :enemy-intention="turnState.enemyIntention"
         :resource-popups="playerResourcePopups"
+        :combat-reaction="playerCombatReaction"
       />
 
       <!-- VS 分隔线 -->
@@ -54,6 +55,7 @@
         :turn-state="turnState"
         :enemy-intention="turnState.enemyIntention"
         :resource-popups="enemyResourcePopups"
+        :combat-reaction="enemyCombatReaction"
       />
 
       <!-- 伊甸芙宁沉睡图标 (只保留zzz图标) -->
@@ -207,7 +209,7 @@
                     <path d="M4 20V10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
                     <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
                   </svg>
-                  <span>{{ isItemsDisabled ? (isSinItemsDisabled ? '七宗罪封印' : '已封印') : '物品背包' }}</span>
+                  <span>{{ getItemsMenuLabel() }}</span>
                 </Card>
                 <Card v-if="hasEquipmentSkills" hover class="menu-card" @click="activeMenu = 'equipment'">
                   <svg
@@ -437,7 +439,14 @@
                     :key="item.id"
                     :hover="true"
                     class="item-card"
-                    @click="handlePlayerItem(item)"
+                    @click="handlePlayerItemClick(item)"
+                    @mouseenter="showItemEffectTooltip(item, $event)"
+                    @mouseleave="hideSkillEffectTooltip(`item_${item.id}`)"
+                    @touchstart="startItemEffectLongPress(item, $event)"
+                    @touchend="finishSkillEffectTouch"
+                    @touchcancel="cancelSkillEffectLongPress"
+                    @touchmove="cancelSkillEffectLongPress"
+                    @contextmenu.prevent="showItemEffectTooltip(item, $event)"
                   >
                     <div class="item-header">
                       <span class="item-name">{{ item.name }}</span>
@@ -579,7 +588,7 @@
         maxHeight: `${skillEffectTooltip.maxHeight}px`,
       }"
     >
-      <div class="skill-effect-tooltip-title">效果说明</div>
+      <div class="skill-effect-tooltip-title">{{ skillEffectTooltip.title || '效果说明' }}</div>
       <div
         v-for="effect in skillEffectTooltip.effects"
         :key="`${skillEffectTooltip.skillId}-${effect.label}-${effect.description}`"
@@ -614,11 +623,7 @@
     <!-- 协同作战立绘特效 -->
     <div v-if="companionAssistEffect" class="companion-assist-effect">
       <div class="companion-assist-strike"></div>
-      <img
-        class="companion-assist-portrait"
-        :src="companionAssistEffect.avatarUrl"
-        :alt="companionAssistEffect.name"
-      />
+      <img class="companion-assist-portrait" :src="companionAssistEffect.avatarUrl" :alt="companionAssistEffect.name" />
       <div class="companion-assist-caption">
         <span class="companion-name">{{ companionAssistEffect.name }}</span>
         <span class="companion-skill">{{ companionAssistEffect.skillName }}</span>
@@ -896,6 +901,13 @@ const isItemsDisabled = computed(() => isBossItemsDisabled.value || isSinItemsDi
 const isSurrenderDisabled = computed(() => isBossSurrenderDisabled.value || isSinSurrenderDisabled.value);
 const hasEquipmentSkills = computed(() => equippedEquipmentSkills.value.length > 0);
 
+function getItemsMenuLabel(): string {
+  if (!isItemsDisabled.value) return '物品背包';
+  if (itemUsedThisTurn.value) return '冷却中';
+  if (isSinItemsDisabled.value) return '七宗罪封印';
+  return '已封印';
+}
+
 // BOSS对话显示状态
 const bossOverlayText = ref<string>('');
 const bossDialogueKey = ref<number>(0); // 用于强制重新创建DOM元素，让动画重新播放
@@ -935,6 +947,7 @@ interface SkillEffectTooltipItem {
 
 interface SkillEffectTooltipState {
   skillId: string;
+  title?: string;
   effects: SkillEffectTooltipItem[];
   left: number;
   top: number;
@@ -942,11 +955,19 @@ interface SkillEffectTooltipState {
   maxHeight: number;
 }
 
+interface CharacterCombatReaction {
+  key: number;
+  type: 'item-use' | 'item-hit' | 'status-block' | 'status-self-hit';
+  label: string;
+}
+
 const resourcePopups = ref<ResourcePopup[]>([]);
 let resourcePopupId = 0;
 const resourcePopupSuppressions: ResourcePopupSuppression[] = [];
 const playerResourcePopups = computed(() => resourcePopups.value.filter(popup => popup.target === 'player'));
 const enemyResourcePopups = computed(() => resourcePopups.value.filter(popup => popup.target === 'enemy'));
+const playerCombatReaction = ref<CharacterCombatReaction | null>(null);
+const enemyCombatReaction = ref<CharacterCombatReaction | null>(null);
 const playerSkillEffectDetails = ref<Record<string, SkillEffectTooltipItem[]>>({});
 const skillEffectTooltip = ref<SkillEffectTooltipState | null>(null);
 const cooperationTriggerChance = ref(0);
@@ -957,6 +978,7 @@ let unusableSkillFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let skillEffectLongPressTimer: ReturnType<typeof setTimeout> | null = null;
 let skillEffectClickGuardTimer: ReturnType<typeof setTimeout> | null = null;
 let skillEffectClickGuardId: string | null = null;
+const combatReactionTimers: Partial<Record<CombatSide, ReturnType<typeof setTimeout>>> = {};
 
 // 玩家立绘上传 input
 const playerPortraitInput = ref<HTMLInputElement | null>(null);
@@ -1355,7 +1377,11 @@ function getExorcismRelationships(): Record<string, number> {
   return result;
 }
 
-function isCurrentEnemyName(statData: Record<string, any>, companionName: string, resolvedCompanionName: string): boolean {
+function isCurrentEnemyName(
+  statData: Record<string, any>,
+  companionName: string,
+  resolvedCompanionName: string,
+): boolean {
   const rawEnemyNames = [enemy.value.name, String(_.get(statData, '性斗系统.对手名称', '') || '')].filter(Boolean);
   return hasMatchingCooperationIdentity(rawEnemyNames, [companionName, resolvedCompanionName]);
 }
@@ -2198,7 +2224,8 @@ async function loadFromMvu() {
     } else {
       player.value.skills = [];
       playerSkillEffectDetails.value = {};
-      const message = '未读取到玩家技能系统：技能系统.主动技能为空或不存在，请检查变量写入。尝试删除性斗楼层并重新点击性斗按钮。';
+      const message =
+        '未读取到玩家技能系统：技能系统.主动技能为空或不存在，请检查变量写入。尝试删除性斗楼层并重新点击性斗按钮。';
       console.warn(`[战斗界面] ${message}`);
       if (!hasLoggedMissingPlayerSkills) {
         addLog(message, 'system', 'critical');
@@ -2250,6 +2277,7 @@ async function loadFromMvu() {
             pleasureReduce: itemData?.快感降低,
             pleasureIncrease: itemData?.快感增加,
             bonuses: itemData?.加成属性, // 添加加成属性
+            combatEffects: itemData?.战斗效果列表 || itemData?.效果列表,
             effect: (user, _target) => {
               // 根据物品属性应用效果
               let message = `${user.name} 使用了 ${itemId}`;
@@ -2409,13 +2437,7 @@ function getSkillEffectTargetName(targetEnemy: boolean): string {
   return targetEnemy ? '目标' : '自身';
 }
 
-function getSkillEffectTone(
-  targetEnemy: boolean,
-  effectValue: number,
-): SkillEffectTooltipItem['tone'] {
-  if (targetEnemy) {
-    return effectValue >= 0 ? 'debuff' : 'buff';
-  }
+function getSkillEffectTone(_targetEnemy: boolean, effectValue: number): SkillEffectTooltipItem['tone'] {
   return effectValue >= 0 ? 'buff' : 'debuff';
 }
 
@@ -2428,7 +2450,9 @@ function describeResourceEffect(
 ): string {
   const verb = value >= 0 ? '增加' : '降低';
   const amount = isPercentage ? `最大${resourceName}的 ${Math.abs(value)}%` : `${Math.abs(value)}点`;
-  const prefix = duration ? `每回合使${targetName}${resourceName}${verb}${amount}` : `立即使${targetName}${resourceName}${verb}${amount}`;
+  const prefix = duration
+    ? `每回合使${targetName}${resourceName}${verb}${amount}`
+    : `立即使${targetName}${resourceName}${verb}${amount}`;
   return duration ? `${prefix}，持续${formatDuration(duration)}。` : `${prefix}。`;
 }
 
@@ -2557,45 +2581,103 @@ function describeLegacyBuffEffect(buff: SkillData['buffs'][number]): SkillEffect
 
   switch (String(buff.type)) {
     case 'atk_up':
-      return { label: `性斗力 ${valueText}`, description: `自身性斗力提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'buff' };
+      return {
+        label: `性斗力 ${valueText}`,
+        description: `自身性斗力提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'buff',
+      };
     case 'def_up':
-      return { label: `忍耐力 ${valueText}`, description: `自身忍耐力提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'buff' };
+      return {
+        label: `忍耐力 ${valueText}`,
+        description: `自身忍耐力提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'buff',
+      };
     case 'atk_down':
-      return { label: `性斗力 ${valueText}`, description: `目标性斗力降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'debuff' };
+      return {
+        label: `性斗力 ${valueText}`,
+        description: `目标性斗力降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'debuff',
+      };
     case 'def_down':
-      return { label: `忍耐力 ${valueText}`, description: `目标忍耐力降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'debuff' };
+      return {
+        label: `忍耐力 ${valueText}`,
+        description: `目标忍耐力降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'debuff',
+      };
     case 'dodge_up':
-      return { label: `闪避率 ${valueText}`, description: `自身闪避率提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'buff' };
+      return {
+        label: `闪避率 ${valueText}`,
+        description: `自身闪避率提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'buff',
+      };
     case 'dodge_down':
-      return { label: `闪避率 ${valueText}`, description: `目标闪避率降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'debuff' };
+      return {
+        label: `闪避率 ${valueText}`,
+        description: `目标闪避率降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'debuff',
+      };
     case 'crit_up':
-      return { label: `暴击率 ${valueText}`, description: `自身暴击率提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'buff' };
+      return {
+        label: `暴击率 ${valueText}`,
+        description: `自身暴击率提高${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'buff',
+      };
     case 'crit_down':
-      return { label: `暴击率 ${valueText}`, description: `目标暴击率降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'debuff' };
+      return {
+        label: `暴击率 ${valueText}`,
+        description: `目标暴击率降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'debuff',
+      };
     case 'luck_down':
-      return { label: `幸运 ${valueText}`, description: `目标幸运降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'debuff' };
+      return {
+        label: `幸运 ${valueText}`,
+        description: `目标幸运降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'debuff',
+      };
     case 'charm_down':
-      return { label: `魅力 ${valueText}`, description: `目标魅力降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'debuff' };
+      return {
+        label: `魅力 ${valueText}`,
+        description: `目标魅力降低${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'debuff',
+      };
     case 'sensitive':
-      return { label: `敏感 ${valueText}`, description: `目标受到的快感伤害提高${formatFlatOrPercentAmount(buff.value, true)}，持续${duration}。`, tone: 'special' };
+      return {
+        label: `敏感 ${valueText}`,
+        description: `目标受到的快感伤害提高${formatFlatOrPercentAmount(buff.value, true)}，持续${duration}。`,
+        tone: 'special',
+      };
     case 'fear':
-      return { label: `乏力 ${valueText}`, description: `目标行动前有${Math.abs(buff.value)}%概率无法行动，持续${duration}。`, tone: 'control' };
+      return {
+        label: `乏力 ${valueText}`,
+        description: `目标行动前有${Math.abs(buff.value)}%概率无法行动，持续${duration}。`,
+        tone: 'control',
+      };
     case 'confuse':
-      return { label: `迷离 ${valueText}`, description: `目标行动时有${Math.abs(buff.value)}%概率敌我误判，使本次技能作用到自己身上或空转，持续${duration}。`, tone: 'control' };
+      return {
+        label: `迷离 ${valueText}`,
+        description: `目标行动时有${Math.abs(buff.value)}%概率敌我误判，使本次技能作用到自己身上或空转，持续${duration}。`,
+        tone: 'control',
+      };
     case 'focus':
-      return { label: '集中', description: `自身下一次有效攻击必定暴击，触发后消耗，最多持续${duration}。`, tone: 'special' };
+      return {
+        label: '集中',
+        description: `自身下一次有效攻击必定暴击，触发后消耗，最多持续${duration}。`,
+        tone: 'special',
+      };
     case 'bind':
       return { label: `束缚 ${duration}`, description: `目标无法行动，持续${duration}。`, tone: 'control' };
-    case 'silence':
-      return { label: `沉默 ${duration}`, description: `目标无法使用技能效果，持续${duration}。`, tone: 'control' };
-    case 'shame':
-      return { label: `羞耻 ${valueText}`, description: `目标进入羞耻状态，持续${duration}。`, tone: 'debuff' };
-    case 'heat':
-      return { label: `发情 ${valueText}`, description: `目标进入发情状态，持续${duration}。`, tone: 'debuff' };
     case 'dot_lust':
-      return { label: `持续快感 ${valueText}`, description: `每回合使目标快感增加${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'resource' };
+      return {
+        label: `持续快感 ${valueText}`,
+        description: `每回合使目标快感增加${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'resource',
+      };
     case 'regen':
-      return { label: `持续耐力 ${valueText}`, description: `每回合使自身耐力恢复${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`, tone: 'resource' };
+      return {
+        label: `持续耐力 ${valueText}`,
+        description: `每回合使自身耐力恢复${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        tone: 'resource',
+      };
     default:
       return null;
   }
@@ -2613,6 +2695,60 @@ function getSkillEffectTooltipItems(skill: Skill): SkillEffectTooltipItem[] {
     return mvuEffects;
   }
   return buildLegacyBuffTooltipItems(skill.data?.buffs);
+}
+
+function getItemEffectTooltipItems(item: Item): SkillEffectTooltipItem[] {
+  const effects = buildSkillEffectTooltipItems(item.combatEffects);
+  const bonusLabels: Record<string, { label: string; isPercentage: boolean }> = {
+    基础性斗力加成: { label: '性斗力', isPercentage: false },
+    基础性斗力成算: { label: '性斗力', isPercentage: true },
+    基础忍耐力加成: { label: '忍耐力', isPercentage: false },
+    基础忍耐力成算: { label: '忍耐力', isPercentage: true },
+    魅力加成: { label: '魅力', isPercentage: false },
+    幸运加成: { label: '幸运', isPercentage: false },
+    闪避率加成: { label: '闪避率', isPercentage: false },
+    暴击率加成: { label: '暴击率', isPercentage: false },
+  };
+
+  Object.entries(item.bonuses || {}).forEach(([bonusName, rawValue]) => {
+    const value = Number(rawValue) || 0;
+    const bonus = bonusLabels[bonusName];
+    if (!bonus || value === 0) return;
+
+    const duration = getItemTemporaryBuffDuration(item);
+    effects.push({
+      label: `${bonus.label} ${formatEffectAmount(value, bonus.isPercentage)}`,
+      description: `自身${bonus.label}${value > 0 ? '提高' : '降低'}${formatFlatOrPercentAmount(
+        value,
+        bonus.isPercentage,
+      )}，持续${formatDuration(duration)}。`,
+      tone: value > 0 ? 'buff' : 'debuff',
+    });
+  });
+
+  if (item.staminaRestore) {
+    effects.unshift({
+      label: `耐力 +${item.staminaRestore}`,
+      description: `立即恢复自身${item.staminaRestore}点耐力。`,
+      tone: 'resource',
+    });
+  }
+  if (item.pleasureReduce) {
+    effects.unshift({
+      label: `快感 -${item.pleasureReduce}`,
+      description: `立即降低自身${item.pleasureReduce}点快感。`,
+      tone: 'resource',
+    });
+  }
+  if (item.pleasureIncrease) {
+    effects.unshift({
+      label: `快感 +${item.pleasureIncrease}`,
+      description: `立即增加自身${item.pleasureIncrease}点快感。`,
+      tone: 'resource',
+    });
+  }
+
+  return effects;
 }
 
 function clampTooltipPosition(value: number, min: number, max: number): number {
@@ -2637,11 +2773,7 @@ function getSkillEffectTooltipPlacement(event?: Event): Omit<SkillEffectTooltipS
   };
 }
 
-function showSkillEffectTooltip(
-  skill: Skill,
-  event?: Event,
-  placement = getSkillEffectTooltipPlacement(event),
-) {
+function showSkillEffectTooltip(skill: Skill, event?: Event, placement = getSkillEffectTooltipPlacement(event)) {
   const effects = getSkillEffectTooltipItems(skill);
   if (effects.length === 0) {
     skillEffectTooltip.value = null;
@@ -2650,6 +2782,21 @@ function showSkillEffectTooltip(
 
   skillEffectTooltip.value = {
     skillId: skill.id,
+    effects,
+    ...placement,
+  };
+}
+
+function showItemEffectTooltip(item: Item, event?: Event, placement = getSkillEffectTooltipPlacement(event)) {
+  const effects = getItemEffectTooltipItems(item);
+  if (effects.length === 0) {
+    skillEffectTooltip.value = null;
+    return;
+  }
+
+  skillEffectTooltip.value = {
+    skillId: `item_${item.id}`,
+    title: `${item.name} · 效果说明`,
     effects,
     ...placement,
   };
@@ -2691,12 +2838,50 @@ function startSkillEffectLongPress(skill: Skill, event?: Event) {
   }, 450);
 }
 
+function startItemEffectLongPress(item: Item, event?: Event) {
+  cancelSkillEffectLongPress();
+  if (getItemEffectTooltipItems(item).length === 0) {
+    return;
+  }
+
+  const sourceId = `item_${item.id}`;
+  const placement = getSkillEffectTooltipPlacement(event);
+  skillEffectLongPressTimer = setTimeout(() => {
+    showItemEffectTooltip(item, undefined, placement);
+    skillEffectLongPressTimer = null;
+    skillEffectClickGuardId = sourceId;
+    if (skillEffectClickGuardTimer) {
+      clearTimeout(skillEffectClickGuardTimer);
+    }
+    skillEffectClickGuardTimer = setTimeout(() => {
+      if (skillEffectClickGuardId === sourceId) {
+        skillEffectClickGuardId = null;
+      }
+      skillEffectClickGuardTimer = null;
+    }, 1600);
+  }, 450);
+}
+
 function finishSkillEffectTouch() {
   cancelSkillEffectLongPress();
 }
 
 function shouldIgnoreSkillClickFromLongPress(skill: Skill): boolean {
   if (skillEffectClickGuardId !== skill.id) {
+    return false;
+  }
+
+  skillEffectClickGuardId = null;
+  if (skillEffectClickGuardTimer) {
+    clearTimeout(skillEffectClickGuardTimer);
+    skillEffectClickGuardTimer = null;
+  }
+  return true;
+}
+
+function shouldIgnoreItemClickFromLongPress(item: Item): boolean {
+  const sourceId = `item_${item.id}`;
+  if (skillEffectClickGuardId !== sourceId) {
     return false;
   }
 
@@ -2765,11 +2950,7 @@ function applyResourceChangeInStatData(
   return actualChange;
 }
 
-function applyResourceDeltaToCharacter(
-  actor: Character,
-  resource: 'pleasure' | 'endurance',
-  delta: number,
-): number {
+function applyResourceDeltaToCharacter(actor: Character, resource: 'pleasure' | 'endurance', delta: number): number {
   if (!Number.isFinite(delta) || delta === 0) {
     return 0;
   }
@@ -2975,7 +3156,11 @@ function getEquipmentSkillCooldown(skill: EquipmentSkillDefinition): number {
 }
 
 function isEquipmentSkillDisabled(skill: EquipmentSkillDefinition): boolean {
-  return turnState.phase !== 'playerInput' || getEquipmentSkillRemainingUses(skill) <= 0 || getEquipmentSkillCooldown(skill) > 0;
+  return (
+    turnState.phase !== 'playerInput' ||
+    getEquipmentSkillRemainingUses(skill) <= 0 ||
+    getEquipmentSkillCooldown(skill) > 0
+  );
 }
 
 function markEquipmentSkillUsed(skill: EquipmentSkillDefinition) {
@@ -3296,7 +3481,10 @@ async function applyEquipmentSkillEffect(skill: EquippedEquipmentSkill): Promise
           描述: '破界：敏感',
           特殊效果: { 类型: '敏感', 效果值: 30, 是否为百分比: true },
         });
-        logs.push({ message: `${enemy.value.name} 的基础忍耐力高于玩家基础性斗力，额外获得敏感+30%。`, type: 'debuff' });
+        logs.push({
+          message: `${enemy.value.name} 的基础忍耐力高于玩家基础性斗力，额外获得敏感+30%。`,
+          type: 'debuff',
+        });
       }
       break;
     }
@@ -3505,7 +3693,12 @@ async function applyPostDamageSpecialEffects(params: {
   const reflectPercent = Math.max(0, await getSpecialStatusValue(params.targetSide, '反弹'));
   if (reflectPercent > 0) {
     const reflected = Math.floor((params.damage * reflectPercent) / 100);
-    const actualChange = await applyResourceDeltaToCombatant(params.attackerSide, params.attacker, 'pleasure', reflected);
+    const actualChange = await applyResourceDeltaToCombatant(
+      params.attackerSide,
+      params.attacker,
+      'pleasure',
+      reflected,
+    );
     if (actualChange > 0) {
       logs.push(`${target.name} 的反弹使 ${attacker.name} 增加了 ${actualChange} 点快感`);
     }
@@ -3514,7 +3707,12 @@ async function applyPostDamageSpecialEffects(params: {
   const drainPercent = Math.max(0, await getSpecialStatusValue(params.attackerSide, '吸取快感'));
   if (drainPercent > 0) {
     const drained = Math.floor((params.damage * drainPercent) / 100);
-    const actualChange = await applyResourceDeltaToCombatant(params.attackerSide, params.attacker, 'pleasure', -drained);
+    const actualChange = await applyResourceDeltaToCombatant(
+      params.attackerSide,
+      params.attacker,
+      'pleasure',
+      -drained,
+    );
     if (actualChange < 0) {
       logs.push(`${attacker.name} 吸取快感，降低了 ${Math.abs(actualChange)} 点自身快感`);
     }
@@ -3590,11 +3788,175 @@ async function triggerPendingClimaxFromResourceChange(reason?: string): Promise<
 // 这样确保 debuff 效果只"生效"一次（通过动态计算），而不是重复叠加
 
 /**
- * 将技能的 debuff/buff 效果写入对应状态列表。
+ * 将效果列表写入对应状态列表。
  * 玩家状态写入 MVU；对手状态只写入本次战斗运行态。
  * 只负责写入，不修改任何属性值。
  * 属性值的变化通过 reloadStatusFromMvu 中的动态计算实现
  */
+function applyCombatEffectListToStatData(params: {
+  statData: Record<string, any>;
+  effectList: Record<string, any>;
+  sourceId: string;
+  isPlayerSkill: boolean;
+  logs: string[];
+}) {
+  console.info(`[Debuff系统] 效果列表keys:`, Object.keys(params.effectList));
+  for (const [effectName, effectData] of Object.entries(params.effectList)) {
+    console.info(
+      `[Debuff系统] 开始处理效果: ${effectName}, effectData类型=${typeof effectData}, effectData=`,
+      effectData,
+    );
+    if (!effectData || typeof effectData !== 'object') {
+      console.warn(`[Debuff系统] 跳过无效效果: ${effectName}`);
+      continue;
+    }
+
+    const resolvedEffect = resolveSkillEffect(effectData);
+    if (resolvedEffect.kind === 'skip') {
+      if (resolvedEffect.reason) {
+        console.warn(`[Debuff系统] ${resolvedEffect.reason}`);
+      }
+      continue;
+    }
+
+    console.info(
+      `[Debuff系统] 处理效果: ${effectName}, 类型=${resolvedEffect.kind === 'bind' ? '束缚' : resolvedEffect.effectType}`,
+    );
+
+    // 特殊处理：束缚效果（不写入状态列表，直接设置束缚回合数）
+    if (resolvedEffect.kind === 'bind') {
+      console.info(
+        `[束缚] 检测到束缚效果: duration=${resolvedEffect.duration}, targetEnemy=${resolvedEffect.targetEnemy}, isPlayerSkill=${params.isPlayerSkill}`,
+      );
+      const targetIsPlayer = params.isPlayerSkill ? !resolvedEffect.targetEnemy : resolvedEffect.targetEnemy;
+      console.info(
+        `[束缚] 束缚目标计算: targetIsPlayer=${targetIsPlayer}, isPlayerSkill=${params.isPlayerSkill}, targetEnemy=${resolvedEffect.targetEnemy}`,
+      );
+      if (targetIsPlayer) {
+        let immuneToBind = false;
+        if (playerTalent.value) {
+          const talentContext = createTalentEffectContext();
+          const debuffResult = TalentSystem.processTalentOnDebuffReceived(playerTalent.value, talentContext, 'bind');
+          if (debuffResult.preventBind) {
+            immuneToBind = true;
+            params.logs.push(`【${playerTalent.value.name}】免疫了束缚效果！`);
+            console.info(`[束缚] 天赋免疫束缚效果`);
+          }
+        }
+
+        if (immuneToBind) {
+          continue;
+        }
+
+        let finalDuration = resolvedEffect.duration;
+        const sinTypeForBind = TalentSystem.getSinTalentType(playerTalent.value);
+        if (sinTypeForBind === 'greed') {
+          finalDuration += 2;
+          params.logs.push(`【七宗罪·贪婪】被束缚时持续时间+2回合！`);
+        }
+
+        if (playerSensoryNumb.value > 0) {
+          finalDuration = 1;
+          playerSensoryNumb.value = 0;
+          params.logs.push(`【感官麻木】${player.value.name} 的束缚持续时间被减少为1回合！`);
+        }
+
+        finalDuration = Math.min(finalDuration, MAX_BIND_DURATION);
+        playerBoundTurns.value = finalDuration;
+        playerBindSource.value = params.isPlayerSkill ? 'player' : 'enemy';
+        params.logs.push(`${player.value.name} 被束缚了 ${finalDuration} 回合，无法行动！`);
+        console.info(`[束缚] ★★★ 设置玩家束缚: playerBoundTurns=${playerBoundTurns.value}`);
+      } else {
+        if (BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'muxinlan') {
+          const immuneDialogue = BossSystem.getBindImmuneDialogue(BossSystem.bossState.currentPhase);
+          if (immuneDialogue) {
+            BossSystem.queueDialogues([immuneDialogue]);
+          }
+          params.logs.push(`${enemy.value.name} 免疫了束缚效果！`);
+          console.info(`[束缚] 沐芯兰BOSS免疫束缚`);
+          continue;
+        }
+
+        let finalEnemyDuration = resolvedEffect.duration;
+        if (enemySensoryNumb.value > 0) {
+          finalEnemyDuration = 1;
+          enemySensoryNumb.value = 0;
+          params.logs.push(`【感官麻木】${enemy.value.name} 的束缚持续时间被减少为1回合！`);
+        }
+
+        finalEnemyDuration = Math.min(finalEnemyDuration, MAX_BIND_DURATION);
+        enemyBoundTurns.value = finalEnemyDuration;
+        enemyBindSource.value = params.isPlayerSkill ? 'player' : 'enemy';
+        params.logs.push(`${enemy.value.name} 被束缚了 ${finalEnemyDuration} 回合，无法行动！`);
+        console.info(
+          `[束缚] ★★★ 设置敌人束缚: enemyBoundTurns=${enemyBoundTurns.value}, enemyBindSource=${enemyBindSource.value}`,
+        );
+      }
+      continue;
+    }
+
+    const targetSide = resolveEffectTargetSide(resolvedEffect, params.isPlayerSkill);
+    const targetName = getCombatantBySide(targetSide).name;
+
+    if (resolvedEffect.kind === 'resource') {
+      const actualChange = applyResourceChangeInStatData(
+        params.statData,
+        targetSide,
+        resolvedEffect.resource,
+        resolvedEffect.effectValue,
+        resolvedEffect.isPercentage,
+      );
+      if (actualChange !== 0) {
+        params.logs.push(buildResourceChangeLog(targetName, resolvedEffect, actualChange));
+      }
+      continue;
+    }
+
+    const statusKey = getSkillStatusKey(resolvedEffect.effectType, params.sourceId, effectName);
+    const currentStatusList = getStatusListForSideFromStatData(params.statData, targetSide);
+
+    let statusEffect: TimedStatusEffect;
+    if (resolvedEffect.kind === 'status') {
+      statusEffect = {
+        加成: resolvedEffect.bonus,
+        剩余回合: resolvedEffect.duration,
+      };
+    } else if (resolvedEffect.kind === 'resourceOverTime') {
+      statusEffect = {
+        加成: {},
+        剩余回合: resolvedEffect.duration,
+        描述: `${resolvedEffect.effectType} ${resolvedEffect.effectValue}${resolvedEffect.isPercentage ? '%' : ''}`,
+        资源变化:
+          resolvedEffect.resource === 'pleasure'
+            ? { 快感: resolvedEffect.effectValue, 是否为百分比: resolvedEffect.isPercentage }
+            : { 耐力: resolvedEffect.effectValue, 是否为百分比: resolvedEffect.isPercentage },
+      };
+    } else {
+      statusEffect = {
+        加成: {},
+        剩余回合: resolvedEffect.duration,
+        描述: `${resolvedEffect.effectType} ${resolvedEffect.effectValue}${resolvedEffect.isPercentage ? '%' : ''}`,
+        特殊效果: {
+          类型: resolvedEffect.effectType,
+          效果值: resolvedEffect.effectValue,
+          是否为百分比: resolvedEffect.isPercentage,
+        },
+      };
+    }
+
+    const result = upsertSkillStatus(currentStatusList, statusKey, statusEffect);
+    params.logs.push(buildSkillStatusLog(targetName, resolvedEffect, result.refreshed));
+
+    if (result.refreshed) {
+      console.info(`[Debuff系统] 刷新已有状态: ${statusKey}`);
+    } else {
+      console.info(`[Debuff系统] 添加新状态: ${statusKey}`, result.statusList[statusKey]);
+    }
+
+    setStatusListForSideInStatData(params.statData, targetSide, result.statusList);
+  }
+}
+
 async function applyCombatSkillEffects(skillId: string, isPlayerSkill: boolean): Promise<string[]> {
   const logs: string[] = [];
   console.info(`[Debuff系统] applyCombatSkillEffects被调用: skillId=${skillId}, isPlayerSkill=${isPlayerSkill}`);
@@ -3618,178 +3980,7 @@ async function applyCombatSkillEffects(skillId: string, isPlayerSkill: boolean):
         effectList,
       );
 
-      console.info(`[Debuff系统] 效果列表keys:`, Object.keys(effectList));
-      for (const [effectName, effectData] of Object.entries(effectList)) {
-        console.info(
-          `[Debuff系统] 开始处理效果: ${effectName}, effectData类型=${typeof effectData}, effectData=`,
-          effectData,
-        );
-        if (!effectData || typeof effectData !== 'object') {
-          console.warn(`[Debuff系统] 跳过无效效果: ${effectName}`);
-          continue;
-        }
-
-        const resolvedEffect = resolveSkillEffect(effectData);
-        if (resolvedEffect.kind === 'skip') {
-          if (resolvedEffect.reason) {
-            console.warn(`[Debuff系统] ${resolvedEffect.reason}`);
-          }
-          continue;
-        }
-
-        console.info(
-          `[Debuff系统] 处理效果: ${effectName}, 类型=${resolvedEffect.kind === 'bind' ? '束缚' : resolvedEffect.effectType}`,
-        );
-
-        // 特殊处理：束缚效果（不写入状态列表，直接设置束缚回合数）
-        // 束缚效果的effectValue可以为0，只需要duration>0即可生效
-        if (resolvedEffect.kind === 'bind') {
-          console.info(
-            `[束缚] 检测到束缚效果: duration=${resolvedEffect.duration}, targetEnemy=${resolvedEffect.targetEnemy}, isPlayerSkill=${isPlayerSkill}`,
-          );
-          const targetIsPlayer = isPlayerSkill ? !resolvedEffect.targetEnemy : resolvedEffect.targetEnemy;
-          console.info(
-            `[束缚] 束缚目标计算: targetIsPlayer=${targetIsPlayer}, isPlayerSkill=${isPlayerSkill}, targetEnemy=${resolvedEffect.targetEnemy}`,
-          );
-          if (targetIsPlayer) {
-            // 检查天赋束缚免疫
-            let immuneToBind = false;
-            if (playerTalent.value) {
-              const talentContext = createTalentEffectContext();
-              const debuffResult = TalentSystem.processTalentOnDebuffReceived(
-                playerTalent.value,
-                talentContext,
-                'bind',
-              );
-              if (debuffResult.preventBind) {
-                immuneToBind = true;
-                logs.push(`【${playerTalent.value.name}】免疫了束缚效果！`);
-                console.info(`[束缚] 天赋免疫束缚效果`);
-              }
-            }
-
-            if (immuneToBind) {
-              continue; // 跳过束缚设置
-            }
-
-            // 贪婪：被束缚时持续时间+2回合
-            let finalDuration = resolvedEffect.duration;
-            const sinTypeForBind = TalentSystem.getSinTalentType(playerTalent.value);
-            if (sinTypeForBind === 'greed') {
-              finalDuration += 2;
-              logs.push(`【七宗罪·贪婪】被束缚时持续时间+2回合！`);
-            }
-
-            // 感官麻木检查：如果有感官麻木，束缚只持续1回合
-            if (playerSensoryNumb.value > 0) {
-              finalDuration = 1;
-              playerSensoryNumb.value = 0;
-              logs.push(`【感官麻木】${player.value.name} 的束缚持续时间被减少为1回合！`);
-            }
-
-            // 应用束缚上限
-            finalDuration = Math.min(finalDuration, MAX_BIND_DURATION);
-
-            playerBoundTurns.value = finalDuration;
-            playerBindSource.value = isPlayerSkill ? 'player' : 'enemy';
-            logs.push(`${player.value.name} 被束缚了 ${finalDuration} 回合，无法行动！`);
-            console.info(`[束缚] ★★★ 设置玩家束缚: playerBoundTurns=${playerBoundTurns.value}`);
-          } else {
-            // 检查是否是沐芯兰BOSS战，如果是则免疫束缚
-            if (BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'muxinlan') {
-              const immuneDialogue = BossSystem.getBindImmuneDialogue(BossSystem.bossState.currentPhase);
-              if (immuneDialogue) {
-                BossSystem.queueDialogues([immuneDialogue]);
-              }
-              logs.push(`${enemy.value.name} 免疫了束缚效果！`);
-              console.info(`[束缚] 沐芯兰BOSS免疫束缚`);
-              continue;
-            }
-
-            // 感官麻木检查：如果有感官麻木，束缚只持续1回合
-            let finalEnemyDuration = resolvedEffect.duration;
-            if (enemySensoryNumb.value > 0) {
-              finalEnemyDuration = 1;
-              enemySensoryNumb.value = 0;
-              logs.push(`【感官麻木】${enemy.value.name} 的束缚持续时间被减少为1回合！`);
-            }
-
-            // 应用束缚上限
-            finalEnemyDuration = Math.min(finalEnemyDuration, MAX_BIND_DURATION);
-
-            enemyBoundTurns.value = finalEnemyDuration;
-            enemyBindSource.value = isPlayerSkill ? 'player' : 'enemy';
-            logs.push(`${enemy.value.name} 被束缚了 ${finalEnemyDuration} 回合，无法行动！`);
-            console.info(
-              `[束缚] ★★★ 设置敌人束缚: enemyBoundTurns=${enemyBoundTurns.value}, enemyBindSource=${enemyBindSource.value}`,
-            );
-          }
-          continue;
-        }
-
-        const targetSide = resolveEffectTargetSide(resolvedEffect, isPlayerSkill);
-        const targetName = getCombatantBySide(targetSide).name;
-
-        if (resolvedEffect.kind === 'resource') {
-          const actualChange = applyResourceChangeInStatData(
-            statData,
-            targetSide,
-            resolvedEffect.resource,
-            resolvedEffect.effectValue,
-            resolvedEffect.isPercentage,
-          );
-          if (actualChange !== 0) {
-            logs.push(buildResourceChangeLog(targetName, resolvedEffect, actualChange));
-          }
-          continue;
-        }
-
-        // 生成唯一的状态key（同一技能同一效果只存在一个条目）
-        const statusKey = getSkillStatusKey(resolvedEffect.effectType, skillId, effectName);
-
-        // 玩家状态进入 MVU；对手状态留在本次战斗运行态。
-        const currentStatusList = getStatusListForSideFromStatData(statData, targetSide);
-
-        let statusEffect: TimedStatusEffect;
-        if (resolvedEffect.kind === 'status') {
-          statusEffect = {
-            加成: resolvedEffect.bonus,
-            剩余回合: resolvedEffect.duration,
-          };
-        } else if (resolvedEffect.kind === 'resourceOverTime') {
-          statusEffect = {
-            加成: {},
-            剩余回合: resolvedEffect.duration,
-            描述: `${resolvedEffect.effectType} ${resolvedEffect.effectValue}${resolvedEffect.isPercentage ? '%' : ''}`,
-            资源变化:
-              resolvedEffect.resource === 'pleasure'
-                ? { 快感: resolvedEffect.effectValue, 是否为百分比: resolvedEffect.isPercentage }
-                : { 耐力: resolvedEffect.effectValue, 是否为百分比: resolvedEffect.isPercentage },
-          };
-        } else {
-          statusEffect = {
-            加成: {},
-            剩余回合: resolvedEffect.duration,
-            描述: `${resolvedEffect.effectType} ${resolvedEffect.effectValue}${resolvedEffect.isPercentage ? '%' : ''}`,
-            特殊效果: {
-              类型: resolvedEffect.effectType,
-              效果值: resolvedEffect.effectValue,
-              是否为百分比: resolvedEffect.isPercentage,
-            },
-          };
-        }
-
-        const result = upsertSkillStatus(currentStatusList, statusKey, statusEffect);
-        logs.push(buildSkillStatusLog(targetName, resolvedEffect, result.refreshed));
-
-        if (result.refreshed) {
-          console.info(`[Debuff系统] 刷新已有状态: ${statusKey}`);
-        } else {
-          console.info(`[Debuff系统] 添加新状态: ${statusKey}`, result.statusList[statusKey]);
-        }
-
-        setStatusListForSideInStatData(statData, targetSide, result.statusList);
-      }
+      applyCombatEffectListToStatData({ statData, effectList, sourceId: skillId, isPlayerSkill, logs });
     });
 
     if (!statData) {
@@ -3802,6 +3993,40 @@ async function applyCombatSkillEffects(skillId: string, isPlayerSkill: boolean):
   } catch (e) {
     console.error('[Debuff系统] 应用效果失败', e);
     logs.push('应用技能效果失败');
+  }
+
+  return logs;
+}
+
+async function applyCombatItemEffects(item: Item): Promise<string[]> {
+  const logs: string[] = [];
+  const effectList = item.combatEffects || {};
+  if (Object.keys(effectList).length === 0) {
+    return logs;
+  }
+
+  try {
+    const statData = await updateCombatStatData(statData => {
+      console.info(`[Debuff系统] 处理道具效果: ${item.id}`, effectList);
+      applyCombatEffectListToStatData({
+        statData,
+        effectList,
+        sourceId: `item_${item.id}`,
+        isPlayerSkill: true,
+        logs,
+      });
+    });
+
+    if (!statData) {
+      console.warn('[战斗界面] 无法获取MVU数据');
+      return logs;
+    }
+
+    await updateEnemyRealtimeStats();
+    await reloadStatusFromMvu();
+  } catch (e) {
+    console.error('[Debuff系统] 应用道具效果失败', e);
+    logs.push('应用道具效果失败');
   }
 
   return logs;
@@ -4042,6 +4267,47 @@ function triggerEffect(type: 'critical' | 'dodge' | 'climax' | 'victory' | 'defe
   }, 1500);
 }
 
+function triggerCharacterReaction(side: CombatSide, type: CharacterCombatReaction['type'], label: string) {
+  const reactionRef = side === 'player' ? playerCombatReaction : enemyCombatReaction;
+  const existingTimer = combatReactionTimers[side];
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  reactionRef.value = null;
+  requestAnimationFrame(() => {
+    reactionRef.value = { key: Date.now() + Math.random(), type, label };
+    combatReactionTimers[side] = setTimeout(() => {
+      reactionRef.value = null;
+      delete combatReactionTimers[side];
+    }, 720);
+  });
+}
+
+function getCombatItemTargetSides(item: Item): CombatSide[] {
+  const sides = new Set<CombatSide>();
+  Object.values(item.combatEffects || {}).forEach(effectData => {
+    const resolvedEffect = resolveSkillEffect(effectData);
+    if (resolvedEffect.kind !== 'skip') {
+      sides.add(resolvedEffect.targetEnemy ? 'enemy' : 'player');
+    }
+  });
+
+  if (item.staminaRestore || item.pleasureReduce || item.pleasureIncrease || item.bonuses) {
+    sides.add('player');
+  }
+  return [...sides];
+}
+
+function triggerCombatItemVisual(item: Item) {
+  triggerCharacterReaction('player', 'item-use', `使用 ${item.name}`);
+  getCombatItemTargetSides(item).forEach(side => {
+    if (side === 'enemy') {
+      triggerCharacterReaction('enemy', 'item-hit', item.name);
+    }
+  });
+}
+
 function getEquipmentSkillVisualTone(skill: EquippedEquipmentSkill): EquipmentSkillVisualTone {
   if (skill.equipmentId === 'immobilizing_disc') return 'bind';
   if (skill.equipmentId === 'god_binding_chain') return 'chain';
@@ -4123,7 +4389,11 @@ function suppressNextResourcePopup(target: ResourcePopupTarget, resource: Resour
   }, 250);
 }
 
-function consumeResourcePopupSuppression(target: ResourcePopupTarget, resource: ResourcePopupKind, delta: number): boolean {
+function consumeResourcePopupSuppression(
+  target: ResourcePopupTarget,
+  resource: ResourcePopupKind,
+  delta: number,
+): boolean {
   const index = resourcePopupSuppressions.findIndex(
     item => item.target === target && item.resource === resource && item.delta === delta,
   );
@@ -4793,6 +5063,7 @@ async function handlePlayerSkill(skill: Skill) {
   if (specialInterruptLog) {
     turnState.phase = 'processing';
     addLog(specialInterruptLog, 'system', 'debuff');
+    triggerCharacterReaction('player', 'status-block', '乏力 · 行动失败');
     setTimeout(() => {
       if (!isBattleFlowLocked()) {
         void handleEnemyTurn();
@@ -4957,6 +5228,7 @@ async function handlePlayerSkill(skill: Skill) {
       const playerAttackTarget = playerConfusionLog ? nextPlayer : nextEnemy;
       if (playerConfusionLog) {
         preAttackSpecialLogs.push(`${playerConfusionLog} ${skill.name}失控作用到自己身上！`);
+        triggerCharacterReaction('player', 'status-self-hit', '迷离 · 误伤自身');
       }
 
       const targetSensitiveValue = await getSpecialStatusValue(playerAttackTargetSide, '敏感');
@@ -5142,9 +5414,10 @@ async function handlePlayerSkill(skill: Skill) {
         }),
       );
 
-      const yamadaTrueNameReleased = hasDirectDamage && !playerConfusionLog
-        ? await maybeTriggerYamadaHanakoTrueNameRelease(nextPlayer, nextEnemy)
-        : false;
+      const yamadaTrueNameReleased =
+        hasDirectDamage && !playerConfusionLog
+          ? await maybeTriggerYamadaHanakoTrueNameRelease(nextPlayer, nextEnemy)
+          : false;
 
       // 更新状态
       player.value = nextPlayer;
@@ -5228,6 +5501,14 @@ async function commitPlayerItemUseState(
   }
 }
 
+function handlePlayerItemClick(item: Item) {
+  if (shouldIgnoreItemClickFromLongPress(item)) {
+    return;
+  }
+  hideSkillEffectTooltip();
+  void handlePlayerItem(item);
+}
+
 async function handlePlayerItem(item: Item) {
   if (turnState.phase !== 'playerInput' || item.quantity <= 0) {
     if (item.quantity <= 0) {
@@ -5250,6 +5531,7 @@ async function handlePlayerItem(item: Item) {
     );
     // 标记本回合已使用道具
     itemUsedThisTurn.value = true;
+    triggerCombatItemVisual(item);
   }
 
   const specialNegativeItemSummary = buildSpecialNegativeItemSummary(item);
@@ -5341,6 +5623,12 @@ async function handlePlayerItem(item: Item) {
   }
 
   await commitPlayerItemUseState(nextPlayer, nextEnemy);
+
+  const itemEffectLogs = await applyCombatItemEffects(item);
+  itemEffectLogs.forEach(effectLog => addLog(effectLog, 'system', 'info'));
+  if (await triggerPendingClimaxFromResourceChange('道具效果')) {
+    return;
+  }
 
   // 注意：使用物品不结束回合，玩家可以继续操作
   // 只有使用技能才会结束回合并轮到对方行动
@@ -5449,6 +5737,7 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
   const specialInterruptLog = await tryInterruptActionBySpecialStatus('enemy');
   if (specialInterruptLog) {
     addLog(specialInterruptLog, 'system', 'debuff');
+    triggerCharacterReaction('enemy', 'status-block', '乏力 · 行动失败');
     await finishTurnAndMaybeStartNextTurn();
     return;
   }
@@ -5507,6 +5796,7 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
     if (enemyConfusionLog) {
       addLog(`${nextEnemy.name} 使用了 ${skill.name}！`, 'enemy', 'info');
       addLog(`${enemyConfusionLog} ${skill.name}失控作用到自己身上！`, 'system', 'debuff');
+      triggerCharacterReaction('enemy', 'status-self-hit', '迷离 · 误伤自身');
 
       const enemySelfSensitiveValue = await getSpecialStatusValue('enemy', '敏感');
       const enemySelfSensitiveLog = buildSensitiveDamageLog(nextEnemy.name, enemySelfSensitiveValue);
@@ -5514,8 +5804,7 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
       if (enemyFocusActive) {
         confusedAttackOptions.guaranteedCrit = true;
       }
-      const confusedDamageMultiplier =
-        exorcismDamageMultiplier * getSensitiveDamageMultiplier(enemySelfSensitiveValue);
+      const confusedDamageMultiplier = exorcismDamageMultiplier * getSensitiveDamageMultiplier(enemySelfSensitiveValue);
       if (confusedDamageMultiplier !== 1) {
         confusedAttackOptions.damageMultiplier = confusedDamageMultiplier;
       }

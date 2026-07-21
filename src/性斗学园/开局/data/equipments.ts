@@ -171,7 +171,7 @@ export const MAIN_EQUIPMENTS: EquipmentData[] = [
       {
         id: 'eff_golden_strike',
         name: '黄金一击',
-        description: '暴击时额外造成20%伤害并附加羞耻状态',
+        description: '暴击时额外造成20%伤害并附加敏感状态',
         trigger: 'on_crit',
         chance: 100,
         cooldown: 0,
@@ -294,8 +294,8 @@ export const SUB_EQUIPMENTS: EquipmentData[] = [
     effects: [
       {
         id: 'eff_shame_mirror',
-        name: '羞耻之镜',
-        description: '羞耻技能效果+15%',
+        name: '映照之镜',
+        description: '敏感类技能效果+15%',
         trigger: 'on_shame_skill',
         chance: 100,
         cooldown: 0,
@@ -475,7 +475,7 @@ export const ACCESSORIES: EquipmentData[] = [
       {
         id: 'eff_rose_scent',
         name: '玫瑰香气',
-        description: '每回合有20%几率使敌人进入轻微发情状态',
+        description: '每回合有20%几率使敌人获得少量持续快感',
         trigger: 'turn_end',
         chance: 20,
         cooldown: 3,
@@ -587,7 +587,7 @@ export const SPECIAL_EQUIPMENTS: EquipmentData[] = [
       {
         id: 'eff_blackmail',
         name: '威胁材料',
-        description: '羞耻类技能效果+30%，乏力持续+1回合',
+        description: '敏感类技能效果+30%，乏力持续+1回合',
         trigger: 'on_shame_skill',
         chance: 100,
         cooldown: 0,

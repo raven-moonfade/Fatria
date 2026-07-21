@@ -19804,15 +19804,12 @@ export function convertToMvuSkillFormat(skill: SkillData) {
       const enemyDebuffTypes = new Set<BuffType>([
         BuffType.BIND,
         BuffType.SENSITIVE,
-        BuffType.SILENCE,
         BuffType.ATK_DOWN,
         BuffType.DEF_DOWN,
         BuffType.DODGE_DOWN,
         BuffType.CRIT_DOWN,
         BuffType.LUCK_DOWN,
         BuffType.CHARM_DOWN,
-        BuffType.SHAME,
-        BuffType.HEAT,
         BuffType.FEAR,
         BuffType.DOT_LUST,
       ]);

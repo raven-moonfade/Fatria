@@ -54,7 +54,6 @@ export enum BuffType {
   ATK_DOWN = 'atk_down',
   DEF_DOWN = 'def_down',
   SENSITIVE = 'sensitive',
-  SILENCE = 'silence',
   BIND = 'bind',
   DODGE_UP = 'dodge_up',
   DODGE_DOWN = 'dodge_down',
@@ -63,8 +62,6 @@ export enum BuffType {
   LUCK_DOWN = 'luck_down',
   CHARM_DOWN = 'charm_down',
   FOCUS = 'focus',
-  SHAME = 'shame',
-  HEAT = 'heat',
   FEAR = 'fear',
   DOT_LUST = 'dot_lust',
   REGEN = 'regen',
@@ -139,6 +136,7 @@ export interface Item {
   pleasureReduce?: number;
   pleasureIncrease?: number;
   bonuses?: Record<string, number>; // 临时buff的加成属性
+  combatEffects?: Record<string, any>; // 复用技能效果列表格式的战斗效果
 }
 
 /** 角色 */

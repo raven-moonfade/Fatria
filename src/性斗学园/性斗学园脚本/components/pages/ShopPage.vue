@@ -2965,6 +2965,250 @@ const consumableSubCategories = [
     ],
   },
   {
+    type: 'combat_debuff',
+    name: '战斗干扰用品',
+    icon: 'fas fa-vial-circle-check',
+    items: [
+      {
+        id: 'con_d_1',
+        name: '强力春药',
+        icon: 'fas fa-droplet',
+        price: 1560,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方敏感+35%、持续快感+12 (3回合)',
+        effect: {
+          battleEffects: {
+            效果1_敏感: { 效果类型: '敏感', 效果值: 35, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
+            效果2_持续快感: { 效果类型: '持续快感', 效果值: 12, 是否为百分比: false, 持续回合数: 3, 是否作用敌人: true },
+          },
+        },
+        description: '战斗用强效刺激药剂，使对手更容易积累快感，持续3回合',
+      },
+      {
+        id: 'con_d_2',
+        name: '虚弱药剂',
+        icon: 'fas fa-flask',
+        price: 1080,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方性斗力-20% (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_性斗力: { 效果类型: '性斗力', 效果值: -20, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '削弱对手攻势的基础药剂，持续2回合',
+      },
+      {
+        id: 'con_d_3',
+        name: '强力虚弱药剂',
+        icon: 'fas fa-flask-vial',
+        price: 2280,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方性斗力-35%、暴击-15 (3回合)',
+        effect: {
+          battleEffects: {
+            效果1_性斗力: { 效果类型: '性斗力', 效果值: -35, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
+            效果2_暴击率: { 效果类型: '暴击率', 效果值: -15, 是否为百分比: false, 持续回合数: 3, 是否作用敌人: true },
+          },
+        },
+        description: '更稳定的压制型药剂，降低对手输出和爆发，持续3回合',
+      },
+      {
+        id: 'con_d_4',
+        name: '虚脱浓缩液',
+        icon: 'fas fa-prescription-bottle',
+        price: 2700,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方耐力-20、忍耐力-30% (3回合)',
+        effect: {
+          battleEffects: {
+            效果1_耐力变化: { 效果类型: '耐力变化', 效果值: -20, 是否为百分比: false, 持续回合数: 0, 是否作用敌人: true },
+            效果2_忍耐力: { 效果类型: '忍耐力', 效果值: -30, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
+          },
+        },
+        description: '让对手短时间陷入虚软状态，立即削减耐力并降低忍耐，持续3回合',
+      },
+      {
+        id: 'con_d_5',
+        name: '麻痹药水',
+        icon: 'fas fa-bolt',
+        price: 2460,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方束缚1回合、闪避-20 (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_束缚: { 效果类型: '束缚', 效果值: 0, 是否为百分比: false, 持续回合数: 1, 是否作用敌人: true },
+            效果2_闪避率: { 效果类型: '闪避率', 效果值: -20, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '限制对手行动并削弱闪避，适合抢节奏',
+      },
+      {
+        id: 'con_d_6',
+        name: '出糗粉末',
+        icon: 'fas fa-cloud',
+        price: 1440,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方乏力35%、幸运-15 (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_乏力: { 效果类型: '乏力', 效果值: 35, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+            效果2_幸运: { 效果类型: '幸运', 效果值: -15, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '干扰对手判断和节奏，使其更容易行动失败，持续2回合',
+      },
+      {
+        id: 'con_d_7',
+        name: '迟钝迷雾',
+        icon: 'fas fa-smog',
+        price: 1680,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方迷离35%、闪避-15 (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_迷离: { 效果类型: '迷离', 效果值: 35, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+            效果2_闪避率: { 效果类型: '闪避率', 效果值: -15, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '制造短暂认知迟钝，让对手更可能误判行动，持续2回合',
+      },
+      {
+        id: 'con_d_8',
+        name: '狂乱春药',
+        icon: 'fas fa-wand-sparkles',
+        price: 2940,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方敏感+50%、迷离25% (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_敏感: { 效果类型: '敏感', 效果值: 50, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+            效果2_迷离: { 效果类型: '迷离', 效果值: 25, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '高风险高收益的强刺激药剂，适合配合爆发回合',
+      },
+      {
+        id: 'con_d_9',
+        name: '狼狈香水',
+        icon: 'fas fa-spray-can-sparkles',
+        price: 1920,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方魅力-30、幸运-20、敏感+20% (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_魅力: { 效果类型: '魅力', 效果值: -30, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+            效果2_幸运: { 效果类型: '幸运', 效果值: -20, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+            效果3_敏感: { 效果类型: '敏感', 效果值: 20, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '让对手仪态失衡，降低魅力和幸运并提高受击快感，持续2回合',
+      },
+      {
+        id: 'con_d_10',
+        name: '恍惚药丸',
+        icon: 'fas fa-capsules',
+        price: 2100,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方乏力45% (1回合)、暴击-25 (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_乏力: { 效果类型: '乏力', 效果值: 45, 是否为百分比: true, 持续回合数: 1, 是否作用敌人: true },
+            效果2_暴击率: { 效果类型: '暴击率', 效果值: -25, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '短促但强力的行动干扰药丸，同时压低对手暴击，持续1到2回合',
+      },
+      {
+        id: 'con_d_11',
+        name: '束缚胶囊',
+        icon: 'fas fa-link',
+        price: 3600,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方束缚2回合',
+        effect: {
+          battleEffects: {
+            效果1_束缚: { 效果类型: '束缚', 效果值: 0, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '昂贵但直接的控制道具，尝试束缚对手2回合',
+      },
+      {
+        id: 'con_d_12',
+        name: '破防滴剂',
+        icon: 'fas fa-droplet-slash',
+        price: 1860,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方忍耐力-25% (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_忍耐力: { 效果类型: '忍耐力', 效果值: -25, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '降低对手抗压能力，适合接高伤害技能',
+      },
+      {
+        id: 'con_d_13',
+        name: '失衡喷雾',
+        icon: 'fas fa-wind',
+        price: 1620,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方闪避-35 (2回合)',
+        effect: {
+          battleEffects: {
+            效果1_闪避率: { 效果类型: '闪避率', 效果值: -35, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
+          },
+        },
+        description: '削弱对手闪避能力，帮助关键技能命中',
+      },
+      {
+        id: 'con_d_14',
+        name: '漏电贴片',
+        icon: 'fas fa-plug-circle-bolt',
+        price: 2040,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方持续快感+8 (4回合)、暴击-10 (3回合)',
+        effect: {
+          battleEffects: {
+            效果1_持续快感: { 效果类型: '持续快感', 效果值: 8, 是否为百分比: false, 持续回合数: 4, 是否作用敌人: true },
+            效果2_暴击率: { 效果类型: '暴击率', 效果值: -10, 是否为百分比: false, 持续回合数: 3, 是否作用敌人: true },
+          },
+        },
+        description: '持续干扰型贴片，小幅但稳定地累积快感并压低爆发',
+      },
+      {
+        id: 'con_d_15',
+        name: '反应迟缓剂',
+        icon: 'fas fa-hourglass-half',
+        price: 2340,
+        category: 'consumable',
+        combatOnly: true,
+        effectText: '敌方乏力20%、迷离20% (3回合)',
+        effect: {
+          battleEffects: {
+            效果1_乏力: { 效果类型: '乏力', 效果值: 20, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
+            效果2_迷离: { 效果类型: '迷离', 效果值: 20, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
+          },
+        },
+        description: '长效干扰剂，低概率但持续扰乱对手行动，持续3回合',
+      },
+    ],
+  },
+  {
     type: 'temp_buff',
     name: '临时状态提升',
     icon: 'fas fa-arrow-trend-up',
@@ -3150,9 +3394,9 @@ const wheelSSSEquipmentPool = GRAND_WHEEL_SSS_EQUIPMENT_ITEMS.map(item => ({
   description: item.description,
   bonuses: item.bonuses,
 }));
-const wheelRecoveryPool: any[] = (
-  (consumableSubCategories.find(subCat => subCat.type === 'recovery')?.items ?? []) as any[]
-).filter(item => item.id.startsWith('con_r_'));
+const wheelItemPool: any[] = consumableSubCategories
+  .filter(subCat => ['recovery', 'combat_debuff'].includes(subCat.type))
+  .flatMap(subCat => subCat.items as any[]);
 const wheelTempBuffPool: any[] = (consumableSubCategories.find(subCat => subCat.type === 'temp_buff')?.items ??
   []) as any[];
 
@@ -3175,10 +3419,10 @@ const wheelConfigs: Record<WheelType, WheelConfig> = {
       { id: 'basic_gold', label: '金币', color: '#f59e0b', weight: 38, rewardDesc: '随机金币' },
       {
         id: 'basic_recovery',
-        label: '恢复用品',
+        label: '道具',
         color: '#14b8a6',
         weight: 12,
-        rewardDesc: '恢复类用品随机一件',
+        rewardDesc: '恢复或战斗干扰道具随机一件',
       },
       {
         id: 'basic_temp',
@@ -3632,6 +3876,7 @@ function addConsumableToBackpack(statData: any, consumable: any, quantity: numbe
   if (consumable.effect?.pleasureReduce) data.快感降低 = consumable.effect.pleasureReduce;
   if (consumable.effect?.pleasureIncrease) data.快感增加 = consumable.effect.pleasureIncrease;
   if (consumable.effect?.buff) data.加成属性 = consumable.effect.buff;
+  if (consumable.effect?.battleEffects) data.战斗效果列表 = consumable.effect.battleEffects;
 
   statData.物品系统.背包[consumable.name] = data;
 }
@@ -3723,7 +3968,7 @@ function spinWheelToSegment(segmentId: WheelSegmentId, segments: WheelSegment[],
 function applyWheelReward(segmentId: WheelSegmentId, statData: any): WheelRewardResult {
   switch (segmentId) {
     case 'basic_exp': {
-      const exp = randomInt(50, 100);
+      const exp = randomInt(25, 50);
       statData.角色基础.经验值 = (statData.角色基础.经验值 || 0) + exp;
       return { text: `经验值 +${exp}` };
     }
@@ -3733,10 +3978,10 @@ function applyWheelReward(segmentId: WheelSegmentId, statData: any): WheelReward
       return { text: `金币 +${gold}` };
     }
     case 'basic_recovery': {
-      if (wheelRecoveryPool.length <= 0) return { text: '恢复类用品池为空' };
-      const reward = pickRandom(wheelRecoveryPool);
+      if (wheelItemPool.length <= 0) return { text: '道具池为空' };
+      const reward = pickRandom(wheelItemPool);
       addConsumableToBackpack(statData, reward, 1);
-      return { text: `恢复用品「${reward.name}」 x1` };
+      return { text: `道具「${reward.name}」 x1` };
     }
     case 'basic_temp': {
       if (wheelTempBuffPool.length <= 0) return { text: '临时状态提升池为空' };
@@ -3745,7 +3990,7 @@ function applyWheelReward(segmentId: WheelSegmentId, statData: any): WheelReward
       return { text: `临时强化「${reward.name}」 x1` };
     }
     case 'basic_exp_rare': {
-      const exp = randomInt(150, 350);
+      const exp = randomInt(75, 175);
       statData.角色基础.经验值 = (statData.角色基础.经验值 || 0) + exp;
       return { text: `大量经验 +${exp}` };
     }
@@ -4042,6 +4287,7 @@ async function purchaseItem() {
           if (item.effect.pleasureIncrease) consumableData.快感增加 = item.effect.pleasureIncrease;
           // 临时buff：存入背包的加成属性，在战斗中使用时才写入临时状态
           if (item.effect.buff) consumableData.加成属性 = item.effect.buff;
+          if (item.effect.battleEffects) consumableData.战斗效果列表 = item.effect.battleEffects;
 
           // 幸运红包特殊处理：随机属性+1 或 随机金币
           if (item.effect.luckyEnvelope) {

@@ -106,8 +106,6 @@ export enum BuffType {
   DODGE_DOWN = 'dodge_down',
   /** 持续快感 - 每回合增加快感 */
   DOT_LUST = 'dot_lust',
-  /** 沉默 - 无法使用精神技能 */
-  SILENCE = 'silence',
   /** 束缚 - 无法使用物理技能 */
   BIND = 'bind',
   /** 迷离 - 有概率技能误判 */
@@ -120,16 +118,12 @@ export enum BuffType {
   AROUSAL = 'arousal',
   /** 敏感 - 受到的快感伤害增加 */
   SENSITIVE = 'sensitive',
-  /** 羞耻 - 使目标持续承受压力或快感 */
-  SHAME = 'shame',
   /** 高潮边缘 - 快感上限暂时降低 */
   EDGE = 'edge',
   /** 贤者时间 - 攻击力下降但忍耐提升 */
   POST_ORGASM = 'post_orgasm',
   /** 虚脱 - 全属性大幅下降 */
   EXHAUSTED = 'exhausted',
-  /** 发情 - 持续增加快感且攻击力提升 */
-  HEAT = 'heat',
   /** 标记 - 受到额外伤害 */
   MARKED = 'marked',
 }
@@ -357,18 +351,15 @@ export const BUFF_TYPE_NAMES: Record<BuffType, string> = {
   [BuffType.CRIT_DOWN]: '暴击下降',
   [BuffType.DODGE_DOWN]: '闪避下降',
   [BuffType.DOT_LUST]: '持续快感',
-  [BuffType.SILENCE]: '沉默',
   [BuffType.BIND]: '束缚',
   [BuffType.CONFUSION]: '迷离',
   [BuffType.CHARM_DEBUFF]: '魅惑',
   [BuffType.FEAR]: '乏力',
   [BuffType.AROUSAL]: '兴奋',
   [BuffType.SENSITIVE]: '敏感',
-  [BuffType.SHAME]: '羞耻',
   [BuffType.EDGE]: '高潮边缘',
   [BuffType.POST_ORGASM]: '贤者时间',
   [BuffType.EXHAUSTED]: '虚脱',
-  [BuffType.HEAT]: '发情',
   [BuffType.MARKED]: '标记',
 };
 

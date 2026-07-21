@@ -74,7 +74,6 @@ function getStatusIcon(statusName: string, type: 'buff' | 'debuff'): string {
   if (statusName.includes('吸取')) return '↓';
   if (statusName.includes('持续快感')) return '♥';
   if (statusName.includes('持续耐力')) return '+';
-  if (statusName.includes('沉默')) return '😶';
   if (statusName.includes('束缚')) return '⛓️';
   if (statusName.includes('无敌')) return '🛡️';
   if (statusName.includes('必暴')) return '💥';

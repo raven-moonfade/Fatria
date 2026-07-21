@@ -5,7 +5,7 @@
       <div class="character-name">{{ character.name }}</div>
 
       <!-- 头像与悬停属性 -->
-      <div class="avatar-container">
+      <div class="avatar-container" :class="combatReaction ? `reaction-${combatReaction.type}` : undefined">
         <div class="avatar-glow" :class="isEnemy ? 'glow-enemy' : 'glow-player'"></div>
 
         <img
@@ -22,6 +22,18 @@
           }"
           @error="handleImageError"
         />
+
+        <div
+          v-if="combatReaction"
+          :key="combatReaction.key"
+          class="combat-reaction"
+          :class="`reaction-visual-${combatReaction.type}`"
+          aria-hidden="true"
+        >
+          <span class="reaction-ring"></span>
+          <span class="reaction-burst"></span>
+          <span class="reaction-label">{{ combatReaction.label }}</span>
+        </div>
 
         <!-- 移动端预告图标 -->
         <div v-if="isEnemy && turnState.phase === 'playerInput' && enemyIntention" class="mobile-warning">
@@ -113,12 +125,19 @@ interface ResourcePopup {
   offset: number;
 }
 
+interface CharacterCombatReaction {
+  key: number;
+  type: 'item-use' | 'item-hit' | 'status-block' | 'status-self-hit';
+  label: string;
+}
+
 const props = defineProps<{
   character: Character;
   isEnemy: boolean;
   turnState: TurnState;
   enemyIntention: Skill | null;
   resourcePopups?: ResourcePopup[];
+  combatReaction?: CharacterCombatReaction | null;
 }>();
 
 const staminaPopups = computed(() => (props.resourcePopups ?? []).filter(popup => popup.resource === 'stamina'));
@@ -298,6 +317,102 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
     .stats-overlay {
       opacity: 1;
     }
+  }
+
+  &.reaction-item-use,
+  &.reaction-item-hit {
+    animation: itemReactionPulse 0.62s ease-out;
+  }
+
+  &.reaction-status-block {
+    animation: statusBlockedShake 0.54s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+
+  &.reaction-status-self-hit {
+    animation: statusSelfHitShake 0.58s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+}
+
+.combat-reaction {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: 0.75rem;
+}
+
+.reaction-ring,
+.reaction-burst {
+  position: absolute;
+  inset: 16%;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.reaction-burst {
+  inset: 0;
+  border-radius: 0.75rem;
+}
+
+.reaction-label {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  max-width: 88%;
+  padding: 0.24rem 0.45rem;
+  transform: translateX(-50%);
+  color: #fff;
+  background: rgba(2, 6, 23, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: reactionLabelIn 0.68s ease-out forwards;
+}
+
+.reaction-visual-item-use,
+.reaction-visual-item-hit {
+  background: radial-gradient(circle at center, rgba(74, 222, 128, 0.28), transparent 64%);
+
+  .reaction-ring {
+    border-color: rgba(134, 239, 172, 0.9);
+    animation: reactionRingExpand 0.65s ease-out forwards;
+  }
+
+  .reaction-burst {
+    box-shadow: inset 0 0 32px rgba(74, 222, 128, 0.52);
+    animation: reactionFlash 0.55s ease-out forwards;
+  }
+}
+
+.reaction-visual-status-block {
+  background: rgba(15, 23, 42, 0.34);
+
+  .reaction-burst {
+    border-color: rgba(148, 163, 184, 0.72);
+    box-shadow: inset 0 0 34px rgba(100, 116, 139, 0.68);
+    animation: reactionFlash 0.55s ease-out forwards;
+  }
+}
+
+.reaction-visual-status-self-hit {
+  background: radial-gradient(circle at center, rgba(244, 63, 94, 0.34), transparent 68%);
+
+  .reaction-ring {
+    border-color: rgba(251, 113, 133, 0.94);
+    animation: reactionRingContract 0.58s ease-in forwards;
+  }
+
+  .reaction-burst {
+    box-shadow: inset 0 0 42px rgba(225, 29, 72, 0.72);
+    animation: reactionFlash 0.58s ease-out forwards;
   }
 }
 
@@ -490,6 +605,109 @@ const zapIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" 
   100% {
     opacity: 0;
     transform: translate(calc(-50% + var(--popup-offset)), -46px) scale(0.88);
+  }
+}
+
+@keyframes itemReactionPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.035);
+  }
+}
+
+@keyframes statusBlockedShake {
+  0%,
+  100% {
+    transform: translateX(0);
+    filter: saturate(1);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(4px);
+    filter: saturate(0.45);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes statusSelfHitShake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0);
+  }
+  18% {
+    transform: translate(-6px, 1px) rotate(-1deg);
+  }
+  36% {
+    transform: translate(6px, -1px) rotate(1deg);
+  }
+  54% {
+    transform: translate(-4px, 0) rotate(-0.6deg);
+  }
+  72% {
+    transform: translate(3px, 1px) rotate(0.4deg);
+  }
+}
+
+@keyframes reactionRingExpand {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
+
+@keyframes reactionRingContract {
+  0% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+  28% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+@keyframes reactionFlash {
+  0% {
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes reactionLabelIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.9);
+  }
+  24%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -5px) scale(0.96);
   }
 }
 
