@@ -1931,6 +1931,8 @@ const buildMainlineTimelineUpdates = (timeline: MainlineTimeline): Record<string
     [MainlineTimeline.IDOL]: { date: '2025-03-24', weekday: 1 },
     [MainlineTimeline.SPORTS]: { date: '2025-04-08', weekday: 2 },
     [MainlineTimeline.FESTIVAL]: { date: '2025-04-21', weekday: 1 },
+    [MainlineTimeline.MIDTERM]: { date: '2025-05-03', weekday: 6 },
+    [MainlineTimeline.SUMMER]: { date: '2025-05-10', weekday: 6 },
   };
 
   const selectedStart = timelineStartMap[timeline];

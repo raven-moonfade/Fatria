@@ -17,6 +17,8 @@ export enum MainlineTimeline {
   IDOL = '偶像线',
   SPORTS = '运动会线',
   FESTIVAL = '学院祭线',
+  MIDTERM = '期中考试线',
+  SUMMER = '夏日休学旅行线',
 }
 
 // 根据 [initvar].yaml 的 MVU 变量结构定义

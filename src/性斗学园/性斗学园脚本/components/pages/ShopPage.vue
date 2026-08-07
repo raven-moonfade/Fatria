@@ -569,7 +569,9 @@ const currentTalentId = computed(() => {
 // 计算商店折扣
 function getItemDiscount(item: any): number {
   // 固定促销价（salePrice）视为有折扣
-  if (item.salePrice != null) return 1; // 返回 >0 即可触发划线显示
+  if (item.salePrice != null && item.price > 0) {
+    return Math.max(0, Math.min(99, Math.round(((item.price - item.salePrice) / item.price) * 100)));
+  }
 
   const talentId = currentTalentId.value;
   if (!talentId) return 0;
@@ -2831,6 +2833,202 @@ const allEquipments = [
     attrFocus: '特殊',
     description: '以真实马屌为原型铸造的粗大假阳具，复刻了马龟头和青筋的细节，插入时的撑胀感能让任何穿戴者呢喊求饶',
     bonuses: { 基础性斗力加成: 18, 魅力加成: 5 },
+  },
+
+  // DLC限定装备 - 期中考试与夏日休学旅行
+  {
+    name: '「考神庇佑」透视及膝及胸比基尼',
+    slot: '特殊装备',
+    icon: 'fas fa-award',
+    price: 42000,
+    salePrice: 14700,
+    category: 'equipment',
+    grade: 'SS',
+    gender: '女',
+    attrFocus: '特殊',
+    description:
+      '由薄如蝉翼的特制高弹透明欧根纱缝制，仅在关键部位贴着两枚金灿灿的“满分100”烫金印章贴纸。稍微出汗或沾水，印章贴纸就会呈现出半透明的微湿感；在笔试或考场中穿戴时，监考老师对你的注意力提升200%。',
+    bonuses: { 魅力加成: 82, 幸运加成: 35, 基础忍耐力加成: -15, 暴击率加成: 18, 基础性斗力成算: 12 },
+  },
+  {
+    name: '「加油应援水手服」',
+    slot: '主装备',
+    icon: 'fas fa-person-dress',
+    price: 5800,
+    salePrice: 2030,
+    category: 'equipment',
+    grade: 'A',
+    gender: '女',
+    attrFocus: '魅力',
+    description:
+      '超短款露脐水手服，百褶裙短到刚好露出一半臀缝。上衣内侧完全无内衣设计，随着挥手加油的动作，饱满的胸部会在下摆间若隐若现。',
+    bonuses: { 魅力加成: 24, 幸运加成: 9, 基础性斗力加成: 10, 闪避率加成: 4 },
+  },
+  {
+    name: '「偷梁换柱微型小抄卷轴」',
+    slot: '副装备',
+    icon: 'fas fa-scroll',
+    price: 6200,
+    salePrice: 2170,
+    category: 'equipment',
+    grade: 'A',
+    gender: '女',
+    attrFocus: '幸运',
+    description:
+      '绑在大腿内侧最深处的肉色硅胶卷轴。每次想要拉出小抄看答案，都必须将裙摆掀至腰部，用手指深入大腿根部拨动带有微弱震动效果的微型轴轮。',
+    bonuses: { 幸运加成: 31, 闪避率加成: 7, 魅力加成: 8, 基础忍耐力加成: -6 },
+  },
+  {
+    name: '「教导主任的戒尺」',
+    slot: '主装备',
+    icon: 'fas fa-ruler',
+    price: 15400,
+    salePrice: 5390,
+    category: 'equipment',
+    grade: 'S',
+    gender: '男',
+    attrFocus: '性斗力',
+    description: '黑檀木雕琢的重型戒尺。抽击在皮肤上不伤筋骨，却会留下极其敏感红肿的痕迹。',
+    bonuses: { 基础性斗力加成: 54, 暴击率加成: 21, 魅力加成: 14, 基础忍耐力加成: -8 },
+  },
+  {
+    name: '「海星黏附式露点微型比基尼」',
+    slot: '特殊装备',
+    icon: 'fas fa-star-of-life',
+    price: 46000,
+    salePrice: 16100,
+    category: 'equipment',
+    grade: 'SS',
+    gender: '女',
+    attrFocus: '魅力',
+    description:
+      '完全没有绑带，由两只活体肉感软体海星与一条极窄的软硅胶海草组成。海星会根据穿戴者的心跳与兴奋度，用细小吸盘轻轻揉弄敏感点。',
+    bonuses: { 魅力加成: 86, 基础性斗力加成: 42, 暴击率加成: 24, 基础忍耐力成算: -6 },
+  },
+  {
+    name: '「海洋之心·深海催情泪滴」',
+    slot: '饰品',
+    icon: 'fas fa-droplet',
+    price: 6900,
+    salePrice: 2415,
+    category: 'equipment',
+    grade: 'A',
+    gender: '女',
+    attrFocus: '魅力',
+    description:
+      '镶嵌在肚脐眼上的深蓝色水滴状晶石，贴合皮肤的一面会不断分泌带有咸甜大海气息的催情黏液，沿着小腹缓缓流向私处。对海洋魔物娘吸引力提高。',
+    bonuses: { 魅力加成: 30, 基础忍耐力加成: 10, 幸运加成: 6, 闪避率加成: -3 },
+  },
+  {
+    name: '「仿章鱼触手·软体支配鞭」',
+    slot: '主装备',
+    icon: 'fas fa-worm',
+    price: 7600,
+    salePrice: 2660,
+    category: 'equipment',
+    grade: 'A',
+    gender: '女',
+    attrFocus: '性斗力',
+    description:
+      '由软硅胶与真章鱼触手组织合成的连骨长鞭，表面布满能够分泌润滑黏液的粉嫩吸盘。抛出后可自动缠绕目标的四肢与敏感部位。',
+    bonuses: { 基础性斗力加成: 32, 暴击率加成: 9, 魅力加成: 9, 基础忍耐力加成: -5 },
+  },
+  {
+    name: '「塞壬的魅惑螺号」',
+    slot: '副装备',
+    icon: 'fas fa-music',
+    price: 16800,
+    salePrice: 5880,
+    category: 'equipment',
+    grade: 'S',
+    gender: '女',
+    attrFocus: '魅力',
+    description: '粉紫色海螺构造的吹奏器具，吹响后会发出高频湿润的魅惑水声，削弱听者的意志。',
+    bonuses: { 魅力加成: 58, 幸运加成: 18, 暴击率加成: 13, 基础性斗力成算: 7 },
+  },
+  {
+    name: '「部落风情·黑桃Q露臀草裙」',
+    slot: '特殊装备',
+    icon: 'fas fa-leaf',
+    price: 43800,
+    salePrice: 15330,
+    category: 'equipment',
+    grade: 'SS',
+    gender: '女',
+    attrFocus: '魅力',
+    description:
+      '由海岛特产褐色麻线与编织干草制成，前摆极短，后摆完全开叉，腰带正面绣着黑色黑桃Q与BWO印记，草裙内侧绒毛带有微量刺痒催情毒素。',
+    bonuses: { 魅力加成: 88, 幸运加成: 24, 闪避率加成: 18, 基础忍耐力加成: -12, 基础性斗力成算: 10 },
+  },
+  {
+    name: '「太阳部落·黑檀巨根神杖」',
+    slot: '主装备',
+    icon: 'fas fa-staff-snake',
+    price: 52000,
+    salePrice: 18200,
+    category: 'equipment',
+    grade: 'SS',
+    gender: '女',
+    attrFocus: '性斗力',
+    description:
+      '迦南祭司亲自开光的黑檀木雕巨型双头法器，长达35cm，油亮黑硕，表面刻满带有温热体感与搏动效果的BWO活体圣纹。',
+    bonuses: { 基础性斗力加成: 92, 暴击率加成: 31, 魅力加成: 38, 基础性斗力成算: 16, 闪避率加成: -8 },
+  },
+  {
+    name: '「希安的银铃脚环」',
+    slot: '饰品',
+    icon: 'fas fa-bell',
+    price: 6500,
+    salePrice: 2275,
+    category: 'equipment',
+    grade: 'A',
+    gender: '女',
+    attrFocus: '幸运',
+    description:
+      '带有一串微型银铃的黑皮脚环，戴在脚踝上。每走一步或在足交、颜面压制时都会发出诱人的清脆叮当声。',
+    bonuses: { 幸运加成: 28, 闪避率加成: 11, 魅力加成: 11, 基础性斗力加成: -4 },
+  },
+  {
+    name: '「龙君的半露胸鲛人骨玉色情礼服」',
+    slot: '特殊装备',
+    icon: 'fas fa-crown',
+    price: 50000,
+    salePrice: 17500,
+    category: 'equipment',
+    grade: 'SS',
+    gender: '女',
+    attrFocus: '忍耐力',
+    description:
+      '庄方宜专用的龙宫至高礼服。由半透明黑蓝色鲛丝织成，胸前完全敞开，仅用一根细细的龙鳞锁链横系，水光流转间尽显龙宫王权。',
+    bonuses: { 基础忍耐力加成: 88, 魅力加成: 55, 基础忍耐力成算: 17, 闪避率加成: 16, 幸运加成: -8 },
+  },
+  {
+    name: '「金O棒·海渊定海神针」',
+    slot: '主装备',
+    icon: 'fas fa-wand-magic-sparkles',
+    price: 19600,
+    salePrice: 6860,
+    category: 'equipment',
+    grade: 'S',
+    gender: '男',
+    attrFocus: '性斗力',
+    description:
+      '看似金光闪闪的定海神针，实则能够根据使用者或对手的尺寸自由伸缩。棒身带有螺旋状凹凸龙纹与恒温热感，适合施展“定海捣穴”。',
+    bonuses: { 基础性斗力加成: 60, 暴击率加成: 20, 基础性斗力成算: 9, 基础忍耐力加成: -6 },
+  },
+  {
+    name: '「爱莲的鲨鱼锯齿震动假阳具套筒」',
+    slot: '副装备',
+    icon: 'fas fa-teeth',
+    price: 7200,
+    salePrice: 2520,
+    category: 'equipment',
+    grade: 'A',
+    gender: '女',
+    attrFocus: '性斗力',
+    description:
+      '鲨鱼娘侍卫长爱莲推荐的战斗套筒。外壁带有软硅胶倒钩锯齿与高速震动马达，进入瞬间能把穴壁刮擦得又痛又爽、汁液横飞。',
+    bonuses: { 基础性斗力加成: 34, 暴击率加成: 8, 基础性斗力成算: 4, 基础忍耐力加成: -7 },
   },
 ];
 

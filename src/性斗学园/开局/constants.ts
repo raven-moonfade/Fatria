@@ -1131,6 +1131,8 @@ export const MAINLINE_TIMELINE_TALENT_BONUS: Record<MainlineTimeline, number> = 
   [MainlineTimeline.IDOL]: 20,
   [MainlineTimeline.SPORTS]: 40,
   [MainlineTimeline.FESTIVAL]: 60,
+  [MainlineTimeline.MIDTERM]: 80,
+  [MainlineTimeline.SUMMER]: 100,
 };
 
 export const CUP_SIZES = ['AA', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I+', 'Z'];
