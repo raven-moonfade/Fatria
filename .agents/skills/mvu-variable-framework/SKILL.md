@@ -74,11 +74,6 @@ $(() => {
 
 为此, MVU 提供了 `parseMessage` 接口用于自行解析包含 MVU 命令的消息字符串. 它读取旧变量情况和一个消息字符串, 得到更新后的变量结果.
 
-<<<<<<< HEAD
-为了更好的细粒度控制, 解析不会将结果写回消息楼层. 如果需要写回, 则应执行 `Mvu.replaceMvuData`.
-
-=======
->>>>>>> 24c09dd0d2e3a345ced6bd6449ff0c89cd686543
 ```ts
 await waitGlobalInitialized('Mvu');
 
@@ -86,15 +81,6 @@ await waitGlobalInitialized('Mvu');
 const old_data = Mvu.getMvuData({ type: 'message', message_id: getCurrentMessageId() });
 
 // 请求 AI 生成
-<<<<<<< HEAD
-const content = await generate({ user_input: '你好' });
-
-// 解析生成结果
-const new_data = await Mvu.parseMessage(content, old_data);
-
-// 将更新后的变量写回楼层
-await Mvu.replaceMvuData(new_data, { type: 'message', message_id: getCurrentMessageId() });
-=======
 const message = await generate({ user_input: '你好' });
 
 // 解析生成结果
@@ -115,7 +101,6 @@ await Mvu.replaceMvuData(data, { type: 'message', message_id: getCurrentMessageI
 ```ts
 // 将回复和变量结果创建为新的楼层
 await createChatMessages([{ role: 'assistant', message, data }]);
->>>>>>> 24c09dd0d2e3a345ced6bd6449ff0c89cd686543
 ```
 
 ## 事件

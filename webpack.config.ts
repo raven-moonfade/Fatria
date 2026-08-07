@@ -440,10 +440,6 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         { apply: watch_tavern_helper },
         { apply: schema_dump },
         { apply: tavern_sync },
-        new webpack.NormalModuleReplacementPlugin(
-          /vue-loader[\\/]dist[\\/]exportHelper\.js$/,
-          path.join(import.meta.dirname, 'src/build/vue-export-helper.ts'),
-        ),
         new VueLoaderPlugin(),
         unpluginAutoImport({
           dts: true,
@@ -488,6 +484,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       ),
     optimization: {
       minimize: true,
+      concatenateModules: false,
       minimizer: [
         argv.mode === 'production'
           ? new TerserPlugin({

@@ -87,9 +87,6 @@ $(() => {
 
 脚本可以在酒馆助手脚本库界面中设置按钮, 用户点击按钮时将会触发对应的事件.
 
-<<<<<<< HEAD
-我们可以在代码中这样注册按钮事件:
-=======
 我们可以这样添加按钮:
 
 ```typescript
@@ -97,7 +94,6 @@ appendInexistentScriptButtons([{ name: '按钮名', visible: true }]);
 ```
 
 然后, 可以在代码中这样注册按钮事件:
->>>>>>> 24c09dd0d2e3a345ced6bd6449ff0c89cd686543
 
 ```typescript
 eventOn(getButtonEvent('按钮名'), () => {
