@@ -1636,7 +1636,7 @@ const handleSavePlayerPreset = (name?: string) => {
     if (savePlayerPreset(presetName, characterData.value)) {
       selectedPlayerPresetName.value = presetName;
       refreshPlayerPresets();
-      toastr.success(`预设「${presetName}」已保存到角色变量，可跨聊天载入。`, '人物预设');
+      toastr.success(`预设「${presetName}」已保存到本地存储，可跨聊天载入。`, '人物预设');
       return;
     }
   } catch (error) {
@@ -1652,7 +1652,7 @@ const savePlayerPresetQuietly = () => {
     if (savePlayerPreset(presetName, characterData.value)) {
       selectedPlayerPresetName.value = presetName;
       refreshPlayerPresets();
-      console.info(`[开局] 正常模式人物预设「${presetName}」已保存到角色变量`);
+      console.info(`[开局] 正常模式人物预设「${presetName}」已保存到本地存储`);
       return;
     }
 

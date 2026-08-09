@@ -171,7 +171,7 @@ export async function grantVictoryRewards(enemyName: string, isVictory: boolean)
   const resolvedEnemyName = resolveEnemyName(enemyName).replace(/_\d+$/g, '');
 
   try {
-    const virtueItem = getVirtueItemByBoss(resolvedEnemyName);
+    const virtueItem = getVirtueItemByBoss(`${enemyName} ${resolvedEnemyName}`);
     if (virtueItem) {
       const granted = await grantBackpackItemIfMissing(virtueItem.name, createVirtueItemMvuData(virtueItem));
       if (granted) {

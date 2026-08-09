@@ -1,6 +1,7 @@
 import { INITIAL_ATTRIBUTES, INITIAL_CHARACTER_DATA, type CharacterData } from '../开局/types';
 
 export const PLAYER_PRESET_VARIABLE_KEY = '性斗学园玩家预设';
+export const PLAYER_PRESET_STORAGE_KEY = 'xuedou_player_presets';
 
 const CHARACTER_VARIABLE_OPTION: VariableOption = { type: 'character' };
 const DEFAULT_PRESET_NAME = '默认预设';
@@ -64,6 +65,72 @@ function writeCharacterVariables(data: Record<string, any>): boolean {
   }
 
   return false;
+}
+
+function clearCharacterPresetVariable(): void {
+  try {
+    const globalAny = window as any;
+    const variables = readCharacterVariables();
+    if (!(PLAYER_PRESET_VARIABLE_KEY in variables)) {
+      return;
+    }
+
+    delete variables[PLAYER_PRESET_VARIABLE_KEY];
+
+    if (typeof globalAny.replaceVariables === 'function') {
+      globalAny.replaceVariables(variables, CHARACTER_VARIABLE_OPTION);
+      return;
+    }
+
+    if (typeof globalAny.insertOrAssignVariables === 'function') {
+      globalAny.insertOrAssignVariables({ [PLAYER_PRESET_VARIABLE_KEY]: undefined }, CHARACTER_VARIABLE_OPTION);
+    }
+  } catch (error) {
+    console.warn('[性斗学园] 清理旧玩家预设角色变量失败:', error);
+  }
+}
+
+function getLocalStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    console.warn('[性斗学园] localStorage 不可用，玩家预设将回退到角色变量:', error);
+    return null;
+  }
+}
+
+function readLocalStorageValue(): unknown {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return null;
+  }
+
+  const rawValue = storage.getItem(PLAYER_PRESET_STORAGE_KEY);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    console.warn('[性斗学园] 解析本地玩家预设失败，将重置本地预设:', error);
+    return null;
+  }
+}
+
+function writeLocalStorageValue(collection: StoredPlayerPresetCollection): boolean {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return false;
+  }
+
+  try {
+    storage.setItem(PLAYER_PRESET_STORAGE_KEY, JSON.stringify(collection));
+    return true;
+  } catch (error) {
+    console.warn('[性斗学园] 写入本地玩家预设失败:', error);
+    return false;
+  }
 }
 
 function normalizePresetName(name: string | undefined, fallback = DEFAULT_PRESET_NAME): string {
@@ -168,11 +235,39 @@ function parsePresetCollection(rawValue: unknown): StoredPlayerPresetCollection 
 }
 
 function getPlayerPresetCollection(): StoredPlayerPresetCollection {
-  return parsePresetCollection(readCharacterVariables()[PLAYER_PRESET_VARIABLE_KEY]);
+  const localCollection = parsePresetCollection(readLocalStorageValue());
+  const characterVariables = readCharacterVariables();
+  const characterRawValue = characterVariables[PLAYER_PRESET_VARIABLE_KEY];
+  const characterCollection = parsePresetCollection(characterRawValue);
+
+  let changed = false;
+  for (const [name, entry] of Object.entries(characterCollection.presets)) {
+    const currentEntry = localCollection.presets[name];
+    const currentTime = Date.parse(currentEntry?.savedAt || '');
+    const incomingTime = Date.parse(entry.savedAt || '');
+    if (
+      !currentEntry ||
+      (Number.isFinite(incomingTime) && (!Number.isFinite(currentTime) || incomingTime > currentTime))
+    ) {
+      localCollection.presets[name] = entry;
+      changed = true;
+    }
+  }
+
+  const migrationSaved = changed ? writeLocalStorageValue(localCollection) : true;
+  if (changed && migrationSaved) {
+    console.info('[性斗学园] 已将角色变量中的玩家预设迁移到 localStorage');
+  }
+
+  if (characterRawValue !== undefined && migrationSaved) {
+    clearCharacterPresetVariable();
+  }
+
+  return localCollection;
 }
 
 function savePlayerPresetCollection(collection: StoredPlayerPresetCollection): boolean {
-  return writeCharacterVariables({ [PLAYER_PRESET_VARIABLE_KEY]: collection });
+  return writeLocalStorageValue(collection) || writeCharacterVariables({ [PLAYER_PRESET_VARIABLE_KEY]: collection });
 }
 
 export function listPlayerPresets(): PlayerPresetSummary[] {
