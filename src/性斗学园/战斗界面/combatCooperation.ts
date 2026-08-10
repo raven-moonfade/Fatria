@@ -70,7 +70,7 @@ export function hasActiveExorcismMazeSideQuest(statData: Record<string, any> | n
     }
 
     const status = isObjectRecord(questData) ? (questData.状态 ?? questData.status) : undefined;
-    return !isQuestInactive(status);
+    return Boolean(String(status || '')) && !isQuestInactive(status);
   });
 }
 

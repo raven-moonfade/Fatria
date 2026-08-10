@@ -816,6 +816,7 @@ import * as BossSystem from './bossSystem';
 // 天赋系统
 import { getTalentById, type TalentData } from '../性斗学园脚本/data/talentDatabase';
 import * as TalentSystem from './talentSystem';
+import { getCombatConsumableEffects } from '../shared/combatConsumables';
 import { getEnemySnapshot, getPlayerSnapshot } from '../shared/statSelectors';
 import { tickStatusList, type TimedStatusEffect } from '../shared/statusEngine';
 import {
@@ -1836,6 +1837,7 @@ async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
 
   const exorcismSetup = createExorcismRuntimeSetup({
     enemyName: normalizedName,
+    questActive: hasActiveExorcismMazeSideQuest(data),
     defaultClimaxLimit: maxClimaxCount,
     getEnemyPortraitUrl,
   });
@@ -2252,8 +2254,9 @@ async function loadFromMvu() {
     // 从背包中筛选出战斗用品（类型为"消耗品"且战斗用品为true）
     const combatUsableItems: Item[] = [];
     Object.entries(backpack).forEach(([itemId, itemData]: [string, any]) => {
+      const catalogCombatEffects = getCombatConsumableEffects(itemId);
       // 检查是否为消耗品且战斗用品为true
-      if (itemData?.类型 === '消耗品' && itemData?.战斗用品 === true) {
+      if ((itemData?.类型 === '消耗品' && itemData?.战斗用品 === true) || catalogCombatEffects) {
         // 获取数量
         const quantity = itemData?.数量 || 0;
         if (quantity > 0) {
@@ -2277,7 +2280,8 @@ async function loadFromMvu() {
             pleasureReduce: itemData?.快感降低,
             pleasureIncrease: itemData?.快感增加,
             bonuses: itemData?.加成属性, // 添加加成属性
-            combatEffects: itemData?.战斗效果列表 || itemData?.效果列表,
+            // 商店目录优先，自动修复旧存档里缺失或过期的战斗效果。
+            combatEffects: catalogCombatEffects ?? itemData?.战斗效果列表 ?? itemData?.效果列表,
             effect: (user, _target) => {
               // 根据物品属性应用效果
               let message = `${user.name} 使用了 ${itemId}`;
@@ -2899,10 +2903,12 @@ function getCombatantBySide(side: CombatSide): Character {
 
 function resolveEffectTargetSide(
   effect: Extract<ResolvedSkillEffect, { kind: 'status' | 'resource' | 'resourceOverTime' | 'specialStatus' | 'bind' }>,
-  isPlayerSkill: boolean,
+  sourceSide: CombatSide,
 ): CombatSide {
-  const targetIsPlayer = isPlayerSkill ? !effect.targetEnemy : effect.targetEnemy;
-  return targetIsPlayer ? 'player' : 'enemy';
+  if (!effect.targetEnemy) {
+    return sourceSide;
+  }
+  return sourceSide === 'player' ? 'enemy' : 'player';
 }
 
 function clampResourceValue(value: number, maxValue: number): number {
@@ -3797,7 +3803,7 @@ function applyCombatEffectListToStatData(params: {
   statData: Record<string, any>;
   effectList: Record<string, any>;
   sourceId: string;
-  isPlayerSkill: boolean;
+  sourceSide: CombatSide;
   logs: string[];
 }) {
   console.info(`[Debuff系统] 效果列表keys:`, Object.keys(params.effectList));
@@ -3825,14 +3831,11 @@ function applyCombatEffectListToStatData(params: {
 
     // 特殊处理：束缚效果（不写入状态列表，直接设置束缚回合数）
     if (resolvedEffect.kind === 'bind') {
+      const targetSide = resolveEffectTargetSide(resolvedEffect, params.sourceSide);
       console.info(
-        `[束缚] 检测到束缚效果: duration=${resolvedEffect.duration}, targetEnemy=${resolvedEffect.targetEnemy}, isPlayerSkill=${params.isPlayerSkill}`,
+        `[束缚] 检测到束缚效果: duration=${resolvedEffect.duration}, targetEnemy=${resolvedEffect.targetEnemy}, sourceSide=${params.sourceSide}, targetSide=${targetSide}`,
       );
-      const targetIsPlayer = params.isPlayerSkill ? !resolvedEffect.targetEnemy : resolvedEffect.targetEnemy;
-      console.info(
-        `[束缚] 束缚目标计算: targetIsPlayer=${targetIsPlayer}, isPlayerSkill=${params.isPlayerSkill}, targetEnemy=${resolvedEffect.targetEnemy}`,
-      );
-      if (targetIsPlayer) {
+      if (targetSide === 'player') {
         let immuneToBind = false;
         if (playerTalent.value) {
           const talentContext = createTalentEffectContext();
@@ -3863,7 +3866,7 @@ function applyCombatEffectListToStatData(params: {
 
         finalDuration = Math.min(finalDuration, MAX_BIND_DURATION);
         playerBoundTurns.value = finalDuration;
-        playerBindSource.value = params.isPlayerSkill ? 'player' : 'enemy';
+        playerBindSource.value = params.sourceSide;
         params.logs.push(`${player.value.name} 被束缚了 ${finalDuration} 回合，无法行动！`);
         console.info(`[束缚] ★★★ 设置玩家束缚: playerBoundTurns=${playerBoundTurns.value}`);
       } else {
@@ -3886,7 +3889,7 @@ function applyCombatEffectListToStatData(params: {
 
         finalEnemyDuration = Math.min(finalEnemyDuration, MAX_BIND_DURATION);
         enemyBoundTurns.value = finalEnemyDuration;
-        enemyBindSource.value = params.isPlayerSkill ? 'player' : 'enemy';
+        enemyBindSource.value = params.sourceSide;
         params.logs.push(`${enemy.value.name} 被束缚了 ${finalEnemyDuration} 回合，无法行动！`);
         console.info(
           `[束缚] ★★★ 设置敌人束缚: enemyBoundTurns=${enemyBoundTurns.value}, enemyBindSource=${enemyBindSource.value}`,
@@ -3895,7 +3898,7 @@ function applyCombatEffectListToStatData(params: {
       continue;
     }
 
-    const targetSide = resolveEffectTargetSide(resolvedEffect, params.isPlayerSkill);
+    const targetSide = resolveEffectTargetSide(resolvedEffect, params.sourceSide);
     const targetName = getCombatantBySide(targetSide).name;
 
     if (resolvedEffect.kind === 'resource') {
@@ -3980,7 +3983,13 @@ async function applyCombatSkillEffects(skillId: string, isPlayerSkill: boolean):
         effectList,
       );
 
-      applyCombatEffectListToStatData({ statData, effectList, sourceId: skillId, isPlayerSkill, logs });
+      applyCombatEffectListToStatData({
+        statData,
+        effectList,
+        sourceId: skillId,
+        sourceSide: isPlayerSkill ? 'player' : 'enemy',
+        logs,
+      });
     });
 
     if (!statData) {
@@ -4012,7 +4021,7 @@ async function applyCombatItemEffects(item: Item): Promise<string[]> {
         statData,
         effectList,
         sourceId: `item_${item.id}`,
-        isPlayerSkill: true,
+        sourceSide: 'player',
         logs,
       });
     });
@@ -4547,6 +4556,9 @@ async function finishCombatAfterResult() {
   const finalPhase = turnState.phase;
   const playerStatusListBeforeClear =
     finalPhase === 'defeat' && exorcismBossDefinition.value ? await readPlayerTemporaryStatusList() : {};
+
+  const rewardLogs = await grantVictoryRewards(enemy.value.name, finalPhase === 'victory');
+  rewardLogs.forEach(log => addLog(log.message, 'system', log.type));
 
   selectAndDisplayCG();
   turnState.enemyIntention = null;
@@ -5983,6 +5995,36 @@ async function handleEnemyTurn() {
     }),
   );
 
+  // 检查敌人是否被束缚（玩家施加的束缚）
+  console.info(`[束缚系统] 检查敌人束缚状态 - enemyBoundTurns=${enemyBoundTurns.value}`);
+  if (enemyBoundTurns.value > 0) {
+    const boundTurnResolution = createBoundEnemyTurnResolution({
+      bossState: BossSystem.bossState,
+      enemyName: enemy.value.name,
+      boundTurns: enemyBoundTurns.value,
+      bindSource: enemyBindSource.value,
+      enemyMaxPleasure: enemy.value.stats.maxPleasure,
+      enemyStatuses: enemyRuntimeStatuses.value as Record<string, any>,
+    });
+    await applyEnemyTurnStartActions(boundTurnResolution.boundActions);
+    if (boundTurnResolution.shouldCheckEnemyClimax) {
+      if (enemy.value.stats.currentPleasure >= enemy.value.stats.maxPleasure && turnState.climaxTarget === null) {
+        void triggerClimaxProcessing({ characterName: enemy.value.name, targetIsEnemy: true });
+        return;
+      }
+    }
+
+    await applyEnemyTurnStartActions(boundTurnResolution.edenActions);
+    if (boundTurnResolution.triggerGameOver) {
+      void runEdenGameOverSequence();
+      return;
+    }
+
+    await applyEnemyTurnStartActions(boundTurnResolution.tickActions);
+    void finishTurnAndMaybeStartNextTurn();
+    return;
+  }
+
   // ========== 艾格妮丝BOSS：共餐机制（每3回合触发：1,4,7,10...） ==========
   if (BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'agnes') {
     const agnesFeastContext = await readAgnesFeastContext();
@@ -6026,36 +6068,6 @@ async function handleEnemyTurn() {
 
       return;
     }
-  }
-
-  // 检查敌人是否被束缚（玩家施加的束缚）
-  console.info(`[束缚系统] 检查敌人束缚状态 - enemyBoundTurns=${enemyBoundTurns.value}`);
-  if (enemyBoundTurns.value > 0) {
-    const boundTurnResolution = createBoundEnemyTurnResolution({
-      bossState: BossSystem.bossState,
-      enemyName: enemy.value.name,
-      boundTurns: enemyBoundTurns.value,
-      bindSource: enemyBindSource.value,
-      enemyMaxPleasure: enemy.value.stats.maxPleasure,
-      enemyStatuses: enemyRuntimeStatuses.value as Record<string, any>,
-    });
-    await applyEnemyTurnStartActions(boundTurnResolution.boundActions);
-    if (boundTurnResolution.shouldCheckEnemyClimax) {
-      if (enemy.value.stats.currentPleasure >= enemy.value.stats.maxPleasure && turnState.climaxTarget === null) {
-        void triggerClimaxProcessing({ characterName: enemy.value.name, targetIsEnemy: true });
-        return;
-      }
-    }
-
-    await applyEnemyTurnStartActions(boundTurnResolution.edenActions);
-    if (boundTurnResolution.triggerGameOver) {
-      void runEdenGameOverSequence();
-      return;
-    }
-
-    await applyEnemyTurnStartActions(boundTurnResolution.tickActions);
-    void finishTurnAndMaybeStartNextTurn();
-    return;
   }
 
   const edenResult = createEdenTurnStartResult({
@@ -6512,9 +6524,6 @@ async function sendCombatLogToLLM(_context: string) {
 // 处理发送战斗日志（用于胜负结算）
 async function handleSendCombatLogToLLM() {
   await sendCombatLogToLLM(buildCombatEndContext(turnState.phase));
-
-  const rewardLogs = await grantVictoryRewards(enemy.value.name, turnState.phase === 'victory');
-  rewardLogs.forEach(log => addLog(log.message, 'system', log.type));
 
   // 战斗结算机制：玩家当前快感减半，耐力增加最大耐力的20%
   try {

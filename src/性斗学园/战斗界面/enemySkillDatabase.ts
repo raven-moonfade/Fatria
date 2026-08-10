@@ -19814,21 +19814,23 @@ export function convertToMvuSkillFormat(skill: SkillData) {
         BuffType.DOT_LUST,
       ]);
 
-      const buffTypeMap: Partial<Record<
-        string,
-        | '性斗力'
-        | '忍耐力'
-        | '魅力'
-        | '幸运'
-        | '闪避率'
-        | '暴击率'
-        | '束缚'
-        | '持续快感'
-        | '持续耐力'
-        | '敏感'
-        | '乏力'
-        | '集中'
-      >> = {
+      const buffTypeMap: Partial<
+        Record<
+          string,
+          | '性斗力'
+          | '忍耐力'
+          | '魅力'
+          | '幸运'
+          | '闪避率'
+          | '暴击率'
+          | '束缚'
+          | '持续快感'
+          | '持续耐力'
+          | '敏感'
+          | '乏力'
+          | '集中'
+        >
+      > = {
         [BuffType.BIND]: '束缚',
         [BuffType.SENSITIVE]: '敏感',
         [BuffType.DODGE_UP]: '闪避率',
@@ -20556,8 +20558,7 @@ type DlcEnemySkillSpec = {
 function createDlcEnemySkill(characterName: string, index: number, spec: DlcEnemySkillSpec): SkillData {
   const coefficient = spec.coefficient ?? 0;
   const source = spec.source ?? DamageSource.SEX_POWER;
-  const damageFormula =
-    coefficient > 0 ? [{ source, coefficient, baseValue: spec.baseValue ?? 10 }] : [];
+  const damageFormula = coefficient > 0 ? [{ source, coefficient, baseValue: spec.baseValue ?? 10 }] : [];
   const effectParts: string[] = [];
   if (coefficient > 0) {
     const sourceName = source === DamageSource.CHARM ? '魅力' : source === DamageSource.LUCK ? '幸运' : '性斗力';
@@ -20700,7 +20701,7 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       buffs: [{ type: BuffType.DODGE_DOWN, value: 20, isPercent: true, duration: 2, stackable: false }],
     },
     {
-      name: 'ASMR·铃虫之夜',
+      name: 'ASMR·鈴虫の夜',
       description: '以贴耳低语扰乱节奏，制造只凭听觉也会动摇的压迫。',
       icon: 'Volume2',
       type: SkillType.CHARM,
@@ -20765,7 +20766,7 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       ],
     },
     {
-      name: '救生擒拿·固定救援',
+      name: '救生员锁技·十字固定',
       description: '以救生擒拿固定目标，动作强势但仍带着保护意味。',
       icon: 'Shield',
       type: SkillType.CONTROL,
@@ -20934,14 +20935,13 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       buffs: [{ type: BuffType.BIND, value: 0, isPercent: false, duration: 1, stackable: false }],
     },
     {
-      name: '暴走·自然交合',
-      description: '暴走时释放翻倍的原始压迫感。',
-      icon: 'FlameKindling',
-      type: SkillType.ULTIMATE,
-      rarity: 'SS',
-      coefficient: 1.7,
-      cooldown: 6,
-      critModifier: 45,
+      name: '巨根腹压·体温烙印',
+      description: '以高于常人的体温和尺寸压住目标腹部，留下持续的灼热压迫感。',
+      icon: 'ThermometerSun',
+      type: SkillType.PHYSICAL,
+      rarity: 'A',
+      coefficient: 1.05,
+      critModifier: 25,
     },
   ],
   真白凪沙_暴走: [
@@ -21048,26 +21048,22 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       buffs: [{ type: BuffType.BIND, value: 0, isPercent: false, duration: 2, stackable: false }],
     },
     {
-      name: '龙威压制',
-      description: '释放龙宫之主的威压，令目标战意动摇。',
-      icon: 'ShieldAlert',
-      type: SkillType.MENTAL,
+      name: '龙息吐纳·情焚百脉',
+      description: '吐出带有催情因子的幽蓝龙息，从呼吸与毛孔点燃目标的敏感反应。',
+      icon: 'Wind',
+      type: SkillType.CHARM,
       rarity: 'SS',
       source: DamageSource.CHARM,
       coefficient: 6.5,
-      buffs: [
-        { type: BuffType.ATK_DOWN, value: 35, isPercent: true, duration: 3, stackable: false },
-        { type: BuffType.LUCK_DOWN, value: 25, isPercent: false, duration: 3, stackable: false },
-      ],
+      buffs: [{ type: BuffType.SENSITIVE, value: 35, isPercent: true, duration: 3, stackable: false }],
     },
     {
-      name: '龙渊双修·王命终裁',
-      description: '将龙威、龙尾与龙渊灵力凝成终局一击。',
+      name: '龙穴采补·双修合欢',
+      description: '以龙穴内壁的逆向软鳞绞紧目标，在双修中持续采补精魄。',
       icon: 'Gem',
       type: SkillType.ULTIMATE,
       rarity: 'SS',
-      source: DamageSource.CHARM,
-      coefficient: 10.0,
+      coefficient: 1.5,
       cooldown: 6,
       critModifier: 60,
     },
@@ -21333,8 +21329,18 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
   ],
   希安: [
     {
-      name: '肉棒殖民调教',
-      description: '以太阳部落公主的攻击形态进行正面压制。',
+      name: '万花筒催眠·天真凝视',
+      description: '以金色双眼和规律眨眼将目标拖入深度催眠。',
+      icon: 'Eye',
+      type: SkillType.MENTAL,
+      rarity: 'S',
+      source: DamageSource.CHARM,
+      coefficient: 6.5,
+      buffs: [{ type: BuffType.DODGE_DOWN, value: 30, isPercent: true, duration: 3, stackable: false }],
+    },
+    {
+      name: '恶魔之杖·强制贯穿',
+      description: '解除部落秘法的隐藏，以与娇小身形不相称的力量正面贯穿目标。',
       icon: 'Flame',
       type: SkillType.PHYSICAL,
       rarity: 'S',
@@ -21342,37 +21348,65 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       critModifier: 30,
     },
     {
-      name: '散播洗脑·黑阳低语',
-      description: '用天真语气植入羞辱与服从暗示。',
-      icon: 'Brain',
-      type: SkillType.MENTAL,
-      rarity: 'S',
-      source: DamageSource.CHARM,
-      coefficient: 6.5,
-      buffs: [
-        { type: BuffType.ATK_DOWN, value: 25, isPercent: true, duration: 3, stackable: false },
-        { type: BuffType.LUCK_DOWN, value: 20, isPercent: false, duration: 3, stackable: false },
-      ],
-    },
-    {
-      name: '恶魔公主·反噬',
-      description: '被冒犯时反击，强行打断目标节奏。',
-      icon: 'Skull',
+      name: '玉足支配·奴隶宣告',
+      description: '命令目标跪伏后以赤足碾压，强行宣告对方的从属身份。',
+      icon: 'Footprints',
       type: SkillType.CONTROL,
       rarity: 'A',
       coefficient: 0.75,
       buffs: [{ type: BuffType.BIND, value: 0, isPercent: false, duration: 1, stackable: false }],
     },
     {
-      name: '禁地守门·黑阳裁决',
-      description: '隐藏线守门者的终极裁决。',
-      icon: 'Sun',
+      name: '甜蜜呓语·媚黑催眠(淫语ASMR)',
+      description: '在耳畔用甜腻气声反复植入服从暗示，令目标在酥麻中失去判断。',
+      icon: 'Volume2',
       type: SkillType.ULTIMATE,
       rarity: 'SS',
       source: DamageSource.CHARM,
       coefficient: 8.8,
       cooldown: 6,
       critModifier: 45,
+    },
+  ],
+  浮士德: [
+    {
+      name: '储君突袭·猎手扑杀',
+      description: '以储君的爆发力抢先扑倒猎物，直接撕开防御。',
+      icon: 'Swords',
+      type: SkillType.PHYSICAL,
+      rarity: 'S',
+      coefficient: 1.2,
+      critModifier: 35,
+      buffs: [{ type: BuffType.DEF_DOWN, value: 25, isPercent: true, duration: 2, stackable: false }],
+    },
+    {
+      name: '黑檀巨根·强袭贯穿',
+      description: '以精壮体魄发动毫不留情的连续强袭。',
+      icon: 'Zap',
+      type: SkillType.PHYSICAL,
+      rarity: 'S',
+      coefficient: 0.62,
+      hitCount: 3,
+      critModifier: 25,
+    },
+    {
+      name: '爆发擒抱·猎物压制',
+      description: '用近身擒抱锁死目标，将其固定为储君的猎物。',
+      icon: 'Lock',
+      type: SkillType.CONTROL,
+      rarity: 'S',
+      coefficient: 0.8,
+      buffs: [{ type: BuffType.BIND, value: 0, isPercent: false, duration: 2, stackable: false }],
+    },
+    {
+      name: '族长试炼·征服宣告',
+      description: '将储君的锐气与全部爆发力集中于一次正面征服。',
+      icon: 'Crown',
+      type: SkillType.ULTIMATE,
+      rarity: 'SS',
+      coefficient: 1.75,
+      cooldown: 6,
+      critModifier: 60,
     },
   ],
   迦南: [
@@ -21387,9 +21421,9 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       buffs: [{ type: BuffType.ATK_DOWN, value: 25, isPercent: true, duration: 3, stackable: false }],
     },
     {
-      name: '母性圈养同化',
-      description: '以温柔渗透降低目标抵抗。',
-      icon: 'Home',
+      name: '母乳同化·圣乳灌注',
+      description: '以蕴含部落秘力的圣乳灌注目标，加速瓦解身体与精神抵抗。',
+      icon: 'Milk',
       type: SkillType.MENTAL,
       rarity: 'S',
       source: DamageSource.CHARM,
@@ -21400,24 +21434,29 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       ],
     },
     {
-      name: '祭司教母·收网',
-      description: '从慈母外壳切换为教母式压制。',
-      icon: 'Network',
-      type: SkillType.CONTROL,
+      name: '肉棒崇拜洗脑',
+      description: '以祭司布道般的低语将崇拜与臣服烙入目标的认知。',
+      icon: 'Brain',
+      type: SkillType.MENTAL,
       rarity: 'SS',
-      coefficient: 0.75,
-      buffs: [{ type: BuffType.BIND, value: 0, isPercent: false, duration: 2, stackable: false }],
+      source: DamageSource.CHARM,
+      coefficient: 6.8,
+      buffs: [{ type: BuffType.ATK_DOWN, value: 30, isPercent: true, duration: 3, stackable: false }],
     },
     {
-      name: '禁地终点·黑阳母网',
-      description: '隐藏线终点的收束技。',
-      icon: 'Sun',
+      name: '淫臀荷尔蒙·坐拥压制',
+      description: '以丰腴臀部压住目标，并用高浓度荷尔蒙使其迅速瘫软。',
+      icon: 'Armchair',
       type: SkillType.ULTIMATE,
       rarity: 'SS',
       source: DamageSource.CHARM,
       coefficient: 9.4,
       cooldown: 6,
       critModifier: 55,
+      buffs: [
+        { type: BuffType.BIND, value: 0, isPercent: false, duration: 2, stackable: false },
+        { type: BuffType.DODGE_DOWN, value: 35, isPercent: true, duration: 3, stackable: false },
+      ],
     },
   ],
   迦南_教母: [

@@ -37,7 +37,11 @@ function hasClimaxPhaseTransition(definition: DeclarativeBossDefinition): boolea
   );
 }
 
-function getClimaxPhaseLimit(definition: DeclarativeBossDefinition, phase: BossPhaseDefinition, fallback: number): number {
+function getClimaxPhaseLimit(
+  definition: DeclarativeBossDefinition,
+  phase: BossPhaseDefinition,
+  fallback: number,
+): number {
   if (!hasClimaxPhaseTransition(definition)) {
     return phase.climaxLimit ?? fallback;
   }
@@ -68,9 +72,12 @@ export function createExorcismPhaseRuntimeConfig(params: {
 
 export function createExorcismRuntimeSetup(params: {
   enemyName: string;
+  questActive: boolean;
   defaultClimaxLimit: number;
   getEnemyPortraitUrl: (enemyName: string) => string;
 }): ExorcismRuntimeSetup | null {
+  if (!params.questActive) return null;
+
   const match = getExorcismBossDefinitionMatch(params.enemyName);
   const definition = match?.definition;
   if (!definition || definition.status === 'blocked') return null;

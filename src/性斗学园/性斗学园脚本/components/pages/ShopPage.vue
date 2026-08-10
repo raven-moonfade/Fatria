@@ -437,6 +437,7 @@ import {
   isSpecialBattleUnlocked as getSpecialBattleUnlocked,
   saveSpecialBattleUnlocked,
 } from '../../../shared/localPreferences';
+import { getCombatConsumableEffects } from '../../../shared/combatConsumables';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import { getPlayerDerivedStats } from '../../../shared/statSelectors';
 import { GRAND_WHEEL_SSS_EQUIPMENT_ITEMS } from '../../../shared/legendaryEquipment';
@@ -2984,8 +2985,7 @@ const allEquipments = [
     grade: 'A',
     gender: '女',
     attrFocus: '幸运',
-    description:
-      '带有一串微型银铃的黑皮脚环，戴在脚踝上。每走一步或在足交、颜面压制时都会发出诱人的清脆叮当声。',
+    description: '带有一串微型银铃的黑皮脚环，戴在脚踝上。每走一步或在足交、颜面压制时都会发出诱人的清脆叮当声。',
     bonuses: { 幸运加成: 28, 闪避率加成: 11, 魅力加成: 11, 基础性斗力加成: -4 },
   },
   {
@@ -3176,10 +3176,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方敏感+35%、持续快感+12 (3回合)',
         effect: {
-          battleEffects: {
-            效果1_敏感: { 效果类型: '敏感', 效果值: 35, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
-            效果2_持续快感: { 效果类型: '持续快感', 效果值: 12, 是否为百分比: false, 持续回合数: 3, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_1'),
         },
         description: '战斗用强效刺激药剂，使对手更容易积累快感，持续3回合',
       },
@@ -3192,9 +3189,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方性斗力-20% (2回合)',
         effect: {
-          battleEffects: {
-            效果1_性斗力: { 效果类型: '性斗力', 效果值: -20, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_2'),
         },
         description: '削弱对手攻势的基础药剂，持续2回合',
       },
@@ -3207,10 +3202,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方性斗力-35%、暴击-15 (3回合)',
         effect: {
-          battleEffects: {
-            效果1_性斗力: { 效果类型: '性斗力', 效果值: -35, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
-            效果2_暴击率: { 效果类型: '暴击率', 效果值: -15, 是否为百分比: false, 持续回合数: 3, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_3'),
         },
         description: '更稳定的压制型药剂，降低对手输出和爆发，持续3回合',
       },
@@ -3223,10 +3215,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方耐力-20、忍耐力-30% (3回合)',
         effect: {
-          battleEffects: {
-            效果1_耐力变化: { 效果类型: '耐力变化', 效果值: -20, 是否为百分比: false, 持续回合数: 0, 是否作用敌人: true },
-            效果2_忍耐力: { 效果类型: '忍耐力', 效果值: -30, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_4'),
         },
         description: '让对手短时间陷入虚软状态，立即削减耐力并降低忍耐，持续3回合',
       },
@@ -3239,10 +3228,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方束缚1回合、闪避-20 (2回合)',
         effect: {
-          battleEffects: {
-            效果1_束缚: { 效果类型: '束缚', 效果值: 0, 是否为百分比: false, 持续回合数: 1, 是否作用敌人: true },
-            效果2_闪避率: { 效果类型: '闪避率', 效果值: -20, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_5'),
         },
         description: '限制对手行动并削弱闪避，适合抢节奏',
       },
@@ -3255,10 +3241,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方乏力35%、幸运-15 (2回合)',
         effect: {
-          battleEffects: {
-            效果1_乏力: { 效果类型: '乏力', 效果值: 35, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-            效果2_幸运: { 效果类型: '幸运', 效果值: -15, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_6'),
         },
         description: '干扰对手判断和节奏，使其更容易行动失败，持续2回合',
       },
@@ -3271,10 +3254,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方迷离35%、闪避-15 (2回合)',
         effect: {
-          battleEffects: {
-            效果1_迷离: { 效果类型: '迷离', 效果值: 35, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-            效果2_闪避率: { 效果类型: '闪避率', 效果值: -15, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_7'),
         },
         description: '制造短暂认知迟钝，让对手更可能误判行动，持续2回合',
       },
@@ -3287,10 +3267,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方敏感+50%、迷离25% (2回合)',
         effect: {
-          battleEffects: {
-            效果1_敏感: { 效果类型: '敏感', 效果值: 50, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-            效果2_迷离: { 效果类型: '迷离', 效果值: 25, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_8'),
         },
         description: '高风险高收益的强刺激药剂，适合配合爆发回合',
       },
@@ -3303,11 +3280,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方魅力-30、幸运-20、敏感+20% (2回合)',
         effect: {
-          battleEffects: {
-            效果1_魅力: { 效果类型: '魅力', 效果值: -30, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-            效果2_幸运: { 效果类型: '幸运', 效果值: -20, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-            效果3_敏感: { 效果类型: '敏感', 效果值: 20, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_9'),
         },
         description: '让对手仪态失衡，降低魅力和幸运并提高受击快感，持续2回合',
       },
@@ -3320,10 +3293,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方乏力45% (1回合)、暴击-25 (2回合)',
         effect: {
-          battleEffects: {
-            效果1_乏力: { 效果类型: '乏力', 效果值: 45, 是否为百分比: true, 持续回合数: 1, 是否作用敌人: true },
-            效果2_暴击率: { 效果类型: '暴击率', 效果值: -25, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_10'),
         },
         description: '短促但强力的行动干扰药丸，同时压低对手暴击，持续1到2回合',
       },
@@ -3336,9 +3306,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方束缚2回合',
         effect: {
-          battleEffects: {
-            效果1_束缚: { 效果类型: '束缚', 效果值: 0, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_11'),
         },
         description: '昂贵但直接的控制道具，尝试束缚对手2回合',
       },
@@ -3351,9 +3319,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方忍耐力-25% (2回合)',
         effect: {
-          battleEffects: {
-            效果1_忍耐力: { 效果类型: '忍耐力', 效果值: -25, 是否为百分比: true, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_12'),
         },
         description: '降低对手抗压能力，适合接高伤害技能',
       },
@@ -3366,9 +3332,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方闪避-35 (2回合)',
         effect: {
-          battleEffects: {
-            效果1_闪避率: { 效果类型: '闪避率', 效果值: -35, 是否为百分比: false, 持续回合数: 2, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_13'),
         },
         description: '削弱对手闪避能力，帮助关键技能命中',
       },
@@ -3381,10 +3345,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方持续快感+8 (4回合)、暴击-10 (3回合)',
         effect: {
-          battleEffects: {
-            效果1_持续快感: { 效果类型: '持续快感', 效果值: 8, 是否为百分比: false, 持续回合数: 4, 是否作用敌人: true },
-            效果2_暴击率: { 效果类型: '暴击率', 效果值: -10, 是否为百分比: false, 持续回合数: 3, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_14'),
         },
         description: '持续干扰型贴片，小幅但稳定地累积快感并压低爆发',
       },
@@ -3397,10 +3358,7 @@ const consumableSubCategories = [
         combatOnly: true,
         effectText: '敌方乏力20%、迷离20% (3回合)',
         effect: {
-          battleEffects: {
-            效果1_乏力: { 效果类型: '乏力', 效果值: 20, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
-            效果2_迷离: { 效果类型: '迷离', 效果值: 20, 是否为百分比: true, 持续回合数: 3, 是否作用敌人: true },
-          },
+          battleEffects: getCombatConsumableEffects('con_d_15'),
         },
         description: '长效干扰剂，低概率但持续扰乱对手行动，持续3回合',
       },
@@ -4055,26 +4013,36 @@ function pickWheelSSSEquipmentReward(statData: any) {
   return pickRandom(missingPool.length > 0 ? missingPool : wheelSSSEquipmentPool);
 }
 
+function syncConsumableDefinition(entry: any, consumable: any, description = consumable.description) {
+  entry.类型 = '消耗品';
+  entry.等级 ??= 'C';
+  entry.描述 = description;
+  entry.战斗用品 = consumable.combatOnly || false;
+
+  delete entry.耐力增加;
+  delete entry.快感降低;
+  delete entry.快感增加;
+  delete entry.加成属性;
+  delete entry.战斗效果列表;
+  if (consumable.effect?.staminaRestore !== undefined) entry.耐力增加 = consumable.effect.staminaRestore;
+  if (consumable.effect?.pleasureReduce !== undefined) entry.快感降低 = consumable.effect.pleasureReduce;
+  if (consumable.effect?.pleasureIncrease !== undefined) entry.快感增加 = consumable.effect.pleasureIncrease;
+  if (consumable.effect?.buff) entry.加成属性 = consumable.effect.buff;
+  if (consumable.effect?.battleEffects) entry.战斗效果列表 = consumable.effect.battleEffects;
+}
+
 function addConsumableToBackpack(statData: any, consumable: any, quantity: number) {
   const existing = statData.物品系统.背包[consumable.name];
   if (existing) {
+    syncConsumableDefinition(existing, consumable);
     existing.数量 = (existing.数量 || 0) + quantity;
     return;
   }
 
   const data: any = {
-    类型: '消耗品',
-    等级: 'C',
-    描述: consumable.description,
-    战斗用品: consumable.combatOnly || false,
     数量: quantity,
   };
-
-  if (consumable.effect?.staminaRestore) data.耐力增加 = consumable.effect.staminaRestore;
-  if (consumable.effect?.pleasureReduce) data.快感降低 = consumable.effect.pleasureReduce;
-  if (consumable.effect?.pleasureIncrease) data.快感增加 = consumable.effect.pleasureIncrease;
-  if (consumable.effect?.buff) data.加成属性 = consumable.effect.buff;
-  if (consumable.effect?.battleEffects) data.战斗效果列表 = consumable.effect.battleEffects;
+  syncConsumableDefinition(data, consumable);
 
   statData.物品系统.背包[consumable.name] = data;
 }
@@ -4468,6 +4436,11 @@ async function purchaseItem() {
       const existing = mvuData.stat_data.物品系统.背包[itemKey];
 
       if (existing) {
+        syncConsumableDefinition(
+          existing,
+          item,
+          item.id === 'con_s_medal_muxinlan' ? '刻有沐芯兰名字的三好学生荣誉勋章' : item.description,
+        );
         existing.数量 = (existing.数量 || 0) + quantity;
       } else {
         const consumableData: any = {
