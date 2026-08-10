@@ -1,8 +1,22 @@
 <template>
   <div v-if="isVisible" class="status-bar-overlay" @click.self="close">
-    <div class="status-bar-container" @click.stop>
-      <div class="phone-device">
+    <div ref="phoneContainerRef" class="status-bar-container" :style="phonePositionStyle" @click.stop>
+      <div class="phone-device" :class="{ 'phone-dragging': isPhoneDragging }">
         <div class="phone-frame" :class="phoneFrameClasses" :style="phoneStyle">
+          <div
+            ref="phoneDragHandleRef"
+            class="phone-drag-handle"
+            :class="{ dragging: isPhoneDragging }"
+            role="button"
+            tabindex="0"
+            title="拖动小手机"
+            aria-label="拖动小手机"
+            @pointerdown="handlePhonePointerDown"
+            @keydown.space.prevent="resetPhonePosition"
+            @keydown.enter.prevent="resetPhonePosition"
+          >
+            <span class="phone-drag-grip" aria-hidden="true"></span>
+          </div>
           <div class="phone-wallpaper" :style="wallpaperLayerStyle">
             <img v-if="customWallpaperSrc" class="phone-wallpaper-image" :src="customWallpaperSrc" alt="" />
           </div>
@@ -1023,8 +1037,23 @@ interface PhoneApp {
 }
 
 const PHONE_PREFS_STORAGE_KEY = 'fatria-status-phone-preferences-v1';
+const PHONE_POSITION_STORAGE_KEY = 'fatria-status-phone-position-v1';
 const PHONE_PREFS_UPDATED_EVENT = 'fatria-status-phone-preferences-updated';
 const PHONE_WALLPAPER_IMAGE_REF = makeIndexedImageRef('phone-wallpaper:global');
+const PHONE_VIEWPORT_PADDING = 8;
+
+type PhonePosition = {
+  x: number;
+  y: number;
+};
+
+type PhoneDragState = {
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  pointerId: number;
+} | null;
 
 const DEFAULT_PHONE_PREFS: PhonePreferences = {
   wallpaperUrl: '',
@@ -1059,6 +1088,10 @@ const phoneApps: PhoneApp[] = [
 
 const currentPage = ref<PageKey>('home');
 const wallpaperInputRef = ref<HTMLInputElement | null>(null);
+const phoneContainerRef = ref<HTMLElement | null>(null);
+const phoneDragHandleRef = ref<HTMLElement | null>(null);
+const phonePosition = ref<PhonePosition>(loadPhonePosition());
+const isPhoneDragging = ref(false);
 const phonePrefs = ref<PhonePreferences>(loadPhonePreferences());
 const resolvedWallpaperUrl = ref('');
 const secondaryPhoneApi = ref<SecondaryPhoneApiSettings>(loadSecondaryPhoneApiSettings());
@@ -1077,6 +1110,7 @@ const resetSettingTargets = ref({
   image: false,
 });
 let wallpaperSourceRequestId = 0;
+let phoneDragState: PhoneDragState = null;
 
 const homeApps = computed(() => phoneApps.filter(app => !app.dock));
 const dockApps = computed(() => phoneApps.filter(app => app.dock));
@@ -1098,6 +1132,9 @@ const phoneStyle = computed(() => {
     '--phone-font-family': PHONE_FONT_FAMILIES[phonePrefs.value.fontFamily] ?? PHONE_FONT_FAMILIES.system,
   };
 });
+const phonePositionStyle = computed(() => ({
+  transform: `translate3d(${phonePosition.value.x}px, ${phonePosition.value.y}px, 0)`,
+}));
 const secondaryApiReady = computed(
   () =>
     Boolean(
@@ -1175,6 +1212,15 @@ watch(
   { deep: true },
 );
 
+watch(
+  () => props.isVisible,
+  isVisible => {
+    if (!isVisible) return;
+    window.requestAnimationFrame(() => applyPhonePosition(phonePosition.value));
+  },
+  { flush: 'post' },
+);
+
 function syncSecondaryApiModelOptions(settings: SecondaryPhoneApiSettings) {
   secondaryApiModelOptions.value = settings.model
     ? Array.from(new Set([settings.model, ...settings.models]))
@@ -1194,6 +1240,155 @@ function clampNumber(value: number, min: number, max: number): number {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return min;
   return Math.min(max, Math.max(min, numericValue));
+}
+
+function loadPhonePosition(): PhonePosition {
+  try {
+    const raw = window.localStorage?.getItem(PHONE_POSITION_STORAGE_KEY);
+    if (!raw) return { x: 0, y: 0 };
+
+    const parsed = JSON.parse(raw);
+    return {
+      x: Number.isFinite(Number(parsed?.x)) ? Number(parsed.x) : 0,
+      y: Number.isFinite(Number(parsed?.y)) ? Number(parsed.y) : 0,
+    };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
+function savePhonePosition(position: PhonePosition) {
+  try {
+    window.localStorage?.setItem(PHONE_POSITION_STORAGE_KEY, JSON.stringify(position));
+  } catch {
+    // Keep the current position for this page when storage is unavailable.
+  }
+}
+
+function getPhoneViewportSize() {
+  const ownerDocument = phoneContainerRef.value?.ownerDocument ?? document;
+  const ownerWindow = ownerDocument.defaultView ?? window;
+  const visualViewport = ownerWindow.visualViewport;
+
+  return {
+    width: Math.max(
+      Number(visualViewport?.width) || 0,
+      Number(ownerWindow.innerWidth) || 0,
+      Number(ownerDocument.documentElement?.clientWidth) || 0,
+    ),
+    height: Math.max(
+      Number(visualViewport?.height) || 0,
+      Number(ownerWindow.innerHeight) || 0,
+      Number(ownerDocument.documentElement?.clientHeight) || 0,
+    ),
+  };
+}
+
+function clampPhonePosition(position: PhonePosition): PhonePosition {
+  const viewport = getPhoneViewportSize();
+  const rect = phoneContainerRef.value?.getBoundingClientRect();
+  const width = rect?.width ?? Math.min(404, Math.max(0, viewport.width - 24));
+  const height = rect?.height ?? Math.min(762, Math.max(0, viewport.height - 24));
+  const centeredX = (viewport.width - width) / 2;
+  const centeredY = (viewport.height - height) / 2;
+  const minX = PHONE_VIEWPORT_PADDING - centeredX;
+  const maxX = viewport.width - PHONE_VIEWPORT_PADDING - width - centeredX;
+  const minY = PHONE_VIEWPORT_PADDING - centeredY;
+  const maxY = viewport.height - PHONE_VIEWPORT_PADDING - height - centeredY;
+
+  return {
+    x: clampNumber(position.x, Math.min(minX, maxX), Math.max(minX, maxX)),
+    y: clampNumber(position.y, Math.min(minY, maxY), Math.max(minY, maxY)),
+  };
+}
+
+function applyPhonePosition(position: PhonePosition, shouldSave = false) {
+  const nextPosition = clampPhonePosition(position);
+  phonePosition.value = nextPosition;
+  if (shouldSave) savePhonePosition(nextPosition);
+}
+
+function resetPhonePosition() {
+  applyPhonePosition({ x: 0, y: 0 }, true);
+}
+
+function getPhoneHostWindow(): Window {
+  return phoneContainerRef.value?.ownerDocument.defaultView ?? window;
+}
+
+function handlePhonePointerDown(event: PointerEvent) {
+  if (event.button !== 0) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  phoneDragState = {
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: phonePosition.value.x,
+    originY: phonePosition.value.y,
+    pointerId: event.pointerId,
+  };
+  isPhoneDragging.value = true;
+
+  const hostWindow = getPhoneHostWindow();
+  hostWindow.addEventListener('pointermove', handlePhonePointerMove, true);
+  hostWindow.addEventListener('pointerup', handlePhonePointerUp, true);
+  hostWindow.addEventListener('pointercancel', handlePhonePointerCancel, true);
+
+  try {
+    phoneDragHandleRef.value?.setPointerCapture(event.pointerId);
+  } catch {
+    // The window listeners keep dragging functional in webviews without pointer capture.
+  }
+}
+
+function handlePhonePointerMove(event: PointerEvent) {
+  if (!phoneDragState || event.pointerId !== phoneDragState.pointerId) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  applyPhonePosition({
+    x: phoneDragState.originX + event.clientX - phoneDragState.startX,
+    y: phoneDragState.originY + event.clientY - phoneDragState.startY,
+  });
+}
+
+function finishPhoneDrag(event: PointerEvent, shouldSave: boolean) {
+  if (!phoneDragState || event.pointerId !== phoneDragState.pointerId) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  try {
+    if (phoneDragHandleRef.value?.hasPointerCapture(event.pointerId)) {
+      phoneDragHandleRef.value.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // Ignore incomplete pointer capture implementations.
+  }
+
+  removePhonePointerListeners();
+  phoneDragState = null;
+  isPhoneDragging.value = false;
+  if (shouldSave) savePhonePosition(phonePosition.value);
+}
+
+function handlePhonePointerUp(event: PointerEvent) {
+  finishPhoneDrag(event, true);
+}
+
+function handlePhonePointerCancel(event: PointerEvent) {
+  finishPhoneDrag(event, false);
+}
+
+function removePhonePointerListeners() {
+  const hostWindow = getPhoneHostWindow();
+  hostWindow.removeEventListener('pointermove', handlePhonePointerMove, true);
+  hostWindow.removeEventListener('pointerup', handlePhonePointerUp, true);
+  hostWindow.removeEventListener('pointercancel', handlePhonePointerCancel, true);
+}
+
+function handlePhoneViewportResize() {
+  applyPhonePosition(phonePosition.value, true);
 }
 
 function isPhoneTheme(value: unknown): value is PhoneTheme {
@@ -1806,6 +2001,8 @@ function handleScriptUpdateStatus(event: Event) {
 onMounted(() => {
   loadMvuData();
   updateTime();
+  window.requestAnimationFrame(() => applyPhonePosition(phonePosition.value));
+  getPhoneHostWindow().addEventListener('resize', handlePhoneViewportResize);
 
   // 每2秒更新一次数据
   updateInterval = window.setInterval(() => {
@@ -1841,6 +2038,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   revokeIndexedImageObjectUrl(resolvedWallpaperUrl.value);
+  getPhoneHostWindow().removeEventListener('resize', handlePhoneViewportResize);
+  removePhonePointerListeners();
+  phoneDragState = null;
+  isPhoneDragging.value = false;
   if (updateInterval !== null) {
     clearInterval(updateInterval);
   }
@@ -1855,6 +2056,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+// Keep a first rule before the overlay; the live style loader can prepend a BOM to its first selector.
+.status-bar-style-anchor {
+  display: block;
+}
+
 .status-bar-overlay {
   position: fixed !important;
   inset: 0 !important;
@@ -1890,6 +2096,46 @@ onUnmounted(() => {
   height: 100%;
   filter: drop-shadow(0 26px 42px rgba(0, 0, 0, 0.42));
   animation: phone-enter 0.22s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.phone-device.phone-dragging {
+  user-select: none;
+}
+
+.phone-drag-handle {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  z-index: 9;
+  width: 112px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 0 0 16px 16px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+  transform: translateX(-50%);
+
+  &:hover,
+  &:focus-visible,
+  &.dragging {
+    background: rgba(14, 30, 38, 0.18);
+  }
+
+  &.dragging {
+    cursor: grabbing;
+  }
+}
+
+.phone-drag-grip {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.24);
+  opacity: 0.8;
 }
 
 .phone-frame {
