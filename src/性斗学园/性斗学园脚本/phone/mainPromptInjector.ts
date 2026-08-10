@@ -81,7 +81,9 @@ function setInstalledFlag(value: boolean): void {
 function isInstalled(): boolean {
   const localAny = window as any;
   const hostAny = getHostWindow();
-  return Boolean(localAny.__fatriaBackstreetPromptInjectorInstalled || hostAny.__fatriaBackstreetPromptInjectorInstalled);
+  return Boolean(
+    localAny.__fatriaBackstreetPromptInjectorInstalled || hostAny.__fatriaBackstreetPromptInjectorInstalled,
+  );
 }
 
 function getSillyTavernContext(): any {
@@ -319,11 +321,10 @@ function logEjsInjectionStatus(): boolean {
     return true;
   }
 
-  const missing = [
-    features.enabled ? '' : '插件总开关',
-    features.generate_enabled ? '' : '生成处理',
-  ].filter(Boolean);
-  console.warn(`[后街] 已写入蓝灯 EJS 记忆条目，但提示词模板未开启：${missing.join('、')}。开启后才能通过 EJS 注入正文提示词。`);
+  const missing = [features.enabled ? '' : '插件总开关', features.generate_enabled ? '' : '生成处理'].filter(Boolean);
+  console.warn(
+    `[后街] 已写入蓝灯 EJS 记忆条目，但提示词模板未开启：${missing.join('、')}。开启后才能通过 EJS 注入正文提示词。`,
+  );
   return true;
 }
 
@@ -341,9 +342,9 @@ function scheduleEjsStatusLog(): void {
 export function installBackstreetMainPromptInjector(): void {
   const globalAny = getHostWindow();
   exposeEjsInjectionBridge();
-  ensurePromptArtifacts('加载');
   if (isInstalled()) return;
   setInstalledFlag(true);
+  ensurePromptArtifacts('加载');
   let registeredPromptHook = false;
 
   if (globalAny.hooks && typeof globalAny.hooks.addFilter === 'function') {

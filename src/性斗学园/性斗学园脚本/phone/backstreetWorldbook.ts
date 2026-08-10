@@ -114,9 +114,13 @@ function normalizeMessage(value: Partial<BackstreetMessage>): BackstreetMessage 
 
 function normalizeThread(contact: string, value: Partial<BackstreetThreadData> | null): BackstreetThreadData {
   const kind = value?.kind === 'group' ? 'group' : 'private';
-  const members = Array.isArray(value?.members) ? uniqueStrings(value.members.map(member => safeString(member)).filter(Boolean)) : [];
+  const members = Array.isArray(value?.members)
+    ? uniqueStrings(value.members.map(member => safeString(member)).filter(Boolean))
+    : [];
   const messages = Array.isArray(value?.messages)
-    ? value.messages.map(message => normalizeMessage(message)).filter((message): message is BackstreetMessage => !!message)
+    ? value.messages
+        .map(message => normalizeMessage(message))
+        .filter((message): message is BackstreetMessage => !!message)
     : [];
   return {
     contact,
@@ -170,7 +174,9 @@ function mergeThreadParts(parts: BackstreetThreadData[]): BackstreetThreadData[]
         `${message.sender}::${message.speaker || ''}::${message.date || ''}::${message.time || ''}::${message.text}::${message.imageRef || message.imagePrompt || ''}`;
       byMessageId.set(id, message);
     }
-    thread.messages = Array.from(byMessageId.values()).sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
+    thread.messages = Array.from(byMessageId.values()).sort(
+      (left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0),
+    );
     return thread;
   });
 }
@@ -301,9 +307,15 @@ function extractReadableArchiveFallback(rawContent: string): string {
 
 function formatMemoryHitContent(rawContent: string, contact: string, thread: BackstreetThreadData): string {
   if (thread.messages.length > 0) {
-    return thread.messages.slice(-12).map(message => formatMemoryMessageLine(message, thread)).join('\n');
+    return thread.messages
+      .slice(-12)
+      .map(message => formatMemoryMessageLine(message, thread))
+      .join('\n');
   }
-  return extractReadableArchiveFallback(rawContent) || `过往后街记录存在，但无法解析为可读消息。${contact ? `联系人：${contact}` : ''}`;
+  return (
+    extractReadableArchiveFallback(rawContent) ||
+    `过往后街记录存在，但无法解析为可读消息。${contact ? `联系人：${contact}` : ''}`
+  );
 }
 
 function createGroupSystemMessage(text: string, date: string, time: string): BackstreetMessage {
@@ -362,6 +374,7 @@ function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit 
 export class BackstreetWorldbookStore {
   private cleanedGeneratedMemoryWorldbooks = new Set<string>();
   private readyWorldbooks = new Set<string>();
+  private readyPromises = new Map<string, Promise<void>>();
 
   private get worldName(): string {
     return worldbookClient.getPhoneWorldbookName();
@@ -369,12 +382,31 @@ export class BackstreetWorldbookStore {
 
   async ensureReady(): Promise<void> {
     const worldName = this.worldName;
-    if (this.readyWorldbooks.has(worldName)) return;
-    await worldbookClient.ensureWorldbook(this.worldName);
-    await this.ensureGuideEntry();
-    await this.ensureEjsInjectionEntries();
-    await this.cleanupGeneratedMemoryEntries();
-    this.readyWorldbooks.add(worldName);
+    if (!worldName) return;
+    if (this.readyWorldbooks.has(worldName)) {
+      // A first load can happen before SillyTavern exposes chat metadata. Retry
+      // the binding on later calls without rebuilding the worldbook.
+      await worldbookClient.ensureCurrentChatWorldbookBinding(worldName);
+      return;
+    }
+
+    const pending = this.readyPromises.get(worldName);
+    if (pending) return pending;
+
+    const readyPromise = (async () => {
+      await worldbookClient.ensureWorldbook(worldName);
+      await worldbookClient.ensureCurrentChatWorldbookBinding(worldName);
+      await this.ensureGuideEntry();
+      await this.ensureEjsInjectionEntries();
+      await this.cleanupGeneratedMemoryEntries();
+      this.readyWorldbooks.add(worldName);
+    })();
+    this.readyPromises.set(worldName, readyPromise);
+    try {
+      await readyPromise;
+    } finally {
+      if (this.readyPromises.get(worldName) === readyPromise) this.readyPromises.delete(worldName);
+    }
   }
 
   async ensureGuideEntry(): Promise<void> {
@@ -429,9 +461,13 @@ export class BackstreetWorldbookStore {
     if (!targetWorldName) return;
 
     const content = getEjsMemoryContent();
-    const legacyDeleted = await worldbookClient.deleteEntry(targetWorldName, LEGACY_EJS_INJECT_ENTRY).catch(() => false);
+    const legacyDeleted = await worldbookClient
+      .deleteEntry(targetWorldName, LEGACY_EJS_INJECT_ENTRY)
+      .catch(() => false);
 
-    const existing = await worldbookClient.getEntry(targetWorldName, EJS_MEMORY_ENTRY, { force: true }).catch(() => null);
+    const existing = await worldbookClient
+      .getEntry(targetWorldName, EJS_MEMORY_ENTRY, { force: true })
+      .catch(() => null);
     const shouldRefresh =
       legacyDeleted ||
       !existing ||
@@ -469,22 +505,30 @@ export class BackstreetWorldbookStore {
     if (this.cleanedGeneratedMemoryWorldbooks.has(worldName)) return;
     this.cleanedGeneratedMemoryWorldbooks.add(worldName);
 
-    const entries = await worldbookClient.listEntries(worldName, { includeDisabled: true, force: true }).catch(() => []);
-    const generatedEntries = entries.filter(entry => /\[?BACKSTREET_(?:MEMORY|BRIDGE)::/.test(safeString(entry.comment)));
+    const entries = await worldbookClient
+      .listEntries(worldName, { includeDisabled: true, force: true })
+      .catch(() => []);
+    const generatedEntries = entries.filter(entry =>
+      /\[?BACKSTREET_(?:MEMORY|BRIDGE)::/.test(safeString(entry.comment)),
+    );
     for (const entry of generatedEntries) {
       const comment = safeString(entry.comment);
       if (comment) await worldbookClient.deleteEntry(worldName, comment).catch(() => false);
     }
     if (generatedEntries.length > 0) {
       await worldbookClient.refreshWorldbookEditor(worldName);
-      console.info(`[后街] 已清理 ${generatedEntries.length} 条旧摘要/关键词桥接世界书条目，后续改用原始聊天固定注入。`);
+      console.info(
+        `[后街] 已清理 ${generatedEntries.length} 条旧摘要/关键词桥接世界书条目，后续改用原始聊天固定注入。`,
+      );
     }
   }
 
   async getMeta(): Promise<PhoneMetaData> {
     const entry = await worldbookClient.getEntry(this.worldName, META_ENTRY);
     const meta = normalizeMeta(parseWrappedJson<PhoneMetaData>(safeString(entry?.content), 'phone_meta'));
-    const chatGroups = await worldbookClient.getChatMetadataValue<Record<string, BackstreetGroup>>(GROUPS_CHAT_METADATA_KEY).catch(() => null);
+    const chatGroups = await worldbookClient
+      .getChatMetadataValue<Record<string, BackstreetGroup>>(GROUPS_CHAT_METADATA_KEY)
+      .catch(() => null);
     if (chatGroups && typeof chatGroups === 'object') {
       meta.groups = {
         ...normalizeMeta({ groups: chatGroups }).groups,
@@ -600,7 +644,10 @@ export class BackstreetWorldbookStore {
 
   async getThread(contact: string, options: { force?: boolean } = {}): Promise<BackstreetThreadData> {
     const entry = await worldbookClient.getEntry(this.worldName, getThreadEntryName(contact), options);
-    const thread = normalizeThread(contact, parseWrappedJson<BackstreetThreadData>(safeString(entry?.content), 'backstreet_thread'));
+    const thread = normalizeThread(
+      contact,
+      parseWrappedJson<BackstreetThreadData>(safeString(entry?.content), 'backstreet_thread'),
+    );
     const meta = await this.getMeta().catch(() => createEmptyMeta());
     return applyGroupMetaToThread(thread, meta.groups[contact]);
   }
@@ -608,7 +655,9 @@ export class BackstreetWorldbookStore {
   async listRawThreads(options: { force?: boolean } = {}): Promise<BackstreetThreadData[]> {
     await this.ensureGuideEntry();
     await this.cleanupGeneratedMemoryEntries();
-    const entries = await worldbookClient.listEntries(this.worldName, { includeDisabled: true, force: options.force }).catch(() => []);
+    const entries = await worldbookClient
+      .listEntries(this.worldName, { includeDisabled: true, force: options.force })
+      .catch(() => []);
     const parts = entries
       .filter(entry => /\[?BACKSTREET_(?:THREAD|ARCHIVE)::/.test(safeString(entry.comment)))
       .map(parseThreadLikeEntry)
@@ -667,7 +716,11 @@ export class BackstreetWorldbookStore {
     return thread;
   }
 
-  async replaceMessage(contact: string, messageId: string, nextMessage: BackstreetMessage): Promise<BackstreetThreadData> {
+  async replaceMessage(
+    contact: string,
+    messageId: string,
+    nextMessage: BackstreetMessage,
+  ): Promise<BackstreetThreadData> {
     const thread = await this.getThread(contact);
     const messageIndex = thread.messages.findIndex(message => message.id === messageId);
     if (messageIndex < 0) return thread;
@@ -693,7 +746,11 @@ export class BackstreetWorldbookStore {
         return affection > 0 || (!!type && type !== '陌生人');
       })
       .map(([name]) => name);
-    const names = uniqueStrings([...Object.values(meta.contacts).map(contact => contact.name), ...presentNames, ...relationNames]);
+    const names = uniqueStrings([
+      ...Object.values(meta.contacts).map(contact => contact.name),
+      ...presentNames,
+      ...relationNames,
+    ]);
 
     const privateContacts = names.map(name => {
       const metaContact = meta.contacts[name];

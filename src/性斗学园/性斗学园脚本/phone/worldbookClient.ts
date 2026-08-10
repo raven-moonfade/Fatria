@@ -3,7 +3,6 @@ import { safeStorageSegment, safeString } from './text';
 
 const WORLD_INFO_GET_ENDPOINT = '/api/worldinfo/get';
 const WORLD_INFO_EDIT_ENDPOINT = '/api/worldinfo/edit';
-const WORLD_INFO_CREATE_ENDPOINT = '/api/worldinfo/create';
 const CHAT_LOREBOOK_METADATA_KEY = 'world_info';
 const PHONE_WORLD_PREFIX = '后街-';
 
@@ -176,7 +175,10 @@ function getNextUid(entries: WorldbookEntry[]): number {
   return maxUid + 1;
 }
 
-function normalizeEntryOptions(comment: string, value: boolean | UpsertEntryOptions = false): Required<UpsertEntryOptions> {
+function normalizeEntryOptions(
+  comment: string,
+  value: boolean | UpsertEntryOptions = false,
+): Required<UpsertEntryOptions> {
   const options = typeof value === 'boolean' ? { enabled: value } : value;
   const enabled = options.enabled ?? false;
   return {
@@ -273,12 +275,14 @@ function createStorageEntry(comment: string, content: string): WorldbookEntry {
 export class WorldbookClient {
   private cache = new Map<string, { data: WorldbookData; at: number }>();
   private boundChatWorldbooks = new Set<string>();
+  private ensurePromises = new Map<string, Promise<WorldbookData>>();
   private scriptModulePromise: Promise<any> | null = null;
   private worldInfoModulePromise: Promise<any> | null = null;
   private lastChatKey = '';
 
   getPhoneWorldbookName(): string {
-    return `后街-${safeStorageSegment(this.getChatKey() || '默认聊天')}`;
+    const chatKey = safeStorageSegment(this.getChatKey());
+    return chatKey ? `后街-${chatKey}` : '';
   }
 
   getCurrentChatWorldbookName(): string {
@@ -303,7 +307,8 @@ export class WorldbookClient {
   getContext(): any {
     const globalAny = getHostWindow();
     if (typeof globalAny.SillyTavern?.getContext === 'function') return globalAny.SillyTavern.getContext();
-    if (typeof (globalThis as any).SillyTavern?.getContext === 'function') return (globalThis as any).SillyTavern.getContext();
+    if (typeof (globalThis as any).SillyTavern?.getContext === 'function')
+      return (globalThis as any).SillyTavern.getContext();
     return null;
   }
 
@@ -314,9 +319,8 @@ export class WorldbookClient {
       safeString((globalThis as any).SillyTavern?.getCurrentChatId?.()) ||
       safeString(context?.chatId) ||
       safeString(context?.chatMetadata?.file_name) ||
-      safeString(context?.chat?.[0]?.send_date) ||
-      '默认聊天';
-    const chatKey = stripChatFileExtension(rawKey) || '默认聊天';
+      safeString(context?.chat?.[0]?.send_date);
+    const chatKey = stripChatFileExtension(rawKey);
     if (this.lastChatKey && this.lastChatKey !== chatKey) {
       this.cache.clear();
       this.boundChatWorldbooks.clear();
@@ -329,10 +333,11 @@ export class WorldbookClient {
     const rawKey =
       safeString(context?.chatMetadata?.file_name) ||
       safeString(context?.chatId) ||
-      safeString(context?.chat?.[0]?.send_date) ||
-      '默认聊天';
+      safeString(context?.chat?.[0]?.send_date);
+    if (!rawKey) return '';
     const safeRawKey = safeStorageSegment(rawKey || '默认聊天');
-    const safeChatKey = safeStorageSegment(this.getChatKey(context) || '默认聊天');
+    const safeChatKey = safeStorageSegment(this.getChatKey(context));
+    if (!safeChatKey) return '';
     return safeRawKey && safeRawKey !== safeChatKey ? `${PHONE_WORLD_PREFIX}${safeRawKey}` : '';
   }
 
@@ -397,7 +402,7 @@ export class WorldbookClient {
     }
   }
 
-  async isKnownWorldbookName(name: string): Promise<boolean> {
+  private async getKnownWorldbookState(name: string): Promise<boolean | null> {
     const worldName = safeString(name);
     if (!worldName) return false;
 
@@ -406,8 +411,8 @@ export class WorldbookClient {
     const context = this.getContext();
     const worldInfoModule = await this.loadWorldInfoModule();
 
-    await Promise.resolve(context?.updateWorldInfoList?.()).catch(() => null);
-    await Promise.resolve(worldInfoModule?.updateWorldInfoList?.()).catch(() => null);
+    const updateWorldInfoList = context?.updateWorldInfoList || worldInfoModule?.updateWorldInfoList;
+    await Promise.resolve(updateWorldInfoList?.()).catch(() => null);
 
     const nameLists = [globalAny.world_names, globalAny.worldNames, worldInfoModule?.world_names].filter(Array.isArray);
     if (nameLists.some(list => list.includes(worldName))) return true;
@@ -417,7 +422,14 @@ export class WorldbookClient {
       return true;
     }
 
-    return nameLists.length === 0 && !editor;
+    // A populated list is authoritative. A null result means the host has not
+    // exposed a worldbook index yet, so callers may use their legacy fallback.
+    return nameLists.length > 0 || !!editor ? false : null;
+  }
+
+  async isKnownWorldbookName(name: string): Promise<boolean> {
+    const state = await this.getKnownWorldbookState(name);
+    return state !== false;
   }
 
   private async registerWorldbookName(name: string): Promise<void> {
@@ -475,6 +487,10 @@ export class WorldbookClient {
       .forEach(element => element.classList[method]('world_set'));
   }
 
+  async ensureCurrentChatWorldbookBinding(name: string): Promise<void> {
+    await this.bindWorldbookToCurrentChat(name);
+  }
+
   private async bindWorldbookToCurrentChat(name: string): Promise<void> {
     const worldName = safeString(name);
     if (!worldName.startsWith(PHONE_WORLD_PREFIX)) return;
@@ -483,12 +499,15 @@ export class WorldbookClient {
     const chatMetadata = context?.chatMetadata;
     if (!chatMetadata || typeof chatMetadata !== 'object') return;
 
+    const chatKey = this.getChatKey(context);
+    const currentWorldName = chatKey ? `${PHONE_WORLD_PREFIX}${safeStorageSegment(chatKey)}` : '';
+    if (!currentWorldName || worldName !== currentWorldName) return;
+
     const scriptModule = await this.loadScriptModule();
     const metadataTargets = [chatMetadata, scriptModule?.chat_metadata, getHostWindow().chat_metadata].filter(
       target => target && typeof target === 'object',
     );
     const existing = safeString(chatMetadata[CHAT_LOREBOOK_METADATA_KEY]);
-    const chatKey = this.getChatKey(context);
     const bindKey = `${chatKey}::${worldName}::${existing}`;
     const alreadyBound = this.boundChatWorldbooks.has(bindKey);
     this.boundChatWorldbooks.add(bindKey);
@@ -541,25 +560,31 @@ export class WorldbookClient {
     await this.saveChatMetadata(context);
   }
 
-  async readWorldbook(name: string, options: { force?: boolean; allowMissing?: boolean } = {}): Promise<WorldbookData | null> {
+  async readWorldbook(
+    name: string,
+    options: { force?: boolean; allowMissing?: boolean } = {},
+  ): Promise<WorldbookData | null> {
     const worldName = safeString(name);
     if (!worldName) return null;
 
     const cached = this.cache.get(worldName);
     if (!options.force && cached && Date.now() - cached.at < 5000) return cloneWorldbookData(cached.data);
 
+    // SillyTavern returns a 200/empty placeholder for a missing file, while
+    // logging an error on the server. Check the worldbook index first so a
+    // normal optional read does not produce misleading backend errors.
+    const knownState = await this.getKnownWorldbookState(worldName).catch(() => null);
+    if (knownState === false) {
+      this.cache.delete(worldName);
+      if (options.allowMissing) return null;
+      throw new Error(`未找到世界书：${worldName}`);
+    }
+
     try {
-      const payloads = [{ name: worldName }, { world: worldName }, { file: worldName }, { filename: worldName }];
-      for (const payload of payloads) {
-        try {
-          const data = normalizeWorldbookData(await postJson<unknown>(WORLD_INFO_GET_ENDPOINT, payload));
-          if (data) {
-            this.cache.set(worldName, { data, at: Date.now() });
-            return cloneWorldbookData(data);
-          }
-        } catch {
-          // Try the next payload shape.
-        }
+      const data = normalizeWorldbookData(await postJson<unknown>(WORLD_INFO_GET_ENDPOINT, { name: worldName }));
+      if (data) {
+        this.cache.set(worldName, { data, at: Date.now() });
+        return cloneWorldbookData(data);
       }
       if (options.allowMissing) {
         this.cache.delete(worldName);
@@ -576,6 +601,22 @@ export class WorldbookClient {
   }
 
   async ensureWorldbook(name: string): Promise<WorldbookData> {
+    const worldName = safeString(name);
+    if (!worldName) return { entries: {} };
+
+    const pending = this.ensurePromises.get(worldName);
+    if (pending) return cloneWorldbookData(await pending);
+
+    const ensurePromise = this.ensureWorldbookInternal(worldName);
+    this.ensurePromises.set(worldName, ensurePromise);
+    try {
+      return cloneWorldbookData(await ensurePromise);
+    } finally {
+      if (this.ensurePromises.get(worldName) === ensurePromise) this.ensurePromises.delete(worldName);
+    }
+  }
+
+  private async ensureWorldbookInternal(name: string): Promise<WorldbookData> {
     const existing = await this.readWorldbook(name, { allowMissing: true, force: true });
     if (existing) {
       await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
@@ -594,43 +635,24 @@ export class WorldbookClient {
       return legacy;
     }
 
-    await postJson<unknown>(WORLD_INFO_CREATE_ENDPOINT, { name }).catch(() => null);
-    const created = await this.readWorldbook(name, { allowMissing: true, force: true });
-    if (created) {
-      await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
-      return created;
-    }
-
-    console.warn(`[后街] 聊天世界书「${name}」创建失败，已跳过自动绑定，避免绑定到不存在的世界书。`);
-    return { entries: {} };
+    const created: WorldbookData = { entries: {} };
+    await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, { name, data: created });
+    this.cache.set(name, { data: created, at: Date.now() });
+    await this.registerWorldbookName(name);
+    await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
+    return created;
   }
 
   async saveWorldbook(name: string, data: WorldbookData): Promise<void> {
     const worldName = safeString(name);
-    const payloads = [
-      { name: worldName, data },
-      { world: worldName, data },
-      { file: worldName, data },
-    ];
+    if (!worldName) throw new Error('世界书名称不能为空');
 
-    let lastError: unknown = null;
-    for (const payload of payloads) {
-      try {
-        await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, payload);
-        this.cache.set(worldName, { data, at: Date.now() });
-        await this.bindWorldbookToCurrentChat(worldName).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    await postJson<unknown>(WORLD_INFO_CREATE_ENDPOINT, { name: worldName }).catch(() => null);
-    await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, { name: worldName, data }).catch(() => {
-      throw lastError instanceof Error ? lastError : new Error('保存世界书失败');
-    });
+    await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, { name: worldName, data });
     this.cache.set(worldName, { data, at: Date.now() });
-    await this.bindWorldbookToCurrentChat(worldName).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
+    await this.registerWorldbookName(worldName);
+    await this.bindWorldbookToCurrentChat(worldName).catch(error =>
+      console.warn('[后街] 自动绑定聊天世界书失败:', error),
+    );
   }
 
   async upsertStorageEntry(name: string, comment: string, content: string): Promise<void> {
@@ -689,7 +711,10 @@ export class WorldbookClient {
     return getEntriesArray(data).find(entry => safeString(entry.comment) === comment) || null;
   }
 
-  async listEntries(name: string, options: { includeDisabled?: boolean; force?: boolean } = {}): Promise<WorldbookEntry[]> {
+  async listEntries(
+    name: string,
+    options: { includeDisabled?: boolean; force?: boolean } = {},
+  ): Promise<WorldbookEntry[]> {
     const data = await this.readWorldbook(name, { allowMissing: true, force: options.force });
     return getEntriesArray(data).filter(entry => options.includeDisabled || isWorldbookEntryEnabled(entry));
   }
