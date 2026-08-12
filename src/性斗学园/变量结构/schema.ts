@@ -193,7 +193,7 @@ const EquipmentInBagSchema = BaseItemSchema.extend({
   类型: z.literal('装备'),
   加成属性: BonusSchema,
   部位: z.enum(['主装备', '副装备', '饰品', '特殊装备']),
-  数量: z.literal(1).prefault(1),
+  数量: z.coerce.number().min(0).prefault(1),
 });
 
 const ConsumableItemSchema = BaseItemSchema.extend({

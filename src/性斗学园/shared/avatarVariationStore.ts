@@ -33,16 +33,6 @@ export interface AvatarVariationRecord {
 export type SerializableAvatarVariationMap = Record<string, AvatarVariationRecord>;
 
 export const AVATAR_VARIATION_CONFIGS: AvatarVariationConfig[] = [
-  { characterName: '上杉亚衣', imageFolder: '上杉亚衣' },
-  { characterName: '凰天羽', imageFolder: '凰天羽' },
-  { characterName: '山田花子', imageFolder: '山田花子' },
-  { characterName: '星野光', imageFolder: '星野光' },
-  { characterName: '李小云', imageFolder: '李小云' },
-  { characterName: '猫宫宁宁', imageFolder: '猫宫宁宁' },
-  { characterName: '艾琳海德', imageFolder: '艾琳海德' },
-  { characterName: '莎拉斯通', imageFolder: '莎拉斯通' },
-  { characterName: '铃音', imageFolder: '铃音' },
-  { characterName: '风音', imageFolder: '风音' },
   { characterName: '樱岛麻衣', imageFolder: '麻衣' },
 ];
 
@@ -137,6 +127,11 @@ export function getAvatarVariationConfigForCharacter(characterName: string): Ava
     return null;
   }
 
+  const createDefaultConfig = (name: string): AvatarVariationConfig => ({
+    characterName: name,
+    imageFolder: name,
+  });
+
   const direct = AVATAR_VARIATION_CONFIGS.find(
     config =>
       normalizeCharacterName(config.characterName) === normalizedName ||
@@ -160,6 +155,10 @@ export function getAvatarVariationConfigForCharacter(characterName: string): Ava
     }
   }
 
+  if (aliasTarget) {
+    return createDefaultConfig(aliasTarget);
+  }
+
   const byFullName = [...AVATAR_VARIATION_CONFIGS].sort((a, b) => b.characterName.length - a.characterName.length);
   const includedConfig = byFullName.find(config =>
     normalizedName.includes(normalizeCharacterName(config.characterName)),
@@ -180,9 +179,11 @@ export function getAvatarVariationConfigForCharacter(characterName: string): Ava
     if (matched) {
       return matched;
     }
+
+    return createDefaultConfig(fullName);
   }
 
-  return null;
+  return createDefaultConfig(characterName.trim());
 }
 
 export function getAvatarVariationCharacterName(characterName: string): string | null {

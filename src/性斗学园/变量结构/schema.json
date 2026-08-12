@@ -482,7 +482,7 @@
                   "数量": {
                     "default": 1,
                     "type": "number",
-                    "const": 1
+                    "minimum": 0
                   }
                 },
                 "required": [
