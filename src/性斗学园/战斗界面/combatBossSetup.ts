@@ -129,7 +129,7 @@ export function createBossRuntimeSetup(params: {
       },
       {
         kind: 'log',
-        message: '【信息素侵蚀】每回合你的性斗力成算+5%，忍耐力成算-5%，快感增加',
+        message: '【信息素侵蚀】每回合你的性斗力成算+5%，忍耐力成算-5%，快感增加当前回合×2.5%×最大快感',
         source: 'system',
         type: 'debuff',
       },

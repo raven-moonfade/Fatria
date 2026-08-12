@@ -437,8 +437,9 @@
                   <Card
                     v-for="item in player.items.filter(i => i.quantity > 0)"
                     :key="item.id"
-                    :hover="true"
+                    :hover="!hasReachedItemBattleLimit(item.id)"
                     class="item-card"
+                    :class="{ 'item-card-exhausted': hasReachedItemBattleLimit(item.id) }"
                     @click="handlePlayerItemClick(item)"
                     @mouseenter="showItemEffectTooltip(item, $event)"
                     @mouseleave="hideSkillEffectTooltip(`item_${item.id}`)"
@@ -450,7 +451,12 @@
                   >
                     <div class="item-header">
                       <span class="item-name">{{ item.name }}</span>
-                      <span class="item-quantity">x{{ item.quantity }}</span>
+                      <div class="item-counts">
+                        <span class="item-battle-uses" :class="{ exhausted: hasReachedItemBattleLimit(item.id) }">
+                          本场 {{ getItemBattleUseCount(item.id) }}/{{ MAX_ITEM_USES_PER_BATTLE }}
+                        </span>
+                        <span class="item-quantity">x{{ item.quantity }}</span>
+                      </div>
                     </div>
                     <p class="item-desc">{{ item.description }}</p>
                     <div v-if="item.staminaRestore || item.pleasureReduce" class="item-effect">
@@ -874,6 +880,16 @@ const isBossSurrenderDisabled = ref<boolean>(false);
 
 // 每回合道具使用限制
 const itemUsedThisTurn = ref<boolean>(false);
+const MAX_ITEM_USES_PER_BATTLE = 2;
+const itemBattleUseCounts = ref<Record<string, number>>({});
+
+function getItemBattleUseCount(itemId: string): number {
+  return itemBattleUseCounts.value[itemId] ?? 0;
+}
+
+function hasReachedItemBattleLimit(itemId: string): boolean {
+  return getItemBattleUseCount(itemId) >= MAX_ITEM_USES_PER_BATTLE;
+}
 
 // 装备技战斗内状态
 const equippedEquipmentSkills = ref<EquippedEquipmentSkill[]>([]);
@@ -1378,6 +1394,45 @@ function getExorcismRelationships(): Record<string, number> {
   return result;
 }
 
+function getCurrentEnemyOath(): '无' | '支配型' | '平等型' | '被支配型' {
+  const relationships = _.get(currentCombatStatData, '关系系统', {}) as Record<string, any>;
+  const currentEnemyName = resolveEnemyName(enemy.value.name).replace(/_\d+$/g, '');
+
+  for (const [relationshipName, relationship] of Object.entries(relationships || {})) {
+    if (!relationship || typeof relationship !== 'object' || Array.isArray(relationship)) continue;
+
+    const resolvedRelationshipName = resolveEnemyName(relationshipName).replace(/_\d+$/g, '');
+    if (resolvedRelationshipName !== currentEnemyName) continue;
+
+    const oath = String(relationship.誓约 || '无');
+    if (oath === '支配型' || oath === '平等型' || oath === '被支配型') {
+      return oath;
+    }
+    return '无';
+  }
+
+  return '无';
+}
+
+async function applyOathBattleEffects() {
+  if (getCurrentEnemyOath() !== '被支配型') return;
+
+  await applyTalentBuff(
+    'player',
+    '誓约_服从',
+    {
+      魅力加成: -Math.floor(player.value.stats.charm * 0.2),
+      幸运加成: -Math.floor(player.value.stats.luck * 0.2),
+      闪避率加成: -Math.floor(player.value.stats.evasion * 0.2),
+      暴击率加成: -Math.floor(player.value.stats.crit * 0.2),
+      基础性斗力成算: -20,
+      基础忍耐力成算: -20,
+    },
+    999,
+  );
+  addLog(`【服从誓约】面对${enemy.value.name}，你本能地屈从于誓约压制，全属性降低20%。`, 'system', 'debuff');
+}
+
 function isCurrentEnemyName(
   statData: Record<string, any>,
   companionName: string,
@@ -1716,6 +1771,11 @@ async function evaluateAndApplyExorcismMechanics(
   updateExorcismDamageStepRuntime(definition, runtime, evaluation.matchedMechanicIds, options.damageTakenPercent);
   await applyExorcismMechanicActions(evaluation.actions, result);
 
+  // 驱魔 Boss 的特殊 Bad End 也是正式败北结算，必须走统一收尾。
+  if (result.triggeredBadEnd) {
+    await finishCombatAfterResult();
+  }
+
   return result;
 }
 
@@ -1994,7 +2054,6 @@ async function loadFromMvu() {
     const skillIds = Object.keys(availableSkills);
     if (skillIds.length > 0) {
       const { getSkillById } = await import('./skillDatabase');
-      const { DamageSource } = await import('./types');
       const nextSkillEffectDetails: Record<string, SkillEffectTooltipItem[]> = {};
 
       player.value.skills = skillIds
@@ -4179,18 +4238,6 @@ async function tickCombatStatusEffects(): Promise<string[]> {
   return logs;
 }
 
-function loadSkillData(skill: any): void {
-  if (!skill.data) skill.data = {};
-  if (!skill.data.damageSource) {
-    const source = skill.data.damageFormula?.[0]?.source;
-    if (source) skill.data.damageSource = source;
-  }
-  if (!skill.data.powerCoeff) {
-    const coef = skill.data.damageFormula?.[0]?.coefficient;
-    if (coef) skill.data.powerCoeff = Math.round(coef * 100);
-  }
-}
-
 /**
  * 更新对手实时属性到 UI
  * 流程：运行时状态列表 -> shared/statSelectors 实时计算属性 -> 同步 UI
@@ -4557,16 +4604,17 @@ async function finishCombatAfterResult() {
   const playerStatusListBeforeClear =
     finalPhase === 'defeat' && exorcismBossDefinition.value ? await readPlayerTemporaryStatusList() : {};
 
-  const rewardLogs = await grantVictoryRewards(enemy.value.name, finalPhase === 'victory');
-  rewardLogs.forEach(log => addLog(log.message, 'system', log.type));
-
-  selectAndDisplayCG();
+  await selectAndDisplayCG();
   turnState.enemyIntention = null;
   turnState.climaxTarget = null;
   await clearTemporaryStatus();
   turnState.phase = finalPhase;
   await applyExorcismDefeatStatus(playerStatusListBeforeClear);
   await saveToMvu();
+
+  // 奖励必须最后写入，避免清理临时状态或最终战斗保存覆盖刚插入背包的装备。
+  const rewardLogs = await grantVictoryRewards(enemy.value.name, finalPhase === 'victory');
+  rewardLogs.forEach(log => addLog(log.message, 'system', log.type));
 }
 
 async function applyBossClimaxActions(actions: BossClimaxAction[]) {
@@ -4682,8 +4730,8 @@ function isSkillDisabled(skill: Skill): boolean {
   return isSkillActionDisabled(skill, player.value.stats.currentEndurance, getSkillCostContext(skill));
 }
 
-function applyPlayerTalentActions(actions: PlayerTalentAction[]) {
-  actions.forEach(action => {
+async function applyPlayerTalentActions(actions: PlayerTalentAction[]) {
+  for (const action of actions) {
     switch (action.kind) {
       case 'log':
         addLog(action.message, action.source, action.type);
@@ -4693,29 +4741,29 @@ function applyPlayerTalentActions(actions: PlayerTalentAction[]) {
         playerBindSource.value = action.bindSource;
         break;
       case 'removePlayerBuff':
-        removeTalentBuff('player', action.buffName);
+        await removeTalentBuff('player', action.buffName);
         break;
       case 'applyPlayerBuff':
-        applyTalentBuff('player', action.buffName, action.bonus, action.duration);
+        await applyTalentBuff('player', action.buffName, action.bonus, action.duration);
         break;
     }
-  });
+  }
 }
 
-function applyPlayerAttackActions(
+async function applyPlayerAttackActions(
   actions: PlayerAttackAction[],
   context: { nextPlayer?: Character; nextEnemy?: Character } = {},
 ) {
-  actions.forEach(action => {
+  for (const action of actions) {
     switch (action.kind) {
       case 'log':
         addLog(action.message, action.source, action.type);
         break;
       case 'removePlayerBuff':
-        removeTalentBuff('player', action.buffName);
+        await removeTalentBuff('player', action.buffName);
         break;
       case 'applyPlayerBuff':
-        applyTalentBuff('player', action.buffName, action.bonus, action.duration);
+        await applyTalentBuff('player', action.buffName, action.bonus, action.duration);
         break;
       case 'changePlayerPleasure': {
         const target = context.nextPlayer || player.value;
@@ -4739,7 +4787,7 @@ function applyPlayerAttackActions(
         addEnemyRuntimeStatusBonus(action.statusName, action.bonus, action.duration);
         break;
       case 'updateEnemyStats':
-        updateEnemyRealtimeStats();
+        await updateEnemyRealtimeStats();
         break;
       case 'adjustEnemyStats': {
         const target = context.nextEnemy || enemy.value;
@@ -4755,11 +4803,14 @@ function applyPlayerAttackActions(
         BossSystem.queueDialogues(action.dialogues, action.blocking);
         break;
     }
-  });
+  }
 }
 
-function applyElizabethCommandActions(actions: ElizabethCommandAction[], context: { targetPlayer?: Character } = {}) {
-  actions.forEach(action => {
+async function applyElizabethCommandActions(
+  actions: ElizabethCommandAction[],
+  context: { targetPlayer?: Character } = {},
+) {
+  for (const action of actions) {
     switch (action.kind) {
       case 'log':
         addLog(action.message, action.source, action.type);
@@ -4776,17 +4827,17 @@ function applyElizabethCommandActions(actions: ElizabethCommandAction[], context
         setEnemyRuntimeStatus(action.statusName, action.effect);
         break;
       case 'updateEnemyStats':
-        updateEnemyRealtimeStats();
+        await updateEnemyRealtimeStats();
         break;
       case 'queueBossDialogues':
         BossSystem.queueDialogues(action.dialogues);
         break;
     }
-  });
+  }
 }
 
-function applyEnemyBossActions(actions: EnemyPostDamageBossAction[]) {
-  actions.forEach(action => {
+async function applyEnemyBossActions(actions: EnemyPostDamageBossAction[]) {
+  for (const action of actions) {
     switch (action.kind) {
       case 'log':
         addLog(action.message, action.source, action.type);
@@ -4801,18 +4852,18 @@ function applyEnemyBossActions(actions: EnemyPostDamageBossAction[]) {
         break;
       }
       case 'updateEnemyStats':
-        updateEnemyRealtimeStats();
+        await updateEnemyRealtimeStats();
         break;
       case 'bindEnemy':
         enemyBoundTurns.value = action.turns;
         enemyBindSource.value = action.bindSource;
         break;
     }
-  });
+  }
 }
 
-function applyEnemySkillAttackEvents(events: EnemySkillAttackEvent[]) {
-  events.forEach(event => {
+async function applyEnemySkillAttackEvents(events: EnemySkillAttackEvent[]) {
+  for (const event of events) {
     switch (event.kind) {
       case 'log':
         addLog(event.message, event.source, event.type);
@@ -4821,13 +4872,13 @@ function applyEnemySkillAttackEvents(events: EnemySkillAttackEvent[]) {
         triggerEffect(event.effect);
         break;
       case 'enemyBossActions':
-        applyEnemyBossActions(event.actions);
+        await applyEnemyBossActions(event.actions);
         break;
       case 'playerTalentActions':
-        applyPlayerTalentActions(event.actions);
+        await applyPlayerTalentActions(event.actions);
         break;
     }
-  });
+  }
 }
 
 async function applyEnemyTurnStartActions(actions: EnemyTurnStartAction[]) {
@@ -4886,7 +4937,7 @@ async function applyEnemyTurnStartActions(actions: EnemyTurnStartAction[]) {
         setEnemyRuntimeStatus(action.statusName, action.effect);
         break;
       case 'updateEnemyStats':
-        updateEnemyRealtimeStats();
+        await updateEnemyRealtimeStats();
         break;
       case 'queueBossDialogues':
         BossSystem.queueDialogues(action.dialogues, action.blocking);
@@ -4906,22 +4957,22 @@ async function applyEnemyTurnStartActions(actions: EnemyTurnStartAction[]) {
   }
 }
 
-function applyTurnStartActions(actions: TurnStartAction[]) {
-  actions.forEach(action => {
+async function applyTurnStartActions(actions: TurnStartAction[]) {
+  for (const action of actions) {
     switch (action.kind) {
       case 'log':
         addLog(action.message, action.source, action.type);
         break;
       case 'setPlayerEndurance':
         player.value.stats.currentEndurance = action.value;
-        syncPlayerStaminaToMvu(player.value.stats.currentEndurance);
+        await syncPlayerStaminaToMvu(player.value.stats.currentEndurance);
         break;
       case 'changePlayerPleasure':
         player.value.stats.currentPleasure = Math.min(
           player.value.stats.maxPleasure,
           player.value.stats.currentPleasure + action.delta,
         );
-        syncPlayerPleasureToMvu(player.value.stats.currentPleasure);
+        await syncPlayerPleasureToMvu(player.value.stats.currentPleasure);
         break;
       case 'resourcePopup':
         pushExplicitResourcePopup(action.target, action.resource, action.delta);
@@ -4931,13 +4982,13 @@ function applyTurnStartActions(actions: TurnStartAction[]) {
         playerBindSource.value = action.bindSource;
         break;
       case 'removePlayerBuff':
-        removeTalentBuff('player', action.buffName);
+        await removeTalentBuff('player', action.buffName);
         break;
       case 'applyPlayerBuff':
-        applyTalentBuff('player', action.buffName, action.bonus, action.duration);
+        await applyTalentBuff('player', action.buffName, action.bonus, action.duration);
         break;
       case 'applyEnemyBuff':
-        applyTalentBuff('enemy', action.buffName, action.bonus, action.duration);
+        await applyTalentBuff('enemy', action.buffName, action.bonus, action.duration);
         break;
       case 'setTalentState':
         playerTalentState.value = action.talentState;
@@ -4962,7 +5013,7 @@ function applyTurnStartActions(actions: TurnStartAction[]) {
         }
         break;
     }
-  });
+  }
 }
 
 function applyTurnEndActions(actions: TurnEndAction[]) {
@@ -4981,8 +5032,8 @@ function applyTurnEndActions(actions: TurnEndAction[]) {
   });
 }
 
-function applySkipTurnActions(actions: SkipTurnAction[]) {
-  actions.forEach(action => {
+async function applySkipTurnActions(actions: SkipTurnAction[]) {
+  for (const action of actions) {
     switch (action.kind) {
       case 'log':
         addLog(action.message, action.source, action.type);
@@ -4997,13 +5048,13 @@ function applySkipTurnActions(actions: SkipTurnAction[]) {
         playerTalentState.value = action.talentState;
         break;
       case 'applyPlayerBuff':
-        applyTalentBuff('player', action.buffName, action.bonus, action.duration);
+        await applyTalentBuff('player', action.buffName, action.bonus, action.duration);
         break;
       case 'removePlayerBuff':
-        removeTalentBuff('player', action.buffName);
+        await removeTalentBuff('player', action.buffName);
         break;
     }
-  });
+  }
 }
 
 // ================= 战斗逻辑 =================
@@ -5176,7 +5227,7 @@ async function handlePlayerSkill(skill: Skill) {
   }
 
   // 使用新的战斗计算系统
-  import('./combatCalculator').then(async ({ executeAttack, applySkillBuffs }) => {
+  import('./combatCalculator').then(async ({ executeAttack }) => {
     try {
       if (isBattleFlowLocked()) {
         return;
@@ -5219,7 +5270,7 @@ async function handlePlayerSkill(skill: Skill) {
         currentTurn: turnState.currentTurn,
         bossState: BossSystem.bossState,
       });
-      applyPlayerAttackActions(attackPreparation.actions);
+      await applyPlayerAttackActions(attackPreparation.actions);
       const talentAttackResult = attackPreparation.talentAttackResult;
       const attackOptions = { ...attackPreparation.attackOptions };
       const preAttackSpecialLogs: string[] = [];
@@ -5256,7 +5307,7 @@ async function handlePlayerSkill(skill: Skill) {
         playerFocusActive && skill.data.damageFormula.length > 0 && Math.max(0, Number(skill.data.hitCount ?? 1)) > 0;
 
       // ========== 天赋被动效果：应用伤害加成 ==========
-      applyPlayerAttackActions(
+      await applyPlayerAttackActions(
         applyTalentPassiveDamageBoost({
           talent: playerTalent.value,
           result,
@@ -5279,7 +5330,7 @@ async function handlePlayerSkill(skill: Skill) {
       }
       const skillRarity = await getPlayerSkillRarity(skill.id, 'C');
 
-      applyElizabethCommandActions(
+      await applyElizabethCommandActions(
         createElizabethSkillCommandActions({
           bossState: BossSystem.bossState,
           skillRarity,
@@ -5294,7 +5345,7 @@ async function handlePlayerSkill(skill: Skill) {
       if (result.isDodged) {
         addLog(`${playerAttackTarget.name} 闪避了所有攻击！`, 'system', 'info');
         triggerEffect('dodge');
-        applyPlayerAttackActions(
+        await applyPlayerAttackActions(
           createPlayerDodgedActions({
             sinType: TalentSystem.getSinTalentType(playerTalent.value),
             talentState: playerTalentState.value,
@@ -5318,7 +5369,7 @@ async function handlePlayerSkill(skill: Skill) {
           if (result.isCritical) {
             addLog(`暴击！总计造成 ${result.totalDamage} 点快感！`, 'player', 'critical');
             triggerEffect('critical');
-            applyPlayerAttackActions(
+            await applyPlayerAttackActions(
               createPlayerCriticalHitActions({
                 sinType: TalentSystem.getSinTalentType(playerTalent.value),
                 talentState: playerTalentState.value,
@@ -5345,14 +5396,14 @@ async function handlePlayerSkill(skill: Skill) {
           );
 
           if (!playerConfusionLog) {
-            applyPlayerAttackActions(
+            await applyPlayerAttackActions(
               createAgnesPlayerDamageActions({
                 bossState: BossSystem.bossState,
                 damage: result.totalDamage,
               }),
             );
 
-            applyPlayerAttackActions(
+            await applyPlayerAttackActions(
               createPlayerDamageDealtActions({
                 talent: playerTalent.value,
                 talentContext: createTalentEffectContext(),
@@ -5396,7 +5447,7 @@ async function handlePlayerSkill(skill: Skill) {
         }
 
         if (hasDirectDamage && !playerConfusionLog) {
-          applyPlayerAttackActions(
+          await applyPlayerAttackActions(
             createTalentBindAfterHitActions({
               talentAttackResult,
               enemyBoundTurns: enemyBoundTurns.value,
@@ -5406,7 +5457,7 @@ async function handlePlayerSkill(skill: Skill) {
           );
 
           // ========== 黑崎晴雯BOSS：贪婪天赋 - C/B级技能命中时随机技能耐力消耗减半 ==========
-          applyPlayerAttackActions(
+          await applyPlayerAttackActions(
             createHeisakiLowRarityHitActions({
               bossState: BossSystem.bossState,
               skillRarity,
@@ -5417,7 +5468,7 @@ async function handlePlayerSkill(skill: Skill) {
       }
 
       // ========== 黑崎晴雯BOSS：贪婪天赋 - A/S/SS级技能使用后耐力消耗翻倍 ==========
-      applyPlayerAttackActions(
+      await applyPlayerAttackActions(
         createHeisakiHighRaritySkillUsedActions({
           bossState: BossSystem.bossState,
           skillId: skill.id,
@@ -5529,6 +5580,16 @@ async function handlePlayerItem(item: Item) {
     return;
   }
 
+  if (itemUsedThisTurn.value) {
+    addLog('本回合已经使用过道具了。', 'system', 'info');
+    return;
+  }
+
+  if (hasReachedItemBattleLimit(item.id)) {
+    addLog(`${item.name} 本场战斗已使用 ${MAX_ITEM_USES_PER_BATTLE} 次，无法再次使用。`, 'system', 'info');
+    return;
+  }
+
   // 使用物品不结束回合，所以不需要设置processing状态
   const nextPlayer = cloneCharacter(player.value);
   const nextEnemy = cloneCharacter(enemy.value);
@@ -5543,6 +5604,10 @@ async function handlePlayerItem(item: Item) {
     );
     // 标记本回合已使用道具
     itemUsedThisTurn.value = true;
+    itemBattleUseCounts.value = {
+      ...itemBattleUseCounts.value,
+      [item.id]: getItemBattleUseCount(item.id) + 1,
+    };
     triggerCombatItemVisual(item);
   }
 
@@ -5896,7 +5961,7 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
       addLog(`${nextEnemy.name} 的集中效果已消耗`, 'system', 'info');
     }
 
-    applyEnemySkillAttackEvents(attackResolution.beforeDialogueEvents);
+    await applyEnemySkillAttackEvents(attackResolution.beforeDialogueEvents);
 
     const playerGenderForDialogue =
       BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'vespera'
@@ -5904,7 +5969,7 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
         : '男';
     queueEnemySkillBattleDialogue(BossSystem.bossState, playerGenderForDialogue);
 
-    applyEnemySkillAttackEvents(attackResolution.afterDialogueEvents);
+    await applyEnemySkillAttackEvents(attackResolution.afterDialogueEvents);
 
     const postDamageSpecialLogs = await applyPostDamageSpecialEffects({
       attackerSide: 'enemy',
@@ -6022,6 +6087,13 @@ async function handleEnemyTurn() {
 
     await applyEnemyTurnStartActions(boundTurnResolution.tickActions);
     void finishTurnAndMaybeStartNextTurn();
+    return;
+  }
+
+  // 支配型誓约表示玩家支配对手：对手每个可行动回合有30%概率因畏惧而放弃攻击。
+  if (getCurrentEnemyOath() === '支配型' && Math.random() < 0.3) {
+    addLog(`【支配誓约】${enemy.value.name}畏惧地停下了动作：“呜~主人，人家不敢……”`, 'enemy', 'debuff');
+    await finishTurnAndMaybeStartNextTurn();
     return;
   }
 
@@ -6208,7 +6280,7 @@ async function startNewTurn() {
   }
 
   // 回合开始回复（双方各回复 3+最大耐力*0.03 点体力，向上取整）
-  applyTurnStartActions(createTurnStartRecoveryActions(player.value, enemy.value));
+  await applyTurnStartActions(createTurnStartRecoveryActions(player.value, enemy.value));
   await saveToMvu();
 
   // 冷却递减
@@ -6216,7 +6288,7 @@ async function startNewTurn() {
   decrementSkillCooldowns(enemy.value.skills, enemyRuntimeSkillCooldowns.value);
   decrementEquipmentSkillCooldowns();
 
-  void refreshStatusEffectsAtTurnStart();
+  await refreshStatusEffectsAtTurnStart();
 
   // 束缚回合数现在在专门的endTurn函数中处理
 
@@ -6226,7 +6298,7 @@ async function startNewTurn() {
     TalentSystem.processTalentOnTurnStart(playerTalent.value, talentContext);
 
     // ========== 七宗罪回合开始效果 ==========
-    applyTurnStartActions(
+    await applyTurnStartActions(
       createPlayerSinTurnStartActions({
         sinType: TalentSystem.getSinTalentType(playerTalent.value),
         talentContext,
@@ -6237,7 +6309,7 @@ async function startNewTurn() {
     );
   }
 
-  applyTurnStartActions(
+  await applyTurnStartActions(
     createVesperaTurnStartActions({
       bossState: BossSystem.bossState,
       currentTurn: turnState.currentTurn,
@@ -6246,7 +6318,7 @@ async function startNewTurn() {
     }),
   );
 
-  applyTurnStartActions(
+  await applyTurnStartActions(
     createElizabethTurnStartActions({
       bossState: BossSystem.bossState,
       currentTurn: turnState.currentTurn,
@@ -6258,11 +6330,11 @@ async function startNewTurn() {
     currentPleasure: player.value.stats.currentPleasure,
     maxPleasure: player.value.stats.maxPleasure,
   });
-  applyTurnStartActions(heisakiTurnStart.actions);
+  await applyTurnStartActions(heisakiTurnStart.actions);
   if (heisakiTurnStart.settlement) {
-    BossSystem.waitForDialoguesToFinish().then(() => {
+    BossSystem.waitForDialoguesToFinish().then(async () => {
       if (!isBattleFlowLocked()) {
-        applyTurnStartActions(createHeisakiDebtSettlementActions(heisakiTurnStart.settlement!));
+        await applyTurnStartActions(createHeisakiDebtSettlementActions(heisakiTurnStart.settlement!));
       }
     });
   }
@@ -7005,7 +7077,7 @@ async function handleSkipTurn() {
   const sinType = TalentSystem.getSinTalentType(playerTalent.value);
   if (sinType) {
     const talentContext = createTalentEffectContext();
-    applySkipTurnActions(
+    await applySkipTurnActions(
       createSinSkipTurnActions({
         sinType,
         talentContext,
@@ -7014,7 +7086,7 @@ async function handleSkipTurn() {
     );
   }
 
-  applyElizabethCommandActions(
+  await applyElizabethCommandActions(
     createElizabethSkipCommandActions({
       bossState: BossSystem.bossState,
       playerMaxEndurance: player.value.stats.maxEndurance,
@@ -7297,6 +7369,7 @@ onMounted(async () => {
 
   // 重新计算所有属性（包括加成）
   await reloadStatusFromMvu();
+  await applyOathBattleEffects();
 
   // 初始化粒子封印画布
   if (sealCanvas.value) {
@@ -7376,7 +7449,7 @@ onMounted(async () => {
         addLog(`【七宗罪·嫉妒】${effect.message}`, 'system', effect.isBonus ? 'buff' : 'critical');
         // 应用属性修改
         const bonusKey = effect.attribute + '加成';
-        applyTalentBuff('player', `天赋_嫉妒_${effect.attribute}`, { [bonusKey]: effect.value }, 999);
+        await applyTalentBuff('player', `天赋_嫉妒_${effect.attribute}`, { [bonusKey]: effect.value }, 999);
       }
     }
 
@@ -7423,7 +7496,12 @@ onMounted(async () => {
             'system',
             'buff',
           );
-          applyTalentBuff('player', `天赋_傲慢_${displayName}`, { [`${displayName}${bonusSuffix}`]: actualBonus }, 999);
+          await applyTalentBuff(
+            'player',
+            `天赋_傲慢_${displayName}`,
+            { [`${displayName}${bonusSuffix}`]: actualBonus },
+            999,
+          );
         } else if (playerVal < enemyVal) {
           // 自身属性低于对手，-20%
           const actualPenalty = isSexPowerOrEndurance ? -20 : -bonusValue;
@@ -7432,7 +7510,7 @@ onMounted(async () => {
             'system',
             'critical',
           );
-          applyTalentBuff(
+          await applyTalentBuff(
             'player',
             `天赋_傲慢_${displayName}`,
             { [`${displayName}${bonusSuffix}`]: actualPenalty },
@@ -7454,7 +7532,7 @@ onMounted(async () => {
 
     // 压迫感：降低敌人闪避率
     if (passiveModifiers.enemyDodgeReduction > 0) {
-      applyTalentBuff('enemy', '天赋_压迫感', { 闪避率加成: -passiveModifiers.enemyDodgeReduction }, 999);
+      await applyTalentBuff('enemy', '天赋_压迫感', { 闪避率加成: -passiveModifiers.enemyDodgeReduction }, 999);
       addLog(`【${playerTalent.value.name}】敌人闪避率降低${passiveModifiers.enemyDodgeReduction}%`, 'system', 'info');
     }
 
@@ -7503,7 +7581,7 @@ onMounted(async () => {
       for (const effect of envyResult.effects) {
         addLog(`【敌人·嫉妒】${effect.message}`, 'system', effect.isBonus ? 'buff' : 'critical');
         const bonusKey = effect.attribute + '加成';
-        applyTalentBuff('enemy', `敌人天赋_嫉妒_${effect.attribute}`, { [bonusKey]: effect.value }, 999);
+        await applyTalentBuff('enemy', `敌人天赋_嫉妒_${effect.attribute}`, { [bonusKey]: effect.value }, 999);
       }
     }
 
@@ -7517,7 +7595,7 @@ onMounted(async () => {
           // 隐藏BOSS第一阶段，不显示任何天赋相关日志
         } else {
           // 第二阶段：激活暴怒效果
-          applyTalentBuff('enemy', '敌人天赋_暴怒_闪避归零', { 闪避率加成: -999 }, 999);
+          await applyTalentBuff('enemy', '敌人天赋_暴怒_闪避归零', { 闪避率加成: -999 }, 999);
           addLog(
             `【敌人·暴怒】${enemy.value.name} 暴怒觉醒！闪避率归零，所有攻击连击+1，必定暴击！`,
             'system',
@@ -8218,6 +8296,7 @@ function getSinTalentDisplayName(sinType: string): string {
   line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -8225,6 +8304,7 @@ function getSinTalentDisplayName(sinType: string): string {
 .equipment-skill-card .skill-desc.equipment-skill-desc {
   display: block;
   -webkit-line-clamp: initial;
+  line-clamp: initial;
   -webkit-box-orient: initial;
   overflow: visible;
   color: #dbe4ff;
@@ -8240,6 +8320,7 @@ function getSinTalentDisplayName(sinType: string): string {
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -8439,6 +8520,32 @@ function getSinTalentDisplayName(sinType: string): string {
   background: rgba(16, 185, 129, 0.4);
   border: 1px solid rgba(16, 185, 129, 0.3);
   color: #bbf7d0;
+}
+
+.item-counts {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.item-battle-uses {
+  padding: 0.125rem 0.4rem;
+  border-radius: 0.25rem;
+  background: rgba(56, 189, 248, 0.18);
+  color: #7dd3fc;
+  font-family: ui-monospace, monospace;
+  font-size: 0.625rem;
+
+  &.exhausted {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fca5a5;
+  }
+}
+
+.item-card-exhausted {
+  cursor: not-allowed;
+  opacity: 0.48;
+  filter: grayscale(0.55);
 }
 
 .item-effect {

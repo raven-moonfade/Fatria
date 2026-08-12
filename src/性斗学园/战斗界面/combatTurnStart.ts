@@ -86,7 +86,10 @@ export interface HeisakiDebtSettlement {
 export function recoverTurnStartEndurance(character: Character): EnduranceRecoveryResult {
   const recovery = Math.ceil(3 + character.stats.maxEndurance * 0.03);
   const oldEndurance = character.stats.currentEndurance;
-  character.stats.currentEndurance = Math.min(character.stats.maxEndurance, character.stats.currentEndurance + recovery);
+  character.stats.currentEndurance = Math.min(
+    character.stats.maxEndurance,
+    character.stats.currentEndurance + recovery,
+  );
 
   return {
     recovered: character.stats.currentEndurance - oldEndurance,
@@ -287,7 +290,7 @@ export function createVesperaTurnStartActions(params: {
       },
       {
         kind: 'log',
-        message: `【信息素侵蚀】快感增加 ${vesperaResult.pleasureIncrease}（第${params.currentTurn}回合×4%×最大快感）`,
+        message: `【信息素侵蚀】快感增加 ${vesperaResult.pleasureIncrease}（第${params.currentTurn}回合×2.5%×最大快感）`,
         source: 'system',
         type: 'debuff',
       },

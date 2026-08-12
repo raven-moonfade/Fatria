@@ -1,5 +1,19 @@
 <template>
   <div class="option-beautifier" :style="textColorStyle">
+    <div v-if="options.length > 0" class="option-mode-switcher" aria-label="选项点击方式">
+      <span class="mode-caption" aria-hidden="true">选择方式</span>
+      <button
+        v-for="mode in optionModes"
+        :key="mode.value"
+        type="button"
+        class="mode-choice"
+        :class="{ active: selectionMode === mode.value }"
+        @click.stop="setSelectionMode(mode.value)"
+      >
+        <span class="mode-indicator" aria-hidden="true"></span>
+        {{ mode.label }}
+      </button>
+    </div>
     <div v-if="options.length > 0" class="options-container">
       <div
         v-for="(option, index) in options"
@@ -72,6 +86,14 @@ interface OptionItem {
 const options = ref<OptionItem[]>([]);
 const enemyName = ref('');
 const textColor = ref(getSharedTextColor());
+type SelectionMode = 'send' | 'replace' | 'append';
+const SELECTION_MODE_STORAGE_KEY = 'sex-academy-option-selection-mode';
+const optionModes: Array<{ value: SelectionMode; label: string }> = [
+  { value: 'send', label: '直接发送' },
+  { value: 'replace', label: '覆盖' },
+  { value: 'append', label: '不覆盖' },
+];
+const selectionMode = ref<SelectionMode>('replace');
 const emptyReason = ref<'none' | 'no-options-pattern' | 'missing-enemy-name' | 'no-option-tag' | 'no-message'>('none');
 const textColorStyle = computed(() => ({
   '--shared-text-color': textColor.value,
@@ -105,6 +127,15 @@ const emptyState = computed(() => {
       };
   }
 });
+
+const setSelectionMode = (mode: SelectionMode) => {
+  selectionMode.value = mode;
+  try {
+    localStorage.setItem(SELECTION_MODE_STORAGE_KEY, mode);
+  } catch (error) {
+    console.warn('[选项美化] 保存选项点击方式失败:', error);
+  }
+};
 
 const loadEnemyNameFromMvu = async () => {
   try {
@@ -423,7 +454,7 @@ const triggerFight = () => {
   }
 };
 
-// 选择选项并复制到输入框
+// 选择选项：直接发送、覆盖输入框或追加到输入框
 const selectOption = (optionText: string) => {
   try {
     // 使用 window.parent 访问父窗口
@@ -456,14 +487,41 @@ const selectOption = (optionText: string) => {
     }
 
     if ($input && $input.length > 0) {
-      // 设置输入框的值
-      $input.val(optionText);
+      const currentText = String($input.val() || '');
+      const nextText =
+        selectionMode.value === 'append' && currentText.trim().length > 0
+          ? `${currentText.trimEnd()}\n${optionText}`
+          : optionText;
+
+      $input.val(nextText);
 
       // 触发 input 事件，确保 Vue/React 等框架能检测到变化
       $input.trigger('input');
       $input.trigger('change');
 
-      // 聚焦输入框
+      if (selectionMode.value === 'send') {
+        const $sendButton = $parent('#send_but');
+        if ($sendButton.length > 0 && !$sendButton.prop('disabled')) {
+          $sendButton.trigger('click');
+          console.info('[选项美化] 已直接发送选项:', optionText);
+          return;
+        }
+
+        const inputElement = $input[0] as HTMLElement;
+        inputElement.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        console.info('[选项美化] 已通过 Enter 直接发送选项:', optionText);
+        return;
+      }
+
       $input.focus();
 
       console.info('[选项美化] 已选择选项:', optionText);
@@ -499,6 +557,14 @@ const waitForGlobalFunctions = async (maxRetries = 30, interval = 200): Promise<
 onMounted(async () => {
   console.info('[选项美化] 组件已加载');
   textColor.value = getSharedTextColor();
+  try {
+    const storedMode = localStorage.getItem(SELECTION_MODE_STORAGE_KEY);
+    if (storedMode === 'send' || storedMode === 'replace' || storedMode === 'append') {
+      selectionMode.value = storedMode;
+    }
+  } catch (error) {
+    console.warn('[选项美化] 读取选项点击方式失败:', error);
+  }
 
   // 等待全局函数初始化
   const functionsReady = await waitForGlobalFunctions();
@@ -533,6 +599,81 @@ onMounted(async () => {
   width: 100%;
   margin: 0;
   padding: 0;
+}
+
+.option-mode-switcher {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.55rem 0 0 auto;
+  padding: 0.22rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.12rem;
+  flex-wrap: wrap;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+}
+
+.mode-caption {
+  padding: 0 0.42rem 0 0.5rem;
+  color: color-mix(in srgb, var(--shared-text-color, #d1d5db) 52%, transparent);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.mode-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  padding: 0.34rem 0.58rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--shared-text-color, #d1d5db) 68%, transparent);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+
+  &:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.055);
+    color: var(--shared-text-color, #e5e7eb);
+  }
+
+  &.active {
+    border-color: rgba(244, 114, 182, 0.26);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(236, 72, 153, 0.22));
+    color: #fff;
+    box-shadow:
+      0 2px 8px rgba(15, 23, 42, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+    .mode-indicator {
+      background: #f9a8d4;
+      box-shadow: 0 0 6px rgba(244, 114, 182, 0.65);
+    }
+  }
+}
+
+.mode-indicator {
+  width: 0.32rem;
+  height: 0.32rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .options-container {

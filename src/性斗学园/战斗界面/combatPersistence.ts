@@ -14,6 +14,10 @@ const COMBAT_CLIMAX_LIMIT_PATH = '性斗系统.胜负规则.高潮次数上限';
 const BACKPACK_PATH = '物品系统.背包';
 const PLAYER_GENDER_PATH = '角色基础.性别';
 
+// 所有战斗 MVU 写入共用同一条队列。否则两个机制同时执行“读取→修改→写回”时，
+// 后完成的写入会把先完成的 BOSS 状态、资源变化或奖励覆盖掉。
+let combatStatDataUpdateQueue: Promise<unknown> = Promise.resolve();
+
 export function normalizeClimaxLimit(value: unknown): number {
   return normalizeCombatClimaxLimit(value);
 }
@@ -21,29 +25,43 @@ export function normalizeClimaxLimit(value: unknown): number {
 export async function updateCombatStatData(
   updater: (statData: Record<string, any>, mvuData: Mvu.MvuData) => void | Promise<void>,
 ): Promise<Record<string, any> | null> {
-  const mvuData = await getLatestMvuData();
-  if (!mvuData?.stat_data) {
-    return null;
-  }
+  const updateTask = combatStatDataUpdateQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const mvuData = await getLatestMvuData();
+      if (!mvuData?.stat_data) {
+        return null;
+      }
 
-  await updater(mvuData.stat_data, mvuData);
-  await replaceLatestMvuData(mvuData);
-  return mvuData.stat_data;
+      await updater(mvuData.stat_data, mvuData);
+      await replaceLatestMvuData(mvuData);
+      return mvuData.stat_data;
+    });
+
+  combatStatDataUpdateQueue = updateTask;
+  return updateTask;
 }
 
 export async function readCombatStatData<T>(
   reader: (statData: Record<string, any>, mvuData: Mvu.MvuData) => T | Promise<T>,
 ): Promise<T | null> {
-  const mvuData = await getLatestMvuData();
-  if (!mvuData?.stat_data) {
-    return null;
-  }
+  const readTask = combatStatDataUpdateQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const mvuData = await getLatestMvuData();
+      if (!mvuData?.stat_data) {
+        return null;
+      }
 
-  if (syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data)) {
-    await replaceLatestMvuData(mvuData);
-  }
+      if (syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data)) {
+        await replaceLatestMvuData(mvuData);
+      }
 
-  return reader(mvuData.stat_data, mvuData);
+      return reader(mvuData.stat_data, mvuData);
+    });
+
+  combatStatDataUpdateQueue = readTask;
+  return readTask;
 }
 
 export async function normalizeStoredClimaxLimit(mvuData: Mvu.MvuData): Promise<number> {
@@ -62,21 +80,32 @@ export async function readNormalizedCombatStatData(): Promise<{
   statData: Record<string, any>;
   maxClimaxCount: number;
 } | null> {
-  const mvuData = await getLatestMvuData();
-  if (!mvuData?.stat_data) {
-    return null;
-  }
+  const readTask = combatStatDataUpdateQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const mvuData = await getLatestMvuData();
+      if (!mvuData?.stat_data) {
+        return null;
+      }
 
-  const syncedLightDarkBonus = syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data);
-  const maxClimaxCount = await normalizeStoredClimaxLimit(mvuData);
-  if (syncedLightDarkBonus) {
-    await replaceLatestMvuData(mvuData);
-  }
+      const syncedLightDarkBonus = syncXiaoyeyueLightDarkStatusBonus(mvuData.stat_data);
+      const maxClimaxCountRaw = _.get(mvuData.stat_data, COMBAT_CLIMAX_LIMIT_PATH, 1);
+      const maxClimaxCount = normalizeClimaxLimit(maxClimaxCountRaw);
+      if (maxClimaxCountRaw !== maxClimaxCount) {
+        _.set(mvuData.stat_data, COMBAT_CLIMAX_LIMIT_PATH, maxClimaxCount);
+      }
+      if (syncedLightDarkBonus || maxClimaxCountRaw !== maxClimaxCount) {
+        await replaceLatestMvuData(mvuData);
+      }
 
-  return {
-    statData: mvuData.stat_data,
-    maxClimaxCount,
-  };
+      return {
+        statData: mvuData.stat_data,
+        maxClimaxCount,
+      };
+    });
+
+  combatStatDataUpdateQueue = readTask;
+  return readTask;
 }
 
 export async function persistCombatConfig(enemyName: string, climaxLimit: number): Promise<void> {
