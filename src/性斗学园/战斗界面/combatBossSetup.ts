@@ -30,6 +30,29 @@ export interface BossRuntimeSetup {
   actions: BossSetupAction[];
 }
 
+const MIDTERM_END_DATE = '2025-05-08';
+
+function normalizeStoryDate(value: unknown): string | null {
+  const normalized = String(value ?? '')
+    .trim()
+    .replace(/年/g, '-')
+    .replace(/月/g, '-')
+    .replace(/日/g, '')
+    .replace(/\//g, '-');
+  const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return null;
+  return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+}
+
+export function resolveYamadaHanakoInitialPhase(
+  data: any,
+  hasBeenChallenged: boolean,
+): 1 | 2 | 3 {
+  const storyDate = normalizeStoryDate(data?.时间系统?.日期);
+  if (storyDate && storyDate > MIDTERM_END_DATE) return 3;
+  return hasBeenChallenged ? 2 : 1;
+}
+
 export function getPlayerGenderFromData(data: any, fallback: PlayerBinaryGender = '女'): PlayerBinaryGender {
   const rawGender = String(data?.角色基础?.性别 ?? fallback);
   return rawGender === '男' ? '男' : '女';
@@ -41,6 +64,7 @@ export function createBossRuntimeSetup(params: {
   defaultClimaxLimit: number;
   resolveEnemyName: (enemyName: string) => string;
   getEnemyPortraitUrl: (enemyName: string) => string;
+  yamadaHanakoHasBeenChallenged?: boolean;
 }): BossRuntimeSetup {
   const actions: BossSetupAction[] = [];
   let displayName = params.enemyName;
@@ -196,10 +220,13 @@ export function createBossRuntimeSetup(params: {
       { kind: 'log', message: '【暴食契约】投降按钮已被封印！', source: 'system', type: 'critical' },
     );
   } else if (BossSystem.isYamadaHanakoBoss(params.enemyName)) {
-    const initialPhase = BossSystem.isYamadaHanakoTrueName(params.enemyName) ? 2 : 1;
+    const initialPhase = resolveYamadaHanakoInitialPhase(
+      params.data,
+      params.yamadaHanakoHasBeenChallenged === true,
+    );
     BossSystem.initYamadaHanakoBoss(initialPhase);
     displayName = BossSystem.getYamadaHanakoDisplayName(initialPhase);
-    dataName = initialPhase === 2 ? displayName : BossSystem.getYamadaHanakoDataKey(initialPhase);
+    dataName = BossSystem.getYamadaHanakoDataKey(initialPhase);
     skillPoolName = BossSystem.getYamadaHanakoSkillPoolKey(initialPhase);
     avatarUrl = BossSystem.getYamadaHanakoAvatarUrl(initialPhase) ?? params.getEnemyPortraitUrl(displayName);
     climaxLimit = BossSystem.getConfiguredBossClimaxLimit('yamadaHanako', initialPhase, 1);
@@ -207,15 +234,43 @@ export function createBossRuntimeSetup(params: {
       {
         kind: 'log',
         message:
-          initialPhase === 2
-            ? '【真名解放】西园寺辉夜以真实姿态参战，使用Lv75数据与真名技能池。'
-            : '【伪装状态】山田花子暂时隐藏真名，使用Lv12数据与伪装技能池。',
+          initialPhase === 3
+            ? '【期中考试后·完全解放】西园寺辉夜不再保留余裕，以Lv75解放形态直接参战。'
+            : initialPhase === 2
+              ? '【二次挑战·真实形态】西园寺辉夜以Lv75真实形态迎战。'
+              : '【首次挑战·伪装形态】山田花子以Lv15低属性伪装应战；被战胜后会逃离战场，按平局记录。',
         source: 'system',
         type: 'critical',
       },
       {
         kind: 'log',
-        message: '【月下真名】伪装状态快感达到50%时，将清空快感并切换为西园寺辉夜。',
+        message:
+          initialPhase === 1
+            ? '【月下逃逸】本战只验证她的伪装；请在下一次挑战时面对真实的她。'
+            : initialPhase === 2
+              ? '【真名对决】此战不会中途转阶段。'
+              : '【完全解放】逆转时机已过，辉夜以最高强度回应挑战。',
+        source: 'system',
+        type: 'info',
+      },
+    );
+  } else if (BossSystem.isZhuangFangyiBoss(params.enemyName)) {
+    BossSystem.initZhuangFangyiBoss();
+    displayName = BossSystem.getZhuangFangyiDisplayName(1);
+    dataName = BossSystem.getZhuangFangyiDataKey(1);
+    skillPoolName = BossSystem.getZhuangFangyiSkillPoolKey(1);
+    avatarUrl = BossSystem.getZhuangFangyiAvatarUrl(1) ?? params.getEnemyPortraitUrl(displayName);
+    climaxLimit = BossSystem.getConfiguredBossClimaxLimit('zhuangFangyi', 1, 3);
+    actions.push(
+      {
+        kind: 'log',
+        message: '【渊主试炼】庄方宜端坐玉座，以深渊潮位衡量来者是否值得她亲自起身。',
+        source: 'system',
+        type: 'critical',
+      },
+      {
+        kind: 'log',
+        message: '【深渊潮位】每三次敌方行动，水牢将倒灌并触发一次龙渊压制。',
         source: 'system',
         type: 'info',
       },

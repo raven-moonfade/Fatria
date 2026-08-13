@@ -9,8 +9,9 @@ export type CurrentBossId =
   | 'vespera'
   | 'heisaki'
   | 'agnes'
-  | 'yamadaHanako';
-export type LegacyBossConfigId = Exclude<CurrentBossId, 'elizabeth' | 'agnes' | 'yamadaHanako'>;
+  | 'yamadaHanako'
+  | 'zhuangFangyi';
+export type LegacyBossConfigId = Exclude<CurrentBossId, 'elizabeth' | 'agnes' | 'yamadaHanako' | 'zhuangFangyi'>;
 export type CurrentBossSinType = 'sloth' | 'lust' | 'greed' | 'pride' | 'gluttony';
 
 export interface CurrentBossPhaseDefinition extends BossPhaseDefinition {
@@ -199,16 +200,43 @@ const AGNES_MECHANICS: BossMechanicDefinition[] = [
 
 const YAMADA_HANAKO_MECHANICS: BossMechanicDefinition[] = [
   {
-    id: 'yamada-hanako-true-name-release',
+    id: 'yamada-hanako-pre-midterm-escape',
+    kind: 'specialRule',
+    label: '伪装败北后逃跑',
+    description: '期中考试前的首次挑战使用低属性伪装形态；被战胜后山田花子逃跑，战斗按平局结算并记录挑战。',
+    triggers: [{ type: 'battleStart', phase: 1 }],
+    actions: [{ type: 'setFlag', flag: 'yamadaHanakoEscapeOnDefeat', value: true }],
+    reusable: true,
+  },
+];
+
+const ZHUANG_FANGYI_MECHANICS: BossMechanicDefinition[] = [
+  {
+    id: 'zhuang-fangyi-abyss-tide',
+    kind: 'environmentAura',
+    label: '深渊潮位',
+    description: '每个敌方回合潮位上升；第三层触发龙渊倒灌，潮水回落。',
+    triggers: [{ type: 'turnStart' }],
+    actions: [{ type: 'addProgress', stateKey: 'abyssTide', amount: 1 }],
+    reusable: true,
+  },
+  {
+    id: 'zhuang-fangyi-throne-to-personal',
     kind: 'phaseTransition',
-    label: '月下真名解放',
-    description: '伪装状态下快感达到 50% 时，清空快感并切换为西园寺辉夜的真实数据与技能池。',
-    triggers: [{ type: 'pleasurePercentAtOrAbove', phase: 1, threshold: 50 }],
-    actions: [
-      { type: 'setPhase', phase: 2 },
-      { type: 'setSkillPool', skillPoolKey: '西园寺辉夜' },
-      { type: 'resetPleasure' },
-    ],
+    label: '离座亲征',
+    description: '玉座试探被突破后，庄方宜起身亲自迎战。',
+    triggers: [{ type: 'climaxCountAtLeast', phase: 1, climaxCounterKey: 'boss', threshold: 1 }],
+    actions: [{ type: 'setPhase', phase: 2 }],
+    once: true,
+    reusable: true,
+  },
+  {
+    id: 'zhuang-fangyi-reverse-scale-release',
+    kind: 'phaseTransition',
+    label: '逆鳞解放',
+    description: '亲征形态再被逼入绝境后，龙君解放完整龙威；逆鳞同时成为可被抓住的破局点。',
+    triggers: [{ type: 'climaxCountAtLeast', phase: 2, climaxCounterKey: 'boss', threshold: 2 }],
+    actions: [{ type: 'setPhase', phase: 3 }],
     once: true,
     reusable: true,
   },
@@ -415,7 +443,7 @@ export const CURRENT_BOSS_DEFINITIONS: CurrentBossDefinition[] = [
         displayName: '山田花子',
         dataKey: '山田花子_伪装',
         skillPoolKey: '山田花子_伪装',
-        level: 12,
+        level: 15,
         climaxLimit: 1,
         avatarUrl: 'https://img.vinsimage.org/性斗学园/立绘/山田花子.png',
       },
@@ -428,8 +456,55 @@ export const CURRENT_BOSS_DEFINITIONS: CurrentBossDefinition[] = [
         climaxLimit: 1,
         avatarUrl: 'https://img.vinsimage.org/性斗学园/立绘/山田花子.png',
       },
+      {
+        phase: 3,
+        displayName: '西园寺辉夜（解放形态）',
+        dataKey: '山田花子_解放',
+        skillPoolKey: '西园寺辉夜_解放',
+        level: 75,
+        climaxLimit: 2,
+        avatarUrl: 'https://img.vinsimage.org/性斗学园/立绘/山田花子.png',
+      },
     ],
     mechanics: YAMADA_HANAKO_MECHANICS,
+  },
+  {
+    id: 'zhuangFangyi',
+    sourceEntry: '庄方宜',
+    displayName: '庄方宜',
+    aliases: ['庄方宜', '渊主', '龙君', '龙宫之主', '海渊殿'],
+    category: 'event',
+    status: 'ready',
+    phases: [
+      {
+        phase: 1,
+        displayName: '庄方宜·玉座试探',
+        dataKey: '庄方宜_玉座',
+        skillPoolKey: '庄方宜_玉座',
+        level: 80,
+        climaxLimit: 3,
+        avatarUrl: 'https://img.vinsimage.org/性斗学园/立绘/庄方宜.png',
+      },
+      {
+        phase: 2,
+        displayName: '庄方宜·深渊亲征',
+        dataKey: '庄方宜_亲征',
+        skillPoolKey: '庄方宜_亲征',
+        level: 80,
+        climaxLimit: 3,
+        avatarUrl: 'https://img.vinsimage.org/性斗学园/立绘/庄方宜.png',
+      },
+      {
+        phase: 3,
+        displayName: '庄方宜·龙威解放',
+        dataKey: '庄方宜_解放',
+        skillPoolKey: '庄方宜_解放',
+        level: 80,
+        climaxLimit: 3,
+        avatarUrl: 'https://img.vinsimage.org/性斗学园/立绘/庄方宜.png',
+      },
+    ],
+    mechanics: ZHUANG_FANGYI_MECHANICS,
   },
 ];
 

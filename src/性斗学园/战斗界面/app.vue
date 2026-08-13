@@ -556,9 +556,9 @@
         <div v-if="turnState.phase === 'victory' || turnState.phase === 'defeat'" class="result-overlay">
           <div class="result-content">
             <h2 class="result-title" :class="turnState.phase">
-              {{ turnState.phase === 'victory' ? '完全胜利' : '彻底败北' }}
+              {{ yamadaHanakoEscapeDraw ? '平局' : turnState.phase === 'victory' ? '完全胜利' : '彻底败北' }}
             </h2>
-            <p class="result-subtitle">战斗结束</p>
+            <p class="result-subtitle">{{ yamadaHanakoEscapeDraw ? '山田花子逃离了战场' : '战斗结束' }}</p>
 
             <!-- CG图片显示 -->
             <div v-if="cgImageUrl" class="cg-container">
@@ -657,6 +657,7 @@ import {
   getDialogueWaitTime,
   getMuxinlanPhaseConfig,
   getYamadaHanakoPhaseConfig,
+  getZhuangFangyiPhaseConfig,
   type BossPhaseRuntimeConfig,
   type BossPhaseSideEffectAction,
 } from './combatBossTransitions';
@@ -784,6 +785,7 @@ import {
   deductPlayerExpAndCoins,
   getPlayerSkillRarity,
   persistCombatConfig,
+  persistBossBattleRecord,
   persistPlayerCombatState,
   readAgnesFeastContext,
   readCombatStatData,
@@ -795,6 +797,7 @@ import {
   setPlayerTemporaryStatusList,
   updateCombatStatData,
 } from './combatPersistence';
+import { ensureBossBattleRecords, hasYamadaHanakoBeenChallenged } from '../shared/cgUnlockStore';
 import { grantVictoryRewards } from './combatRewards';
 import { createCombatRuntime } from './combatRuntime';
 import { statusListToEffects } from './combatStatusView';
@@ -932,12 +935,13 @@ const sealCanvas = ref<HTMLCanvasElement | null>(null);
 
 // BOSS阶段转换状态
 const isPhaseTransitioning = ref<boolean>(false);
-const phaseTransitionEffect = ref<'phase1to2' | 'phase2to3' | 'eden-game-over' | '' | null>(null);
+const phaseTransitionEffect = ref<'phase1to2' | 'phase2to3' | 'eden-game-over' | 'zhuang-fangyi-tide' | '' | null>(null);
 
 // 特效状态
 const effectType = ref<'critical' | 'dodge' | 'climax' | 'victory' | 'defeat' | null>(null);
 const showEffect = ref(false);
 const companionAssistEffect = ref<{ name: string; avatarUrl: string; skillName: string } | null>(null);
+const yamadaHanakoEscapeDraw = ref(false);
 const equipmentSkillVisualEffect = ref<EquipmentSkillVisualState | null>(null);
 type ResourcePopupTarget = 'player' | 'enemy';
 type ResourcePopupKind = 'stamina' | 'pleasure';
@@ -1887,12 +1891,14 @@ async function loadEnemyRuntimeSkills(enemyName: string, data: any) {
 async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
   const rawName = String(_.get(data, '性斗系统.对手名称', '风纪委员长') || '风纪委员长');
   const normalizedName = normalizeEnemyName(rawName);
+  ensureBossBattleRecords();
   currentCombatStatData = data;
   enemyRuntimeStatuses.value = {};
   enemyRuntimeSkillCooldowns.value = {};
   enemyRuntimeSkillEffects.value = {};
   isBossItemsDisabled.value = false;
   isBossSurrenderDisabled.value = false;
+  yamadaHanakoEscapeDraw.value = false;
   resetExorcismRuntime();
 
   const exorcismSetup = createExorcismRuntimeSetup({
@@ -1945,6 +1951,9 @@ async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
     defaultClimaxLimit: maxClimaxCount,
     resolveEnemyName,
     getEnemyPortraitUrl,
+    yamadaHanakoHasBeenChallenged: BossSystem.isYamadaHanakoBoss(normalizedName)
+      ? hasYamadaHanakoBeenChallenged()
+      : false,
   });
   applyBossSetupActions(bossOrNormal.actions);
   _.set(data, '性斗系统.对手名称', bossOrNormal.dataName);
@@ -1952,7 +1961,7 @@ async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
   setSharedClimaxLimit(bossOrNormal.climaxLimit);
 
   if (BossSystem.bossState.bossId === 'yamadaHanako') {
-    const initialPhase = BossSystem.bossState.currentPhase === 2 ? 2 : 1;
+    const initialPhase = BossSystem.bossState.currentPhase as 1 | 2 | 3;
     const phaseConfig = getYamadaHanakoPhaseConfig(initialPhase);
     const loaded = await loadAndApplyBossPhaseRuntime(phaseConfig, {
       updateAvatar: true,
@@ -1961,6 +1970,24 @@ async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
 
     if (loaded) {
       console.info('[战斗界面] 山田花子特殊战运行态已初始化:', {
+        displayName: enemy.value.name,
+        dataName: phaseConfig.dataKey,
+        skillPoolName: phaseConfig.skillPoolKey,
+        skills: enemy.value.skills.length,
+      });
+      return;
+    }
+  }
+
+  if (BossSystem.bossState.bossId === 'zhuangFangyi') {
+    const phaseConfig = getZhuangFangyiPhaseConfig(1);
+    const loaded = await loadAndApplyBossPhaseRuntime(phaseConfig, {
+      updateAvatar: true,
+      skillLogLabel: '[战斗界面] 庄方宜玉座阶段技能池:',
+    });
+
+    if (loaded) {
+      console.info('[战斗界面] 庄方宜深渊玉座试炼已初始化:', {
         displayName: enemy.value.name,
         dataName: phaseConfig.dataKey,
         skillPoolName: phaseConfig.skillPoolKey,
@@ -4604,7 +4631,9 @@ async function finishCombatAfterResult() {
   const playerStatusListBeforeClear =
     finalPhase === 'defeat' && exorcismBossDefinition.value ? await readPlayerTemporaryStatusList() : {};
 
-  await selectAndDisplayCG();
+  if (!yamadaHanakoEscapeDraw.value) {
+    await selectAndDisplayCG();
+  }
   turnState.enemyIntention = null;
   turnState.climaxTarget = null;
   await clearTemporaryStatus();
@@ -4615,7 +4644,10 @@ async function finishCombatAfterResult() {
   // 奖励必须最后写入，避免清理临时状态或最终战斗保存覆盖刚插入背包的装备。
   // 分阶段驱魔 Boss 的运行态名称会变成“少女形态”等，奖励判断必须使用稳定的 Boss 定义名。
   const rewardEnemyName = exorcismBossDefinition.value?.displayName || enemy.value.name;
-  const rewardLogs = await grantVictoryRewards(rewardEnemyName, finalPhase === 'victory');
+  const rewardLogs = await grantVictoryRewards(
+    rewardEnemyName,
+    finalPhase === 'victory' && !yamadaHanakoEscapeDraw.value,
+  );
   rewardLogs.forEach(log => addLog(log.message, 'system', log.type));
 }
 
@@ -5479,11 +5511,6 @@ async function handlePlayerSkill(skill: Skill) {
         }),
       );
 
-      const yamadaTrueNameReleased =
-        hasDirectDamage && !playerConfusionLog
-          ? await maybeTriggerYamadaHanakoTrueNameRelease(nextPlayer, nextEnemy)
-          : false;
-
       // 更新状态
       player.value = nextPlayer;
       enemy.value = nextEnemy;
@@ -5529,9 +5556,7 @@ async function handlePlayerSkill(skill: Skill) {
         return;
       } else {
         // 没有高潮时，才重新读取状态加成
-        if (!yamadaTrueNameReleased) {
-          await reloadStatusFromMvu();
-        }
+        await reloadStatusFromMvu();
 
         // 使用技能后，轮到对方结算快感
         setTimeout(() => {
@@ -6058,6 +6083,34 @@ async function handleEnemyTurn() {
 
   // 记录：敌人回合开始时玩家是否处于束缚状态（用于本回合薇丝佩菈必中必暴判定）
   const playerWasBoundAtEnemyTurnStart = playerBoundTurns.value > 0;
+
+  if (BossSystem.bossState.isBossFight && BossSystem.bossState.bossId === 'zhuangFangyi') {
+    const tideResult = BossSystem.advanceZhuangFangyiTide();
+    addLog(`【深渊潮位】潮位升至 ${tideResult.level}/3。`, 'system', tideResult.triggersUndertow ? 'critical' : 'info');
+
+    if (tideResult.triggersUndertow) {
+      const tideDamage = Math.max(1, Math.floor(player.value.stats.maxPleasure * 0.22));
+      player.value.stats.currentPleasure = Math.min(
+        player.value.stats.maxPleasure,
+        player.value.stats.currentPleasure + tideDamage,
+      );
+      phaseTransitionEffect.value = 'zhuang-fangyi-tide';
+      addLog(`【龙渊倒灌】高压水牢闭合，${player.value.name} 承受 ${tideDamage} 点潮汐快感。`, 'enemy', 'critical');
+      await addPlayerTemporaryStatus('深渊水压', {
+        加成: { 闪避率加成: -20, 基础忍耐力成算: -15 },
+        剩余回合: 2,
+        描述: '深渊水压令行动与呼吸都变得迟滞。',
+      });
+      BossSystem.consumeZhuangFangyiTideTrigger();
+      setTimeout(() => {
+        phaseTransitionEffect.value = null;
+      }, 1500);
+      await saveToMvu();
+      if (await triggerPendingClimaxFromResourceChange('龙渊倒灌')) {
+        return;
+      }
+    }
+  }
 
   await applyEnemyTurnStartActions(
     createPlayerBindTurnStartActions({
@@ -6718,7 +6771,7 @@ async function loadAndApplyBossPhaseRuntime(
     enemyRuntimeSkillEffects.value = skillRuntime.effects;
   }
 
-  await persistCombatConfig(phaseConfig.displayName, phaseConfig.climaxLimit);
+  await persistCombatConfig(phaseConfig.dataKey, phaseConfig.climaxLimit);
 
   return newEnemyData;
 }
@@ -6875,46 +6928,49 @@ async function executeChristinePhaseTransitionLogic(nextPhase: 1 | 2) {
   addLog(`阶段切换完成，继续战斗...`, 'system', 'info');
 }
 
-async function maybeTriggerYamadaHanakoTrueNameRelease(nextPlayer: Character, nextEnemy: Character): Promise<boolean> {
-  if (
-    !BossSystem.shouldTriggerYamadaHanakoTrueNameRelease(nextEnemy.stats.currentPleasure, nextEnemy.stats.maxPleasure)
-  ) {
-    return false;
-  }
+async function handleZhuangFangyiPhaseTransition(nextPhase: 2 | 3) {
+  const retainedClimaxCount = enemy.value.stats.climaxCount + 1;
 
-  const phaseConfig = getYamadaHanakoPhaseConfig(2);
-  BossSystem.executeYamadaHanakoTrueNameRelease();
+  const phaseConfig = getZhuangFangyiPhaseConfig(nextPhase);
+  BossSystem.bossState.currentPhase = nextPhase;
   BossSystem.bossState.phaseTransitioning = true;
   isPhaseTransitioning.value = true;
   phaseTransitionEffect.value = phaseConfig.transitionEffect;
 
-  addLog('【真名解放】山田花子的伪装被击碎，月下真名「西园寺辉夜」显现！', 'system', 'critical');
-  addLog('【规则变更】快感清空，战斗数据切换为Lv75，技能池切换为真名形态。', 'system', 'critical');
+  addLog(
+    nextPhase === 2
+      ? '【离座亲征】庄方宜缓缓自玉座起身：“……有趣。你，值得本宫认真对待。”'
+      : '【逆鳞解放】幽蓝鳞光照亮海渊，庄方宜终于解开了全部龙威。',
+    'system',
+    'critical',
+  );
 
   try {
     const newEnemyData = await loadAndApplyBossPhaseRuntime(phaseConfig, {
       updateAvatar: true,
-      skillLogLabel: '[战斗界面] 山田花子真名解放技能池:',
-      targetEnemy: nextEnemy,
+      skillLogLabel: '[战斗界面] 庄方宜阶段技能池:',
     });
 
     if (newEnemyData) {
-      nextPlayer.stats.maxClimaxCount = phaseConfig.climaxLimit;
-      nextPlayer.stats.climaxCount = 0;
+      enemy.value.stats.climaxCount = retainedClimaxCount;
+      enemy.value.stats.maxClimaxCount = 3;
+      player.value.stats.maxClimaxCount = 3;
+      player.value.stats.climaxCount = 0;
+      addLog(`庄方宜的高潮次数：${retainedClimaxCount}/3`, 'system', 'info');
     }
   } catch (e) {
-    console.error('[战斗界面] 山田花子真名解放失败', e);
-    addLog('【真名解放】阶段数据加载失败，请检查山田花子数据配置。', 'system', 'critical');
+    console.error('[战斗界面] 庄方宜阶段转换失败', e);
+    addLog('【龙君试炼】阶段数据加载失败，请检查庄方宜数据配置。', 'system', 'critical');
   }
 
   turnState.climaxTarget = null;
   BossSystem.bossState.phaseTransitioning = false;
   isPhaseTransitioning.value = false;
+  turnState.phase = 'playerInput';
   setTimeout(() => {
     phaseTransitionEffect.value = null;
   }, 1500);
 
-  return true;
 }
 
 // 处理高潮后的逻辑（自动继续，不显示按钮）
@@ -6951,6 +7007,8 @@ async function processClimaxAfterLLM(targetIsEnemy: boolean) {
   if (bossTransition) {
     if (bossTransition.bossId === 'muxinlan') {
       await handleBossPhaseTransition(bossTransition.nextPhase);
+    } else if (bossTransition.bossId === 'zhuangFangyi') {
+      await handleZhuangFangyiPhaseTransition(bossTransition.nextPhase);
     } else {
       await handleChristinePhaseTransition(bossTransition.nextPhase);
     }
@@ -7016,8 +7074,12 @@ async function processClimaxAfterLLM(targetIsEnemy: boolean) {
       addLog(`${char.name} 的性斗力降低20%，忍耐力提升10%`, 'system', 'info');
     }
 
-    // 检查虚脱状态（高潮次数只保存在本次战斗运行态）
-    addClimaxLogs(createClimaxLimitStatusLogs(char));
+    // 花子伪装阶段的高潮是撤离条件，不显示通用的“虚脱状态”文案。
+    const isYamadaHanakoDisguiseEscape =
+      targetIsEnemy && BossSystem.bossState.bossId === 'yamadaHanako' && BossSystem.bossState.currentPhase === 1;
+    if (!isYamadaHanakoDisguiseEscape) {
+      addClimaxLogs(createClimaxLimitStatusLogs(char));
+    }
   } catch (e) {
     console.warn('[战斗界面] 检查状态变化失败', e);
   }
@@ -7030,6 +7092,21 @@ async function processClimaxAfterLLM(targetIsEnemy: boolean) {
     currentTurn: turnState.currentTurn,
   });
   if (climaxOutcome) {
+    if (
+      targetIsEnemy &&
+      BossSystem.bossState.isBossFight &&
+      BossSystem.bossState.bossId === 'yamadaHanako' &&
+      BossSystem.bossState.currentPhase === 1
+    ) {
+      yamadaHanakoEscapeDraw.value = true;
+      turnState.phase = 'victory';
+      addLog('山田花子不敌，选择了先行撤离。', 'system', 'critical');
+      addLog('“对、对不起！下次……下次我不会再装作普通人了！”', 'enemy', 'info');
+      await persistBossBattleRecord('yamadaHanako', true);
+      triggerEffect('victory');
+      await finishCombatAfterResult();
+      return;
+    }
     turnState.phase = climaxOutcome.phase;
     addClimaxLogs([climaxOutcome.log]);
     triggerEffect(climaxOutcome.effect);
@@ -9484,6 +9561,29 @@ function getSinTalentDisplayName(sinType: string): string {
       0 0 20px #8a2be2,
       0 0 40px #8a2be2,
       inset 0 0 20px #8a2be2;
+  }
+}
+
+// 庄方宜的深渊潮汐：冷色高压水牢与鳞光从屏幕边缘回卷。
+.phase-transition-effect.zhuang-fangyi-tide {
+  .transition-flash {
+    background: radial-gradient(circle at center, rgba(34, 211, 238, 0.62) 0%, rgba(15, 23, 42, 0.78) 48%, transparent 76%);
+    animation-duration: 1.2s;
+  }
+
+  .particle {
+    background: #67e8f9;
+    box-shadow:
+      0 0 10px #22d3ee,
+      0 0 24px #0ea5e9;
+  }
+
+  .transition-shockwave {
+    border-color: #67e8f9;
+    box-shadow:
+      0 0 24px #22d3ee,
+      0 0 60px #075985,
+      inset 0 0 28px #0ea5e9;
   }
 }
 

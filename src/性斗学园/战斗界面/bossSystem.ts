@@ -60,6 +60,9 @@ export interface BossState {
   agnesFrenzyGuaranteedHit: boolean; // 发狂必定命中
   agnesFrenzyCrit: boolean; // 发狂必定暴击
   agnesCurrentTurn: number; // 当前回合数
+  // 庄方宜专属状态（深渊玉座试炼）
+  zhuangFangyiTideLevel: number;
+  zhuangFangyiTideTriggered: boolean;
 }
 
 export interface BossDialogue {
@@ -262,6 +265,8 @@ export const bossState = reactive<BossState>({
   agnesFrenzyGuaranteedHit: false,
   agnesFrenzyCrit: false,
   agnesCurrentTurn: 0,
+  zhuangFangyiTideLevel: 0,
+  zhuangFangyiTideTriggered: false,
 });
 
 // 当前显示的对话
@@ -2809,13 +2814,7 @@ export function isYamadaHanakoBoss(enemyName: string): boolean {
   );
 }
 
-export function isYamadaHanakoTrueName(enemyName: string): boolean {
-  if (!enemyName) return false;
-  const name = enemyName.toLowerCase();
-  return name.includes('西园寺辉夜') || name.includes('辉夜');
-}
-
-export function initYamadaHanakoBoss(initialPhase: 1 | 2 = 1): void {
+export function initYamadaHanakoBoss(initialPhase: 1 | 2 | 3 = 1): void {
   bossState.isBossFight = true;
   bossState.bossId = 'yamadaHanako';
   bossState.currentPhase = initialPhase;
@@ -2825,39 +2824,73 @@ export function initYamadaHanakoBoss(initialPhase: 1 | 2 = 1): void {
   bossState.hasUsedMedal = false;
 }
 
-export function getYamadaHanakoDisplayName(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string {
-  return getCurrentBossPhaseDisplayName('yamadaHanako', phase) ?? (phase === 2 ? '西园寺辉夜' : '山田花子');
+export function getYamadaHanakoDisplayName(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string {
+  return getCurrentBossPhaseDisplayName('yamadaHanako', phase) ?? (phase === 3 ? '西园寺辉夜（解放形态）' : phase === 2 ? '西园寺辉夜' : '山田花子');
 }
 
-export function getYamadaHanakoDataKey(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string {
-  return getCurrentBossPhaseDataKey('yamadaHanako', phase) ?? (phase === 2 ? '山田花子' : '山田花子_伪装');
+export function getYamadaHanakoDataKey(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string {
+  return getCurrentBossPhaseDataKey('yamadaHanako', phase) ?? (phase === 3 ? '山田花子_解放' : phase === 2 ? '山田花子' : '山田花子_伪装');
 }
 
-export function getYamadaHanakoSkillPoolKey(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string {
+export function getYamadaHanakoSkillPoolKey(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string {
   return getCurrentBossPhaseSkillPoolKey('yamadaHanako', phase) ?? getYamadaHanakoDataKey(phase);
 }
 
-export function getYamadaHanakoAvatarUrl(phase: 1 | 2 = bossState.currentPhase as 1 | 2): string | undefined {
+export function getYamadaHanakoAvatarUrl(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string | undefined {
   return getCurrentBossPhaseAvatarUrl('yamadaHanako', phase) ?? 'https://img.vinsimage.org/性斗学园/立绘/山田花子.png';
 }
 
-export function shouldTriggerYamadaHanakoTrueNameRelease(currentPleasure: number, maxPleasure: number): boolean {
-  if (!bossState.isBossFight || bossState.bossId !== 'yamadaHanako' || bossState.currentPhase !== 1) {
-    return false;
-  }
-
-  return (
-    getConfiguredPhaseTransition({
-      bossId: 'yamadaHanako',
-      phase: 1,
-      currentPleasure,
-      maxPleasure,
-      currentClimaxCount: 0,
-    }) === 2
-  );
+export function isYamadaHanakoDisguisePhase(): boolean {
+  return bossState.isBossFight && bossState.bossId === 'yamadaHanako' && bossState.currentPhase === 1;
 }
 
-export function executeYamadaHanakoTrueNameRelease(): void {
-  bossState.currentPhase = 2;
+// ==================== 庄方宜 / 深渊玉座 BOSS ====================
+
+export function isZhuangFangyiBoss(enemyName: string): boolean {
+  if (!enemyName) return false;
+  const name = enemyName.toLowerCase();
+  return name.includes('庄方宜') || name.includes('渊主') || name.includes('龙君') || name.includes('龙宫之主');
+}
+
+export function initZhuangFangyiBoss(): void {
+  bossState.isBossFight = true;
+  bossState.bossId = 'zhuangFangyi';
+  bossState.currentPhase = 1;
   bossState.phaseTransitioning = false;
+  bossState.dialogueIndex = 0;
+  bossState.buttonsDisabled = false;
+  bossState.hasUsedMedal = false;
+  bossState.zhuangFangyiTideLevel = 0;
+  bossState.zhuangFangyiTideTriggered = false;
+}
+
+export function getZhuangFangyiDisplayName(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string {
+  return getCurrentBossPhaseDisplayName('zhuangFangyi', phase) ?? '庄方宜';
+}
+
+export function getZhuangFangyiDataKey(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string {
+  return getCurrentBossPhaseDataKey('zhuangFangyi', phase) ?? '庄方宜';
+}
+
+export function getZhuangFangyiSkillPoolKey(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string {
+  return getCurrentBossPhaseSkillPoolKey('zhuangFangyi', phase) ?? getZhuangFangyiDataKey(phase);
+}
+
+export function getZhuangFangyiAvatarUrl(phase: 1 | 2 | 3 = bossState.currentPhase as 1 | 2 | 3): string | undefined {
+  return getCurrentBossPhaseAvatarUrl('zhuangFangyi', phase) ?? 'https://img.vinsimage.org/性斗学园/立绘/庄方宜.png';
+}
+
+export function advanceZhuangFangyiTide(): { level: number; triggersUndertow: boolean } {
+  if (!bossState.isBossFight || bossState.bossId !== 'zhuangFangyi') {
+    return { level: 0, triggersUndertow: false };
+  }
+
+  bossState.zhuangFangyiTideLevel = (bossState.zhuangFangyiTideLevel % 3) + 1;
+  const triggersUndertow = bossState.zhuangFangyiTideLevel === 3;
+  bossState.zhuangFangyiTideTriggered = triggersUndertow;
+  return { level: bossState.zhuangFangyiTideLevel, triggersUndertow };
+}
+
+export function consumeZhuangFangyiTideTrigger(): void {
+  bossState.zhuangFangyiTideTriggered = false;
 }

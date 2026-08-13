@@ -14,8 +14,10 @@ import {
   applyLevelScaling,
   EnemyBaseData,
   getEnemyBaseDataByName,
+  normalizeEnemyName,
   resolveEnemyName,
 } from '../战斗界面/enemyDatabase';
+import { CURRENT_BOSS_DEFINITIONS } from '../战斗界面/bossDefinitions';
 import { normalizeCombatClimaxLimit } from './combatLimits';
 import { getXiaoyeyueLightDarkDynamicBonusCorrection } from './xiaoyeyueMagicGirl';
 
@@ -33,6 +35,10 @@ const FALLBACK_ENEMY_BASE_DATA: EnemyBaseData = {
   对手性斗力: 20,
   对手忍耐力: 20,
 };
+
+const FIXED_BOSS_PHASE_DATA_KEYS = new Set(
+  CURRENT_BOSS_DEFINITIONS.flatMap(definition => definition.phases.map(phase => normalizeEnemyName(phase.dataKey))),
+);
 
 export interface CombatResources {
   stamina: number;
@@ -160,6 +166,9 @@ export function getResolvedEnemyBaseData(statData: any): EnemyBaseData | null {
   }
 
   const baseData = getEnemyBaseDataByName(enemyName) ?? FALLBACK_ENEMY_BASE_DATA;
+  if (FIXED_BOSS_PHASE_DATA_KEYS.has(normalizeEnemyName(enemyName))) {
+    return baseData;
+  }
 
   const userLevel = readNumber(statData, '角色基础._等级', 1);
   const difficulty = readString(statData, '角色基础.难度', '普通');

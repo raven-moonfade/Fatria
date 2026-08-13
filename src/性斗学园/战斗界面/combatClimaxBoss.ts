@@ -11,6 +11,10 @@ export type BossClimaxTransition =
   | {
       bossId: 'christine';
       nextPhase: 1 | 2;
+    }
+  | {
+      bossId: 'zhuangFangyi';
+      nextPhase: 2 | 3;
     };
 
 export type BossClimaxAction =
@@ -95,6 +99,19 @@ export function getBossClimaxTransition(params: {
           nextPhase: transitionCheck.nextPhase,
         }
       : null;
+  }
+
+  if (params.bossState.bossId === 'zhuangFangyi') {
+    const currentPhase = params.bossState.currentPhase;
+    const currentClimaxCount = params.enemy.stats.climaxCount;
+
+    if (currentPhase === 1 && currentClimaxCount === 0) {
+      return { bossId: 'zhuangFangyi', nextPhase: 2 };
+    }
+
+    if (currentPhase === 2 && currentClimaxCount === 1) {
+      return { bossId: 'zhuangFangyi', nextPhase: 3 };
+    }
   }
 
   return null;

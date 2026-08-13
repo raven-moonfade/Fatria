@@ -5,9 +5,11 @@ import { NAME_ALIASES } from '../战斗界面/enemyDatabase';
 export { getCGImageKey };
 
 export const CHARACTER_CG_UNLOCKS_VARIABLE_KEY = '性斗学园CG解锁记录';
+export const CHAT_BOSS_BATTLE_RECORDS_VARIABLE_KEY = '性斗学园BOSS战记录';
 
 const LEGACY_MVU_CG_UNLOCKS_FIELD = '已解锁CG';
 const CHARACTER_VARIABLE_OPTION: VariableOption = { type: 'character' };
+const CHAT_VARIABLE_OPTION: VariableOption = { type: 'chat' };
 
 export interface CGUnlockMutationResult {
   changed: boolean;
@@ -16,6 +18,16 @@ export interface CGUnlockMutationResult {
 }
 
 export type SerializableCGUnlockMap = Record<string, string[]>;
+
+export interface YamadaHanakoBossBattleRecord {
+  是否已挑战: boolean;
+  是否已触发伪装逃跑: boolean;
+}
+
+export interface BossBattleRecords {
+  山田花子: YamadaHanakoBossBattleRecord;
+  [bossName: string]: unknown;
+}
 
 function normalizeCharacterName(name: string): string {
   return String(name || '')
@@ -128,6 +140,19 @@ function readCharacterVariables(): Record<string, any> {
   return {};
 }
 
+function readChatVariables(): Record<string, any> {
+  try {
+    const globalAny = window as any;
+    if (typeof globalAny.getVariables === 'function') {
+      return globalAny.getVariables(CHAT_VARIABLE_OPTION) || {};
+    }
+  } catch (error) {
+    console.warn('[性斗学园] 读取聊天变量失败:', error);
+  }
+
+  return {};
+}
+
 function saveCharacterCGUnlockMap(unlockMap: SerializableCGUnlockMap): boolean {
   try {
     const globalAny = window as any;
@@ -140,6 +165,73 @@ function saveCharacterCGUnlockMap(unlockMap: SerializableCGUnlockMap): boolean {
   }
 
   return false;
+}
+
+function saveBossBattleRecords(records: BossBattleRecords): boolean {
+  try {
+    const globalAny = window as any;
+    if (typeof globalAny.insertOrAssignVariables === 'function') {
+      globalAny.insertOrAssignVariables({ [CHAT_BOSS_BATTLE_RECORDS_VARIABLE_KEY]: records }, CHAT_VARIABLE_OPTION);
+      return true;
+    }
+  } catch (error) {
+    console.warn('[性斗学园] 写入聊天Boss战记录失败:', error);
+  }
+
+  return false;
+}
+
+function normalizeYamadaHanakoBossBattleRecord(rawValue: unknown): YamadaHanakoBossBattleRecord {
+  const rawRecord = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue) ? rawValue : {};
+  return {
+    是否已挑战: (rawRecord as Record<string, unknown>).是否已挑战 === true,
+    是否已触发伪装逃跑: (rawRecord as Record<string, unknown>).是否已触发伪装逃跑 === true,
+  };
+}
+
+export function getBossBattleRecords(): BossBattleRecords {
+  const rawRecords = readChatVariables()[CHAT_BOSS_BATTLE_RECORDS_VARIABLE_KEY];
+  const recordMap = rawRecords && typeof rawRecords === 'object' && !Array.isArray(rawRecords) ? rawRecords : {};
+  return {
+    ...(recordMap as Record<string, unknown>),
+    山田花子: normalizeYamadaHanakoBossBattleRecord((recordMap as Record<string, unknown>).山田花子),
+  };
+}
+
+export function hasYamadaHanakoBeenChallenged(): boolean {
+  return getBossBattleRecords().山田花子.是否已挑战;
+}
+
+function hasCompleteYamadaHanakoBossBattleRecord(rawValue: unknown): boolean {
+  if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+    return false;
+  }
+
+  const record = rawValue as Record<string, unknown>;
+  return typeof record.是否已挑战 === 'boolean' && typeof record.是否已触发伪装逃跑 === 'boolean';
+}
+
+// 旧聊天可能没有在本次更新前新增的 BOSS 记录；每次载入战斗时补齐默认结构。
+export function ensureBossBattleRecords(): boolean {
+  const chatVariables = readChatVariables();
+  const rawRecords = chatVariables[CHAT_BOSS_BATTLE_RECORDS_VARIABLE_KEY];
+  const recordMap = rawRecords && typeof rawRecords === 'object' && !Array.isArray(rawRecords) ? rawRecords : {};
+  const rawYamadaRecord = (recordMap as Record<string, unknown>).山田花子;
+
+  if (hasCompleteYamadaHanakoBossBattleRecord(rawYamadaRecord)) {
+    return false;
+  }
+
+  return saveBossBattleRecords(getBossBattleRecords());
+}
+
+export const ensureYamadaHanakoBossBattleRecord = ensureBossBattleRecords;
+
+export function markYamadaHanakoDisguiseEscape(): boolean {
+  const records = getBossBattleRecords();
+  records.山田花子.是否已挑战 = true;
+  records.山田花子.是否已触发伪装逃跑 = true;
+  return saveBossBattleRecords(records);
 }
 
 function normalizeUnlockMap(rawValue: unknown): SerializableCGUnlockMap {

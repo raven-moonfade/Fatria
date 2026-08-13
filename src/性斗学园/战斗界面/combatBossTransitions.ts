@@ -81,14 +81,25 @@ export function getChristinePhaseConfig(nextPhase: 1 | 2): BossPhaseRuntimeConfi
   };
 }
 
-export function getYamadaHanakoPhaseConfig(nextPhase: 1 | 2): BossPhaseRuntimeConfig {
+export function getYamadaHanakoPhaseConfig(nextPhase: 1 | 2 | 3): BossPhaseRuntimeConfig {
   return {
     displayName: BossSystem.getYamadaHanakoDisplayName(nextPhase),
     dataKey: BossSystem.getYamadaHanakoDataKey(nextPhase),
     skillPoolKey: BossSystem.getYamadaHanakoSkillPoolKey(nextPhase),
     avatarUrl: BossSystem.getYamadaHanakoAvatarUrl(nextPhase),
     climaxLimit: BossSystem.getConfiguredBossClimaxLimit('yamadaHanako', nextPhase, 1),
-    transitionEffect: 'phase1to2',
+    transitionEffect: nextPhase === 3 ? 'phase2to3' : 'phase1to2',
+  };
+}
+
+export function getZhuangFangyiPhaseConfig(nextPhase: 1 | 2 | 3): BossPhaseRuntimeConfig {
+  return {
+    displayName: BossSystem.getZhuangFangyiDisplayName(nextPhase),
+    dataKey: BossSystem.getZhuangFangyiDataKey(nextPhase),
+    skillPoolKey: BossSystem.getZhuangFangyiSkillPoolKey(nextPhase),
+    avatarUrl: BossSystem.getZhuangFangyiAvatarUrl(nextPhase),
+    climaxLimit: BossSystem.getConfiguredBossClimaxLimit('zhuangFangyi', nextPhase, 3),
+    transitionEffect: nextPhase === 3 ? 'phase2to3' : 'phase1to2',
   };
 }
 

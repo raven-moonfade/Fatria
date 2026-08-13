@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import { getLatestMvuData, replaceLatestMvuData } from '../shared/mvuStore';
+import { markYamadaHanakoDisguiseEscape } from '../shared/cgUnlockStore';
 import { syncXiaoyeyueLightDarkStatusBonus } from '../shared/xiaoyeyueMagicGirl';
 import type { TimedStatusEffect } from '../shared/statusEngine';
 import { normalizeCombatClimaxLimit } from '../shared/combatLimits';
@@ -113,6 +114,12 @@ export async function persistCombatConfig(enemyName: string, climaxLimit: number
     _.set(statData, COMBAT_ENEMY_NAME_PATH, enemyName);
     _.set(statData, COMBAT_CLIMAX_LIMIT_PATH, normalizeClimaxLimit(climaxLimit));
   });
+}
+
+export async function persistBossBattleRecord(bossId: 'yamadaHanako', escapedDisguise = false): Promise<void> {
+  if (bossId === 'yamadaHanako' && escapedDisguise) {
+    markYamadaHanakoDisguiseEscape();
+  }
 }
 
 export async function persistPlayerCombatState(params: {
