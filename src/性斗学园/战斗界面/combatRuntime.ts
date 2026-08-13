@@ -7,6 +7,7 @@ export function createCombatRuntime() {
     currentTurn: 1,
     phase: 'playerInput',
     enemyIntention: null,
+    lastEnemySkillId: null,
     climaxTarget: null,
   });
 

@@ -880,7 +880,7 @@ const isBossSurrenderDisabled = ref<boolean>(false);
 
 // 每回合道具使用限制
 const itemUsedThisTurn = ref<boolean>(false);
-const MAX_ITEM_USES_PER_BATTLE = 2;
+const MAX_ITEM_USES_PER_BATTLE = 3;
 const itemBattleUseCounts = ref<Record<string, number>>({});
 
 function getItemBattleUseCount(itemId: string): number {
@@ -4613,7 +4613,9 @@ async function finishCombatAfterResult() {
   await saveToMvu();
 
   // 奖励必须最后写入，避免清理临时状态或最终战斗保存覆盖刚插入背包的装备。
-  const rewardLogs = await grantVictoryRewards(enemy.value.name, finalPhase === 'victory');
+  // 分阶段驱魔 Boss 的运行态名称会变成“少女形态”等，奖励判断必须使用稳定的 Boss 定义名。
+  const rewardEnemyName = exorcismBossDefinition.value?.displayName || enemy.value.name;
+  const rewardLogs = await grantVictoryRewards(rewardEnemyName, finalPhase === 'victory');
   rewardLogs.forEach(log => addLog(log.message, 'system', log.type));
 }
 
@@ -5066,7 +5068,7 @@ function determineEnemyIntention() {
   // 预告生成前，确保技能卡片读取最新的运行态冷却。
   syncEnemySkillCooldownsFromRuntime();
 
-  const selection = selectEnemyIntention(enemy.value.skills);
+  const selection = selectEnemyIntention(enemy.value.skills, Math.random, turnState.lastEnemySkillId);
   selection.invalidSkills.forEach(skill => {
     console.warn('[战斗界面] 发现无效技能:', skill);
   });
@@ -5839,6 +5841,11 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
       await finishTurnAndMaybeStartNextTurn();
       return;
     }
+
+    // 记录实际确认使用的技能，供下一回合预告时排除；冷却/体力不足的预告不计入。
+    turnState.lastEnemySkillId = skill.id;
+    // 预告只服务当前敌方回合，执行后必须消费，避免下一回合重复沿用旧预告。
+    turnState.enemyIntention = null;
 
     const exorcismUsedResult = await evaluateAndApplyExorcismMechanics('skillTagUsed', {
       skill,

@@ -290,7 +290,7 @@ export function createVesperaTurnStartActions(params: {
       },
       {
         kind: 'log',
-        message: `【信息素侵蚀】快感增加 ${vesperaResult.pleasureIncrease}（第${params.currentTurn}回合×2.5%×最大快感）`,
+        message: `【信息素侵蚀】快感增加 ${vesperaResult.pleasureIncrease}（第${params.currentTurn}回合×2%×最大快感）`,
         source: 'system',
         type: 'debuff',
       },

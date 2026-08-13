@@ -1736,8 +1736,8 @@ export function processVesperaTurnStart(
   const sexPowerCalcBuff = currentTurn * 5; // 累计buff
   const enduranceCalcDebuff = currentTurn * -5; // 累计debuff
 
-  // 玩家每回合开始时自身快感增添 当前回合*2.5%*最大快感
-  const pleasureIncrease = Math.floor(currentTurn * 0.025 * playerMaxPleasure);
+  // 玩家每回合开始时自身快感增添 当前回合*2%*最大快感
+  const pleasureIncrease = Math.floor(currentTurn * 0.02 * playerMaxPleasure);
 
   // 检查上回合是否使用了耐力消耗>28的技能，如果是则本回合被束缚
   const shouldBindNextTurn = bossState.vesperaLastSkillStaminaCost > 28;
@@ -1899,7 +1899,7 @@ export function getVesperaLustDescription(): string {
     '【信息素侵蚀】每回合开始时：',
     '• 玩家获得：性斗力成算+5%（可叠加）',
     '• 玩家获得：忍耐力成算-5%（可叠加）',
-    '• 玩家快感增加：当前回合×2.5%×最大快感',
+    '• 玩家快感增加：当前回合×2%×最大快感',
     '',
     '【束缚猎物】玩家被束缚时：',
     '• 薇丝佩菈攻击必定命中',

@@ -63,7 +63,11 @@ export function syncEnemySkillCooldowns(skills: Skill[], cooldowns: Record<strin
   });
 }
 
-export function selectEnemyIntention(skills: Skill[], random = Math.random): EnemyIntentionSelection {
+export function selectEnemyIntention(
+  skills: Skill[],
+  random = Math.random,
+  excludedSkillId: string | null = null,
+): EnemyIntentionSelection {
   if (skills.length === 0) {
     return { skill: null, invalidSkills: [], failureReason: 'empty' };
   }
@@ -75,7 +79,17 @@ export function selectEnemyIntention(skills: Skill[], random = Math.random): Ene
   }
 
   const availableSkills = validSkills.filter(skill => skill.currentCooldown === 0);
-  const skillsToChoose = availableSkills.length > 0 ? availableSkills : validSkills;
+  const readyAlternatives = availableSkills.filter(skill => skill.id !== excludedSkillId);
+  const validAlternatives = validSkills.filter(skill => skill.id !== excludedSkillId);
+  // 只排除上一回合的技能；若没有其他可选技能，允许回退以保证敌人仍能行动。
+  const skillsToChoose =
+    readyAlternatives.length > 0
+      ? readyAlternatives
+      : validAlternatives.length > 0
+        ? validAlternatives
+        : availableSkills.length > 0
+          ? availableSkills
+          : validSkills;
   const skill = pickRandom(skillsToChoose, random);
 
   return skill ? { skill, invalidSkills } : { skill: null, invalidSkills, failureReason: 'noChoice' };

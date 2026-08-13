@@ -175,6 +175,8 @@ export interface TurnState {
   currentTurn: number;
   phase: 'playerInput' | 'processing' | 'enemyAction' | 'victory' | 'defeat' | 'climaxResolution' | 'gameOver';
   enemyIntention: Skill | null;
+  /** 上一回合实际使用的敌方技能，用于避免连续预告同一技能。 */
+  lastEnemySkillId: string | null;
   climaxTarget: 'player' | 'enemy' | null;
 }
 

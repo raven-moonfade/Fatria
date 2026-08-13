@@ -158,8 +158,8 @@ async function syncSevenSinsBossReward(enemyName: string, resolvedEnemyName: str
 }
 
 function isExorcismFinalBoss(enemyName: string, resolvedEnemyName: string): boolean {
-  const text = `${enemyName} ${resolvedEnemyName}`.toLowerCase();
-  return text.includes('万魔之母') || text.includes('万魔母') || text.includes('mother_demon');
+  const text = `${enemyName} ${resolvedEnemyName}`.toLowerCase().replace(/[\s·・_\-—]/g, '');
+  return text.includes('万魔之母') || text.includes('万魔母') || text.includes('motherdemon');
 }
 
 export async function grantVictoryRewards(enemyName: string, isVictory: boolean): Promise<RewardLog[]> {
