@@ -587,6 +587,7 @@ import Step4_Skills from './components/Step4_Skills.vue';
 import { getAvailableArchetypes } from './constants';
 import { canSelectConstitution, getConstitutionById } from './data/constitutions';
 import { STARTER_SKILLS } from './data/skills';
+import { getMainlineTimelineUpdates, MAINLINE_TIMELINE_CONFIG } from './mainlineTimeline';
 import {
   CharacterData,
   Difficulty,
@@ -1926,26 +1927,6 @@ const resetAttributes = () => {
   };
 };
 
-const buildMainlineTimelineUpdates = (timeline: MainlineTimeline): Record<string, string | number> => {
-  const timelineStartMap: Partial<Record<MainlineTimeline, { date: string; weekday: number }>> = {
-    [MainlineTimeline.IDOL]: { date: '2025-03-24', weekday: 1 },
-    [MainlineTimeline.SPORTS]: { date: '2025-04-08', weekday: 2 },
-    [MainlineTimeline.FESTIVAL]: { date: '2025-04-21', weekday: 1 },
-    [MainlineTimeline.MIDTERM]: { date: '2025-05-03', weekday: 6 },
-    [MainlineTimeline.SUMMER]: { date: '2025-05-10', weekday: 6 },
-  };
-
-  const selectedStart = timelineStartMap[timeline];
-  if (!selectedStart) {
-    return {};
-  }
-
-  return {
-    '时间系统.日期': selectedStart.date,
-    '时间系统.星期': selectedStart.weekday,
-  };
-};
-
 const BONUS_KEYS = [
   '魅力加成',
   '幸运加成',
@@ -2004,7 +1985,7 @@ const handleStartGame = async () => {
   loading.value = true;
 
   try {
-    const mainlineTimelineUpdates = buildMainlineTimelineUpdates(characterData.value.mainlineTimeline);
+    const mainlineTimelineUpdates = getMainlineTimelineUpdates(characterData.value.mainlineTimeline);
 
     // ==================== 生活模拟模式特殊处理 ====================
     if (isLifeSimMode.value && selectedNpc.value) {
@@ -2361,6 +2342,8 @@ const sendCharacterDataToTavern = async () => {
       `【生活模拟模式开局场景】`,
       openingScene || '（未设定）',
     ];
+    const timelineConfig = MAINLINE_TIMELINE_CONFIG[characterData.value.mainlineTimeline];
+    lifeSimParts.push('', `【主线时间线开局指令】`, timelineConfig.openingPrompt);
 
     characterDescription = `<用户信息>\n${lifeSimParts.join('\n')}\n</用户信息>`;
   } else {
@@ -2429,6 +2412,9 @@ const sendCharacterDataToTavern = async () => {
     infoParts.push(`类型：${selectedArchetype?.name || '未知'}`);
     infoParts.push(`专属被动：${selectedArchetype?.passiveSkill.name || '无'}`);
     infoParts.push(`特性描述：${selectedArchetype?.description || ''}`);
+
+    const timelineConfig = MAINLINE_TIMELINE_CONFIG[characterData.value.mainlineTimeline];
+    infoParts.push('', `【主线时间线开局指令】`, timelineConfig.openingPrompt);
 
     characterDescription = `<用户信息>\n${infoParts.join('\n')}\n</用户信息>`;
   }

@@ -407,6 +407,18 @@
           {{ timeline }}
         </option>
       </select>
+      <div
+        class="mt-3 flex items-start gap-3 rounded-xl border px-4 py-3 shadow-sm transition-colors"
+        :class="selectedTimelineConfig.accentClass"
+      >
+        <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-black/15">
+          <i class="fas" :class="selectedTimelineConfig.icon"></i>
+        </span>
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-white">{{ data.mainlineTimeline }}</p>
+          <p class="mt-0.5 text-xs/5 text-white/75">{{ selectedTimelineConfig.summary }}</p>
+        </div>
+      </div>
       <p class="mt-2 text-xs text-gray-400">
         选择“无”时不改动日期；选择主线后会把开局日期设置为该主线触发日前两天。注：会导致之前的剧情无法触发，慎选。
       </p>
@@ -419,6 +431,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import type { NpcCharacter } from '../data/npcCharacters';
 import type { PlayerPresetSummary } from '../../shared/playerPresetStore';
 import { CharacterData, Difficulty, Gender, MainlineTimeline } from '../types';
+import { MAINLINE_TIMELINE_CONFIG } from '../mainlineTimeline';
 import { generatePalettePersona, type UserInfoGenerationMode } from '../utils/palettePersonaGenerator';
 import NpcCharacterSelect from './NpcCharacterSelect.vue';
 
@@ -502,6 +515,8 @@ const availableDifficulties = computed(() => {
   // 否则隐藏"作弊者"选项
   return allDifficulties.filter(d => d !== Difficulty.CHEATER);
 });
+
+const selectedTimelineConfig = computed(() => MAINLINE_TIMELINE_CONFIG[props.data.mainlineTimeline]);
 
 // 获取难度的显示名称
 const getDifficultyDisplayName = (difficulty: Difficulty): string => {
