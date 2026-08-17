@@ -67,8 +67,8 @@ function readStatusSpecialEffect(
 
 function getStatusIcon(statusName: string, type: 'buff' | 'debuff'): string {
   if (statusName.includes('敏感')) return '❤️';
-  if (statusName.includes('乏力') || statusName.includes('恐惧')) return '!';
-  if (statusName.includes('迷离') || statusName.includes('混乱')) return '?';
+  if (statusName.includes('乏力')) return '!';
+  if (statusName.includes('迷离')) return '?';
   if (statusName.includes('集中')) return '◆';
   if (statusName.includes('反弹')) return '↩';
   if (statusName.includes('吸取')) return '↓';
@@ -130,7 +130,7 @@ export function statusListToEffects(statusList: StatusList | Record<string, unkn
       const effectValue = Number(specialEffect.效果值) || 0;
       const valueText = effectValue !== 0 ? `${effectValue > 0 ? '+' : ''}${effectValue}${specialEffect.是否为百分比 ? '%' : ''}` : '';
       displayName = `${specialEffect.类型}${valueText}`;
-      type = ['敏感', '乏力', '迷离', '恐惧', '混乱'].includes(specialEffect.类型) ? 'debuff' : 'buff';
+      type = ['敏感', '乏力', '迷离'].includes(specialEffect.类型) ? 'debuff' : 'buff';
     }
 
     effects.push({

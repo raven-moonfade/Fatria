@@ -87,8 +87,8 @@ const BUFF_TYPE_MAP: Partial<Record<BuffType, MvuSkillEffect['效果类型']>> =
   [BuffType.LIFESTEAL]: '吸取快感',
   [BuffType.FOCUS]: '集中',
   [BuffType.DOT_LUST]: '持续快感',
-  [BuffType.CONFUSION]: '迷离',
-  [BuffType.FEAR]: '乏力',
+  [BuffType.DAZED]: '迷离',
+  [BuffType.FATIGUE]: '乏力',
   [BuffType.SENSITIVE]: '敏感',
 };
 
@@ -101,8 +101,8 @@ const DEBUFF_TYPES = new Set<BuffType>([
   BuffType.DODGE_DOWN,
   BuffType.BIND,
   BuffType.CHARM_DEBUFF,
-  BuffType.CONFUSION,
-  BuffType.FEAR,
+  BuffType.DAZED,
+  BuffType.FATIGUE,
   BuffType.SENSITIVE,
   BuffType.DOT_LUST,
   BuffType.EDGE,

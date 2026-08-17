@@ -42,7 +42,7 @@ export const COMMON_SKILLS: SkillData[] = [
     ],
     accuracy: 90,
     critModifier: 10,
-    buffs: [{ type: BuffType.FEAR, value: 25, isPercent: true, duration: 1, stackable: false }],
+    buffs: [{ type: BuffType.FATIGUE, value: 25, isPercent: true, duration: 1, stackable: false }],
     canBeReflected: false,
     hitCount: 1,
     voiceLine: '嘘...安静...',

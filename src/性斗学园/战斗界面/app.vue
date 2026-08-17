@@ -753,7 +753,6 @@ import {
   buildSkillStatusLog,
   getEffectTypeName,
   getSkillStatusKey,
-  normalizeSkillEffectType,
   readSkillEffectList,
   type ResolvedSkillEffect,
   resolveSkillEffect,
@@ -2537,9 +2536,12 @@ function describeResourceEffect(
   isPercentage: boolean,
   targetName: string,
   duration?: number,
+  percentageBase: 'maximum' | 'current' = 'maximum',
 ): string {
   const verb = value >= 0 ? '增加' : '降低';
-  const amount = isPercentage ? `最大${resourceName}的 ${Math.abs(value)}%` : `${Math.abs(value)}点`;
+  const amount = isPercentage
+    ? `${percentageBase === 'current' ? '当前' : '最大'}${resourceName}的 ${Math.abs(value)}%`
+    : `${Math.abs(value)}点`;
   const prefix = duration
     ? `每回合使${targetName}${resourceName}${verb}${amount}`
     : `立即使${targetName}${resourceName}${verb}${amount}`;
@@ -2638,6 +2640,7 @@ function describeSkillEffect(effectData: unknown): SkillEffectTooltipItem | null
         resolvedEffect.isPercentage,
         targetName,
         resolvedEffect.duration,
+        resolvedEffect.resource === 'pleasure' ? 'current' : 'maximum',
       ),
       tone: 'resource',
     };
@@ -2736,13 +2739,13 @@ function describeLegacyBuffEffect(buff: SkillData['buffs'][number]): SkillEffect
         description: `目标受到的快感伤害提高${formatFlatOrPercentAmount(buff.value, true)}，持续${duration}。`,
         tone: 'special',
       };
-    case 'fear':
+    case 'fatigue':
       return {
         label: `乏力 ${valueText}`,
         description: `目标行动前有${Math.abs(buff.value)}%概率无法行动，持续${duration}。`,
         tone: 'control',
       };
-    case 'confuse':
+    case 'dazed':
       return {
         label: `迷离 ${valueText}`,
         description: `目标行动时有${Math.abs(buff.value)}%概率敌我误判，使本次技能作用到自己身上或空转，持续${duration}。`,
@@ -2759,7 +2762,7 @@ function describeLegacyBuffEffect(buff: SkillData['buffs'][number]): SkillEffect
     case 'dot_lust':
       return {
         label: `持续快感 ${valueText}`,
-        description: `每回合使目标快感增加${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
+        description: `每回合使目标${buff.isPercent ? '当前快感' : '快感'}增加${formatFlatOrPercentAmount(buff.value, buff.isPercent)}，持续${duration}。`,
         tone: 'resource',
       };
     case 'regen':
@@ -3006,13 +3009,16 @@ function calculateResourceDelta(
   resource: 'pleasure' | 'endurance',
   effectValue: number,
   isPercentage: boolean,
+  percentageBase: 'maximum' | 'current' = 'maximum',
 ): number {
   if (!isPercentage) {
     return Math.trunc(effectValue);
   }
 
+  const currentValue = resource === 'pleasure' ? actor.stats.currentPleasure : actor.stats.currentEndurance;
   const maxValue = resource === 'pleasure' ? actor.stats.maxPleasure : actor.stats.maxEndurance;
-  return Math.trunc((maxValue * effectValue) / 100);
+  const baseValue = percentageBase === 'current' ? currentValue : maxValue;
+  return Math.trunc((baseValue * effectValue) / 100);
 }
 
 function applyResourceChangeInStatData(
@@ -3145,7 +3151,7 @@ function getSpecialStatusEntries(
 
     const remainingTurns = Math.max(0, Number((entry as TimedStatusEffect).剩余回合) || 0);
     const special = (entry as TimedStatusEffect).特殊效果;
-    if (remainingTurns <= 0 || !special || normalizeSkillEffectType(special.类型 || '') !== effectType) {
+    if (remainingTurns <= 0 || !special || (special.类型 || '') !== effectType) {
       return;
     }
 
@@ -3201,7 +3207,7 @@ async function tryInterruptActionBySpecialStatus(side: CombatSide): Promise<stri
   return null;
 }
 
-async function tryConfuseActionBySpecialStatus(side: CombatSide): Promise<string | null> {
+async function tryDazedActionBySpecialStatus(side: CombatSide): Promise<string | null> {
   const actorName = getCombatantBySide(side).name;
   if (await rollSpecialStatusTrigger(side, '迷离')) {
     return `${actorName} 陷入迷离，敌我误判！`;
@@ -3332,7 +3338,7 @@ function isNegativeSpecialEffect(special: TimedStatusEffect['特殊效果']): bo
   if (!special?.类型) {
     return false;
   }
-  const type = normalizeSkillEffectType(special.类型);
+  const type = special.类型;
   const value = Number(special.效果值) || 0;
   if (type === '敏感') {
     return value > 0;
@@ -3344,7 +3350,7 @@ function isPositiveSpecialEffect(special: TimedStatusEffect['特殊效果']): bo
   if (!special?.类型) {
     return false;
   }
-  const type = normalizeSkillEffectType(special.类型);
+  const type = special.类型;
   const value = Number(special.效果值) || 0;
   if (type === '敏感') {
     return value < 0;
@@ -3842,7 +3848,13 @@ async function applyTimedResourceChanges(side: CombatSide, statusList: Record<st
         continue;
       }
 
-      const delta = calculateResourceDelta(actor, change.resource, change.value, Boolean(resourceChange.是否为百分比));
+      const delta = calculateResourceDelta(
+        actor,
+        change.resource,
+        change.value,
+        Boolean(resourceChange.是否为百分比),
+        change.resource === 'pleasure' ? 'current' : 'maximum',
+      );
       const actualChange = await applyResourceDeltaToSide(side, change.resource, delta);
       if (actualChange !== 0) {
         const verb = actualChange > 0 ? '增加' : '降低';
@@ -5320,11 +5332,11 @@ async function handlePlayerSkill(skill: Skill) {
         preAttackSpecialLogs.push(`${nextPlayer.name} 的集中状态生效，本次攻击必定暴击！`);
       }
 
-      const playerConfusionLog = await tryConfuseActionBySpecialStatus('player');
-      const playerAttackTargetSide: CombatSide = playerConfusionLog ? 'player' : 'enemy';
-      const playerAttackTarget = playerConfusionLog ? nextPlayer : nextEnemy;
-      if (playerConfusionLog) {
-        preAttackSpecialLogs.push(`${playerConfusionLog} ${skill.name}失控作用到自己身上！`);
+      const playerDazedLog = await tryDazedActionBySpecialStatus('player');
+      const playerAttackTargetSide: CombatSide = playerDazedLog ? 'player' : 'enemy';
+      const playerAttackTarget = playerDazedLog ? nextPlayer : nextEnemy;
+      if (playerDazedLog) {
+        preAttackSpecialLogs.push(`${playerDazedLog} ${skill.name}失控作用到自己身上！`);
         triggerCharacterReaction('player', 'status-self-hit', '迷离 · 误伤自身');
       }
 
@@ -5416,7 +5428,7 @@ async function handlePlayerSkill(skill: Skill) {
           }
 
           // 应用伤害（结算快感）- 使用totalDamage
-          const damageTarget = playerConfusionLog ? nextPlayer : nextEnemy;
+          const damageTarget = playerDazedLog ? nextPlayer : nextEnemy;
           const oldPleasure = damageTarget.stats.currentPleasure;
           damageTarget.stats.currentPleasure = Math.min(
             damageTarget.stats.maxPleasure,
@@ -5429,7 +5441,7 @@ async function handlePlayerSkill(skill: Skill) {
             'info',
           );
 
-          if (!playerConfusionLog) {
+          if (!playerDazedLog) {
             await applyPlayerAttackActions(
               createAgnesPlayerDamageActions({
                 bossState: BossSystem.bossState,
@@ -5469,7 +5481,7 @@ async function handlePlayerSkill(skill: Skill) {
         enemy.value = nextEnemy;
 
         // 应用buff/debuff效果（包括束缚，统一由 applyCombatSkillEffects 处理）
-        if (playerConfusionLog) {
+        if (playerDazedLog) {
           addLog('迷离使技能附带效果没有正确生效。', 'system', 'debuff');
         } else {
           try {
@@ -5480,7 +5492,7 @@ async function handlePlayerSkill(skill: Skill) {
           }
         }
 
-        if (hasDirectDamage && !playerConfusionLog) {
+        if (hasDirectDamage && !playerDazedLog) {
           await applyPlayerAttackActions(
             createTalentBindAfterHitActions({
               talentAttackResult,
@@ -5522,7 +5534,7 @@ async function handlePlayerSkill(skill: Skill) {
         }
       };
 
-      if (!result.isDodged && !playerConfusionLog) {
+      if (!result.isDodged && !playerDazedLog) {
         collectExorcismResult(
           await evaluateAndApplyExorcismMechanics('skillTagHit', {
             skill,
@@ -5532,7 +5544,7 @@ async function handlePlayerSkill(skill: Skill) {
         collectExorcismResult(await evaluateAndApplyExorcismMechanics('progressAtLeast'));
       }
 
-      if (hasDirectDamage && !playerConfusionLog) {
+      if (hasDirectDamage && !playerDazedLog) {
         const damageTakenPercent = getExorcismPleasurePercent(enemy.value);
         const damageStepResult = await evaluateAndApplyExorcismMechanics('damageTakenPercentStep', {
           damageTakenPercent,
@@ -5901,54 +5913,54 @@ async function runEnemySkillAction(playerWasBoundAtEnemyTurnStart: boolean) {
       addLog(`${nextEnemy.name} 的集中状态生效，本次攻击必定暴击！`, 'system', 'info');
     }
 
-    const enemyConfusionLog = await tryConfuseActionBySpecialStatus('enemy');
-    if (enemyConfusionLog) {
+    const enemyDazedLog = await tryDazedActionBySpecialStatus('enemy');
+    if (enemyDazedLog) {
       addLog(`${nextEnemy.name} 使用了 ${skill.name}！`, 'enemy', 'info');
-      addLog(`${enemyConfusionLog} ${skill.name}失控作用到自己身上！`, 'system', 'debuff');
+      addLog(`${enemyDazedLog} ${skill.name}失控作用到自己身上！`, 'system', 'debuff');
       triggerCharacterReaction('enemy', 'status-self-hit', '迷离 · 误伤自身');
 
       const enemySelfSensitiveValue = await getSpecialStatusValue('enemy', '敏感');
       const enemySelfSensitiveLog = buildSensitiveDamageLog(nextEnemy.name, enemySelfSensitiveValue);
-      const confusedAttackOptions: { guaranteedCrit?: boolean; damageMultiplier?: number } = {};
+      const dazedAttackOptions: { guaranteedCrit?: boolean; damageMultiplier?: number } = {};
       if (enemyFocusActive) {
-        confusedAttackOptions.guaranteedCrit = true;
+        dazedAttackOptions.guaranteedCrit = true;
       }
-      const confusedDamageMultiplier = exorcismDamageMultiplier * getSensitiveDamageMultiplier(enemySelfSensitiveValue);
-      if (confusedDamageMultiplier !== 1) {
-        confusedAttackOptions.damageMultiplier = confusedDamageMultiplier;
+      const dazedDamageMultiplier = exorcismDamageMultiplier * getSensitiveDamageMultiplier(enemySelfSensitiveValue);
+      if (dazedDamageMultiplier !== 1) {
+        dazedAttackOptions.damageMultiplier = dazedDamageMultiplier;
       }
 
       if (enemySelfSensitiveLog) {
         addLog(enemySelfSensitiveLog, 'system', 'info');
       }
 
-      const confusedResult = executeAttack(nextEnemy, nextEnemy, skill.data, false, confusedAttackOptions);
-      const shouldConsumeConfusedEnemyFocus =
+      const dazedResult = executeAttack(nextEnemy, nextEnemy, skill.data, false, dazedAttackOptions);
+      const shouldConsumeDazedEnemyFocus =
         enemyFocusActive && skill.data.damageFormula.length > 0 && Math.max(0, Number(skill.data.hitCount ?? 1)) > 0;
-      if (shouldConsumeConfusedEnemyFocus && (await removeSpecialStatuses('enemy', '集中')) > 0) {
+      if (shouldConsumeDazedEnemyFocus && (await removeSpecialStatuses('enemy', '集中')) > 0) {
         addLog(`${nextEnemy.name} 的集中效果已消耗`, 'system', 'info');
       }
 
-      if (confusedResult.logs && confusedResult.logs.length > 0) {
-        confusedResult.logs.forEach(log => addLog(log, 'system', 'info'));
+      if (dazedResult.logs && dazedResult.logs.length > 0) {
+        dazedResult.logs.forEach(log => addLog(log, 'system', 'info'));
       }
 
-      const hasConfusedDirectDamage = confusedResult.hits.length > 0 || confusedResult.totalDamage > 0;
-      if (confusedResult.isDodged) {
+      const hasDazedDirectDamage = dazedResult.hits.length > 0 || dazedResult.totalDamage > 0;
+      if (dazedResult.isDodged) {
         addLog(`${nextEnemy.name} 闪避了失控的动作！`, 'system', 'info');
         triggerEffect('dodge');
-      } else if (hasConfusedDirectDamage) {
-        if (confusedResult.isCritical) {
-          addLog(`暴击！${nextEnemy.name} 对自己造成 ${confusedResult.totalDamage} 点快感！`, 'enemy', 'critical');
+      } else if (hasDazedDirectDamage) {
+        if (dazedResult.isCritical) {
+          addLog(`暴击！${nextEnemy.name} 对自己造成 ${dazedResult.totalDamage} 点快感！`, 'enemy', 'critical');
           triggerEffect('critical');
         } else {
-          addLog(`${nextEnemy.name} 对自己造成 ${confusedResult.totalDamage} 点快感`, 'enemy', 'damage');
+          addLog(`${nextEnemy.name} 对自己造成 ${dazedResult.totalDamage} 点快感`, 'enemy', 'damage');
         }
 
         const oldEnemyPleasure = nextEnemy.stats.currentPleasure;
         nextEnemy.stats.currentPleasure = Math.min(
           nextEnemy.stats.maxPleasure,
-          nextEnemy.stats.currentPleasure + confusedResult.totalDamage,
+          nextEnemy.stats.currentPleasure + dazedResult.totalDamage,
         );
         addLog(
           `${nextEnemy.name} 的快感从 ${oldEnemyPleasure}/${nextEnemy.stats.maxPleasure} 增加到 ${nextEnemy.stats.currentPleasure}/${nextEnemy.stats.maxPleasure}`,

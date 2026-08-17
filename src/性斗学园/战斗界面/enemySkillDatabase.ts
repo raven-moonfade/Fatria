@@ -19818,7 +19818,7 @@ export function convertToMvuSkillFormat(skill: SkillData) {
         BuffType.CRIT_DOWN,
         BuffType.LUCK_DOWN,
         BuffType.CHARM_DOWN,
-        BuffType.FEAR,
+        BuffType.FATIGUE,
         BuffType.DOT_LUST,
       ]);
 
@@ -19851,7 +19851,7 @@ export function convertToMvuSkillFormat(skill: SkillData) {
         [BuffType.CHARM_DOWN]: '魅力',
         [BuffType.DEF_UP]: '忍耐力',
         [BuffType.DEF_DOWN]: '忍耐力',
-        [BuffType.FEAR]: '乏力',
+        [BuffType.FATIGUE]: '乏力',
         [BuffType.FOCUS]: '集中',
         [BuffType.DOT_LUST]: '持续快感',
         [BuffType.REGEN]: '持续耐力',
@@ -20910,7 +20910,7 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       rarity: 'A',
       source: DamageSource.CHARM,
       coefficient: 6.2,
-      buffs: [{ type: BuffType.FEAR, value: 20, isPercent: true, duration: 1, stackable: false }],
+      buffs: [{ type: BuffType.FATIGUE, value: 20, isPercent: true, duration: 1, stackable: false }],
     },
   ],
   真白凪沙: [
@@ -21367,7 +21367,7 @@ const DLC_ENEMY_SKILL_DEFINITIONS: Record<string, DlcEnemySkillSpec[]> = {
       rarity: 'A',
       source: DamageSource.CHARM,
       coefficient: 6.4,
-      buffs: [{ type: BuffType.FEAR, value: 20, isPercent: true, duration: 1, stackable: false }],
+      buffs: [{ type: BuffType.FATIGUE, value: 20, isPercent: true, duration: 1, stackable: false }],
     },
     {
       name: '鱼尾缠绕·冰鳞绞杀',

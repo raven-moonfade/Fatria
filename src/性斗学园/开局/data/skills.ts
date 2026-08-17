@@ -636,7 +636,7 @@ export const PHYSICAL_SKILLS: SkillData[] = [
     target: SkillTarget.SINGLE_ENEMY,
     accuracy: 90,
     critModifier: 10,
-    buffs: [{ type: BuffType.FEAR, value: 25, isPercent: true, duration: 1, stackable: false }],
+    buffs: [{ type: BuffType.FATIGUE, value: 25, isPercent: true, duration: 1, stackable: false }],
     ignoreDefense: false,
     canBeDodged: true,
     canBeReflected: false,

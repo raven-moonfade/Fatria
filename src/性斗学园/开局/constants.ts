@@ -119,9 +119,9 @@ export const ARCHETYPES: Record<Gender, Archetype[]> = {
       description: '比女生更可爱的小男娘，容易激起保护欲。',
       icon: 'Cat',
       passiveSkill: {
-        id: 'p_confusion',
+        id: 'p_dazed',
         name: '性别模糊',
-        description: '让直男陷入混乱',
+        description: '让直男陷入迷离',
         type: 'constitution',
         icon: 'RefreshCcw',
       },

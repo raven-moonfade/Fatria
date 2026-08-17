@@ -61,24 +61,12 @@ const EFFECT_TYPE_LABELS: Record<string, string> = {
   敏感: '敏感',
   乏力: '乏力',
   迷离: '迷离',
-  恐惧: '乏力',
-  混乱: '迷离',
   集中: '集中',
   反弹: '反弹',
   吸取快感: '吸取快感',
 };
 
 const SPECIAL_EFFECT_TYPES = new Set(['敏感', '乏力', '迷离', '集中', '反弹', '吸取快感']);
-
-export function normalizeSkillEffectType(effectType: string): string {
-  if (effectType === '恐惧') {
-    return '乏力';
-  }
-  if (effectType === '混乱') {
-    return '迷离';
-  }
-  return effectType;
-}
 
 export function readSkillEffectList(
   statData: Record<string, any>,
@@ -106,7 +94,7 @@ export function resolveSkillEffect(effectData: unknown): ResolvedSkillEffect {
     return { kind: 'skip', reason: '无效效果' };
   }
 
-  const effectType = normalizeSkillEffectType(_.get(effectData, '效果类型', '') as string);
+  const effectType = _.get(effectData, '效果类型', '') as string;
   const effectValue = Number(_.get(effectData, '效果值', 0)) || 0;
   const isPercentage = Boolean(_.get(effectData, '是否为百分比', false));
   const duration = Math.max(0, Number(_.get(effectData, '持续回合数', 0)) || 0);

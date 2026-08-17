@@ -2035,8 +2035,8 @@ const handleStartGame = async () => {
           'crit_down',
           'bind',
           'sensitive',
-          'confusion',
-          'fear',
+          'dazed',
+          'fatigue',
           'dot_lust',
         ]);
 
@@ -2059,8 +2059,8 @@ const handleStartGame = async () => {
               bind: '束缚',
               regen: '持续耐力',
               sensitive: '敏感',
-              fear: '乏力',
-              confusion: '迷离',
+              fatigue: '乏力',
+              dazed: '迷离',
               focus: '集中',
               reflect: '反弹',
               lifesteal: '吸取快感',

@@ -109,11 +109,11 @@ export enum BuffType {
   /** 束缚 - 无法使用物理技能 */
   BIND = 'bind',
   /** 迷离 - 有概率技能误判 */
-  CONFUSION = 'confusion',
+  DAZED = 'dazed',
   /** 魅惑 - 有概率攻击队友 */
   CHARM_DEBUFF = 'charm_debuff',
   /** 乏力 - 有概率跳过行动 */
-  FEAR = 'fear',
+  FATIGUE = 'fatigue',
   /** 兴奋 - 快感积累速度提升（可正可负） */
   AROUSAL = 'arousal',
   /** 敏感 - 受到的快感伤害增加 */
@@ -352,9 +352,9 @@ export const BUFF_TYPE_NAMES: Record<BuffType, string> = {
   [BuffType.DODGE_DOWN]: '闪避下降',
   [BuffType.DOT_LUST]: '持续快感',
   [BuffType.BIND]: '束缚',
-  [BuffType.CONFUSION]: '迷离',
+  [BuffType.DAZED]: '迷离',
   [BuffType.CHARM_DEBUFF]: '魅惑',
-  [BuffType.FEAR]: '乏力',
+  [BuffType.FATIGUE]: '乏力',
   [BuffType.AROUSAL]: '兴奋',
   [BuffType.SENSITIVE]: '敏感',
   [BuffType.EDGE]: '高潮边缘',

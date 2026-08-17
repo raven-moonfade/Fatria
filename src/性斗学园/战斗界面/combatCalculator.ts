@@ -443,8 +443,13 @@ export function updateStatusEffects(character: Character): string[] {
   // 处理持续伤害/回复效果
   for (const effect of character.statusEffects) {
     if (effect.effect.type === BuffType.DOT_LUST) {
-      const lustChange = effect.effect.value;
-      character.stats.currentPleasure += lustChange;
+      const lustChange = effect.effect.isPercent
+        ? Math.floor((character.stats.currentPleasure * effect.effect.value) / 100)
+        : effect.effect.value;
+      character.stats.currentPleasure = Math.min(
+        character.stats.maxPleasure,
+        character.stats.currentPleasure + lustChange,
+      );
       logs.push(`${character.name} 受到持续快感影响 (${lustChange > 0 ? '+' : ''}${lustChange})`);
     } else if (effect.effect.type === BuffType.REGEN) {
       const regenValue = effect.effect.isPercent
@@ -479,7 +484,7 @@ function getBuffName(type: BuffType): string {
     [BuffType.LUCK_DOWN]: '幸运下降',
     [BuffType.CHARM_DOWN]: '魅力下降',
     [BuffType.FOCUS]: '集中',
-    [BuffType.FEAR]: '乏力',
+    [BuffType.FATIGUE]: '乏力',
     [BuffType.DOT_LUST]: '持续快感',
     [BuffType.REGEN]: '持续回复',
   };
@@ -499,7 +504,7 @@ function isDebuff(type: BuffType): boolean {
     BuffType.CRIT_DOWN,
     BuffType.LUCK_DOWN,
     BuffType.CHARM_DOWN,
-    BuffType.FEAR,
+    BuffType.FATIGUE,
     BuffType.DOT_LUST,
   ];
   return debuffs.includes(type);

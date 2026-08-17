@@ -62,7 +62,7 @@ export enum BuffType {
   LUCK_DOWN = 'luck_down',
   CHARM_DOWN = 'charm_down',
   FOCUS = 'focus',
-  FEAR = 'fear',
+  FATIGUE = 'fatigue',
   DOT_LUST = 'dot_lust',
   REGEN = 'regen',
 }

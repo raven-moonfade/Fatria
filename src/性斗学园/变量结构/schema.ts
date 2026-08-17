@@ -16,40 +16,31 @@ const BonusSchema = z
   })
   .prefault({});
 
-const normalizeEffectTypeName = (value: unknown) => {
-  if (value === '恐惧') return '乏力';
-  if (value === '混乱') return '迷离';
-  return value;
-};
-
 const SpecialEffectTypeSchema = z
-  .preprocess(normalizeEffectTypeName, z.enum(['敏感', '乏力', '迷离', '集中', '反弹', '吸取快感']))
+  .enum(['敏感', '乏力', '迷离', '集中', '反弹', '吸取快感'])
   .catch('敏感')
   .prefault('敏感');
 
 const SkillEffectTypeSchema = z
-  .preprocess(
-    normalizeEffectTypeName,
-    z.enum([
-      '性斗力',
-      '忍耐力',
-      '魅力',
-      '幸运',
-      '闪避率',
-      '暴击率',
-      '束缚',
-      '快感变化',
-      '持续快感',
-      '耐力变化',
-      '持续耐力',
-      '敏感',
-      '乏力',
-      '迷离',
-      '集中',
-      '反弹',
-      '吸取快感',
-    ]),
-  )
+  .enum([
+    '性斗力',
+    '忍耐力',
+    '魅力',
+    '幸运',
+    '闪避率',
+    '暴击率',
+    '束缚',
+    '快感变化',
+    '持续快感',
+    '耐力变化',
+    '持续耐力',
+    '敏感',
+    '乏力',
+    '迷离',
+    '集中',
+    '反弹',
+    '吸取快感',
+  ])
   .catch('性斗力')
   .prefault('性斗力');
 
