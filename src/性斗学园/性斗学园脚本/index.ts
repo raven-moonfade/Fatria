@@ -491,21 +491,90 @@ function normalizeBackpackEquipmentsInMvuData(
 
 // 等待 MVU 初始化（带安全检查和超时）
 const globalAny = window as any;
-installBackstreetMainPromptInjector();
+const SCRIPT_INSTANCE_REGISTRY_KEY = '__fatriaSexBattleAcademyScriptInstances';
+type ScriptInstance = { token: string; requestTakeover?: () => void };
 
-if (typeof globalAny.waitGlobalInitialized === 'function') {
+function getScriptHostWindow(): Record<string, unknown> {
+  const currentWindow = window as unknown as Record<string, unknown>;
   try {
-    // 添加超时保护：最多等待10秒
-    const waitPromise = globalAny.waitGlobalInitialized('Mvu');
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('等待MVU初始化超时')), 10000));
-    await Promise.race([waitPromise, timeoutPromise]);
-  } catch (error) {
-    console.warn('[性斗学园脚本] 等待MVU初始化失败，继续执行:', error);
+    if (window.parent && window.parent !== window && window.parent.document)
+      return window.parent as unknown as Record<string, unknown>;
+  } catch {
+    return currentWindow;
   }
+  return currentWindow;
+}
+
+function getCurrentCharacterInstanceKey(hostWindow: Record<string, unknown>): string {
+  const context = (hostWindow.SillyTavern as any)?.getContext?.();
+  const characterKey =
+    context?.characterId ??
+    context?.characterFilename ??
+    context?.character?.avatar ??
+    context?.name2 ??
+    (hostWindow.SillyTavern as any)?.getCurrentChatId?.() ??
+    'unknown';
+  return String(characterKey);
+}
+
+function isScriptInstanceRegistry(value: unknown): value is Map<string, ScriptInstance> {
+  const registry = value as Partial<Map<string, ScriptInstance>> | null;
+  return (
+    !!registry &&
+    typeof registry.get === 'function' &&
+    typeof registry.set === 'function' &&
+    typeof registry.delete === 'function'
+  );
+}
+
+function getScriptInstanceRegistry(hostWindow: Record<string, unknown>): Map<string, ScriptInstance> {
+  const registry = hostWindow[SCRIPT_INSTANCE_REGISTRY_KEY];
+  if (isScriptInstanceRegistry(registry)) return registry;
+
+  const nextRegistry = new Map<string, ScriptInstance>();
+  hostWindow[SCRIPT_INSTANCE_REGISTRY_KEY] = nextRegistry;
+  return nextRegistry;
+}
+
+const scriptHostWindow = getScriptHostWindow();
+const scriptCharacterInstanceKey = getCurrentCharacterInstanceKey(scriptHostWindow);
+const scriptInstanceRegistry = getScriptInstanceRegistry(scriptHostWindow);
+const scriptInstanceToken = `fatria_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const isPrimaryScriptInstance = !scriptInstanceRegistry.has(scriptCharacterInstanceKey);
+const primaryScriptInstance = scriptInstanceRegistry.get(scriptCharacterInstanceKey);
+
+if (isPrimaryScriptInstance) {
+  scriptInstanceRegistry.set(scriptCharacterInstanceKey, { token: scriptInstanceToken });
+  installBackstreetMainPromptInjector();
 } else {
-  console.warn('[性斗学园脚本] waitGlobalInitialized 函数不存在，跳过等待');
-  // 等待一小段时间让全局变量初始化
-  await new Promise(resolve => setTimeout(resolve, 500));
+  const requestTakeover = () => window.location.reload();
+  if (primaryScriptInstance) primaryScriptInstance.requestTakeover = requestTakeover;
+  $(window).on('pagehide', () => {
+    const activeInstance = scriptInstanceRegistry.get(scriptCharacterInstanceKey);
+    if (activeInstance?.requestTakeover === requestTakeover) delete activeInstance.requestTakeover;
+  });
+  console.warn('[性斗学园脚本] 已阻止同一角色重复加载脚本，保留先加载的实例。', {
+    character: scriptCharacterInstanceKey,
+  });
+}
+
+if (isPrimaryScriptInstance) {
+  if (typeof globalAny.waitGlobalInitialized === 'function') {
+    try {
+      // 添加超时保护：最多等待10秒
+      const waitPromise = globalAny.waitGlobalInitialized('Mvu');
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('等待MVU初始化超时')), 10000),
+      );
+      await Promise.race([waitPromise, timeoutPromise]);
+    } catch (error) {
+      console.warn('[性斗学园脚本] 等待MVU初始化失败，继续执行:', error);
+    }
+  } else {
+    console.warn('[性斗学园脚本] waitGlobalInitialized 函数不存在，跳过等待');
+    // 等待一小段时间让全局变量初始化
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
 }
 
 /**
@@ -973,7 +1042,10 @@ async function updateDependentVariables() {
 /**
  * 注册 MVU 事件监听器（需要在 MVU 初始化后调用）
  */
+let mvuEventListenersRegistered = false;
+
 function registerMvuEventListeners() {
+  if (mvuEventListenersRegistered) return true;
   if (typeof Mvu === 'undefined' || !Mvu) {
     console.warn('[性斗学园脚本] Mvu 不存在，无法注册事件监听器');
     return false;
@@ -1056,6 +1128,7 @@ function registerMvuEventListeners() {
       await updateDependentVariables();
     });
 
+    mvuEventListenersRegistered = true;
     console.info('[性斗学园脚本] MVU 事件监听器注册成功');
     return true;
   } catch (error) {
@@ -1065,7 +1138,9 @@ function registerMvuEventListeners() {
 }
 
 // 尝试注册 MVU 事件监听器
-registerMvuEventListeners();
+if (isPrimaryScriptInstance) {
+  registerMvuEventListeners();
+}
 
 /**
  * 处理对话后的耐力和快感更新
@@ -1123,7 +1198,7 @@ async function handleConversationUpdate() {
  * 每次对话后更新耐力和快感
  */
 // tavern_events 在脚本环境中是全局可用的
-if (typeof tavern_events !== 'undefined' && tavern_events.MESSAGE_RECEIVED) {
+if (isPrimaryScriptInstance && typeof tavern_events !== 'undefined' && tavern_events.MESSAGE_RECEIVED) {
   eventOn(tavern_events.MESSAGE_RECEIVED, async () => {
     console.info('[性斗学园脚本] 检测到消息接收事件，开始更新对话后的状态');
     // 延迟一点执行，确保消息已完全更新
@@ -1135,11 +1210,12 @@ if (typeof tavern_events !== 'undefined' && tavern_events.MESSAGE_RECEIVED) {
     }, 200);
   });
   console.info('[性斗学园脚本] 已注册对话后状态更新监听器');
-} else {
+} else if (isPrimaryScriptInstance) {
   console.warn('[性斗学园脚本] tavern_events.MESSAGE_RECEIVED 不可用，无法监听对话事件');
 }
 
 let syncUserInfoTimers: ReturnType<typeof setTimeout>[] = [];
+let periodicUpdateTimer: ReturnType<typeof setInterval> | null = null;
 
 function clearUserInfoSyncTimers() {
   for (const timer of syncUserInfoTimers) {
@@ -1175,12 +1251,12 @@ function scheduleCurrentChatUserInfoSync(reason: string, delays: number[] = [300
   );
 }
 
-if (typeof tavern_events !== 'undefined' && tavern_events.CHAT_CHANGED) {
+if (isPrimaryScriptInstance && typeof tavern_events !== 'undefined' && tavern_events.CHAT_CHANGED) {
   eventOn(tavern_events.CHAT_CHANGED, () => {
     scheduleCurrentChatUserInfoSync('聊天切换', [300, 1000, 2500, 5000, 8000]);
   });
   console.info('[性斗学园脚本] 已注册聊天切换用户人设同步监听器');
-} else {
+} else if (isPrimaryScriptInstance) {
   console.warn('[性斗学园脚本] tavern_events.CHAT_CHANGED 不可用，无法监听聊天切换同步用户人设');
 }
 
@@ -1202,53 +1278,55 @@ async function waitForMvuReady(maxRetries = 20, interval = 500): Promise<boolean
 /**
  * 初始化时执行一次计算
  */
-$(() => {
-  // 显示加载提示
-  toastr.success('性斗学园数值计算脚本已启动', '脚本加载成功', {
-    timeOut: 3000,
-    progressBar: true,
-  });
+if (isPrimaryScriptInstance) {
+  $(() => {
+    // 显示加载提示
+    toastr.success('性斗学园数值计算脚本已启动', '脚本加载成功', {
+      timeOut: 3000,
+      progressBar: true,
+    });
 
-  errorCatched(async () => {
-    // 等待 MVU 初始化完成
-    const mvuReady = await waitForMvuReady();
-    if (!mvuReady) {
-      toastr.error('MVU 初始化超时，脚本功能可能受限', '初始化警告', { timeOut: 5000 });
-      return;
-    }
+    errorCatched(async () => {
+      // 等待 MVU 初始化完成
+      const mvuReady = await waitForMvuReady();
+      if (!mvuReady) {
+        toastr.error('MVU 初始化超时，脚本功能可能受限', '初始化警告', { timeOut: 5000 });
+        return;
+      }
 
-    // MVU 就绪后，重新注册事件监听器（如果之前注册失败）
-    registerMvuEventListeners();
+      // MVU 就绪后，重新注册事件监听器（如果之前注册失败）
+      registerMvuEventListeners();
 
-    console.info('[性斗学园脚本] 初始化：开始首次计算');
-    scheduleCurrentChatUserInfoSync('脚本初始化', [100, 800, 2000, 5000]);
-    await updateDependentVariables();
-    // 初始化时也更新段位
-    await updateRank();
-  })();
-
-  // 添加定时检查机制（每10秒检查一次，确保实时更新）
-  setInterval(async () => {
-    if (!isUpdating) {
+      console.info('[性斗学园脚本] 初始化：开始首次计算');
+      scheduleCurrentChatUserInfoSync('脚本初始化', [100, 800, 2000, 5000]);
       await updateDependentVariables();
-    }
-    // 独立更新段位，确保段位始终与等级匹配
-    await updateRank();
-  }, 10000);
+      // 初始化时也更新段位
+      await updateRank();
+    })();
 
-  // 初始化状态栏
-  initStatusBar();
-  removeLegacyStatusBarButton();
-  installBackstreetMainPromptInjector();
-  registerScriptUpdateGlobals();
-  scheduleScriptUpdateCheck();
+    // 添加定时检查机制（每10秒检查一次，确保实时更新）
+    periodicUpdateTimer = setInterval(async () => {
+      if (!isUpdating) {
+        await updateDependentVariables();
+      }
+      // 独立更新段位，确保段位始终与等级匹配
+      await updateRank();
+    }, 10000);
 
-  // 兼容旧按钮事件；正常入口已改为悬浮小手机。
-  eventOn(getButtonEvent('打开状态栏'), () => {
-    console.info('[性斗学园脚本] 旧状态栏按钮被点击，转为打开悬浮窗');
-    toggleStatusBar();
+    // 初始化状态栏
+    initStatusBar();
+    removeLegacyStatusBarButton();
+    installBackstreetMainPromptInjector();
+    registerScriptUpdateGlobals();
+    scheduleScriptUpdateCheck();
+
+    // 兼容旧按钮事件；正常入口已改为悬浮小手机。
+    eventOn(getButtonEvent('打开状态栏'), () => {
+      console.info('[性斗学园脚本] 旧状态栏按钮被点击，转为打开悬浮窗');
+      toggleStatusBar();
+    });
   });
-});
+}
 
 /**
  * 初始化状态栏
@@ -1353,22 +1431,41 @@ function toggleStatusBar() {
 /**
  * 脚本卸载时显示提示
  */
-$(window).on('pagehide', () => {
-  toastr.info('性斗学园数值计算脚本已关闭', '脚本卸载', {
-    timeOut: 2000,
-    progressBar: true,
+if (isPrimaryScriptInstance) {
+  $(window).on('pagehide', () => {
+    toastr.info('性斗学园数值计算脚本已关闭', '脚本卸载', {
+      timeOut: 2000,
+      progressBar: true,
+    });
+
+    // 清理状态栏
+    if (statusBarApp) {
+      statusBarApp.unmount();
+      statusBarApp = null;
+    }
+    if (statusBarContainer) {
+      statusBarContainer.remove();
+      statusBarContainer = null;
+    }
+    deteleportStyle();
+    clearUserInfoSyncTimers();
+    if (periodicUpdateTimer) {
+      clearInterval(periodicUpdateTimer);
+      periodicUpdateTimer = null;
+    }
+
+    const activeInstance = scriptInstanceRegistry.get(scriptCharacterInstanceKey);
+    if (activeInstance?.token === scriptInstanceToken) {
+      scriptInstanceRegistry.delete(scriptCharacterInstanceKey);
+      try {
+        activeInstance.requestTakeover?.();
+      } catch (error) {
+        console.warn('[性斗学园脚本] 后备实例接管失败:', error);
+      }
+    }
   });
+}
 
-  // 清理状态栏
-  if (statusBarApp) {
-    statusBarApp.unmount();
-    statusBarApp = null;
-  }
-  if (statusBarContainer) {
-    statusBarContainer.remove();
-    statusBarContainer = null;
-  }
-  deteleportStyle();
-});
-
-console.info('性斗学园数值计算脚本已加载');
+if (isPrimaryScriptInstance) {
+  console.info('性斗学园数值计算脚本已加载');
+}

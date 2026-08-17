@@ -5,6 +5,7 @@ const WORLD_INFO_GET_ENDPOINT = '/api/worldinfo/get';
 const WORLD_INFO_EDIT_ENDPOINT = '/api/worldinfo/edit';
 const CHAT_LOREBOOK_METADATA_KEY = 'world_info';
 const PHONE_WORLD_PREFIX = '后街-';
+const WORLDBOOK_WRITE_QUEUE_KEY = '__fatriaWorldbookWriteQueues';
 
 interface UpsertEntryOptions {
   enabled?: boolean;
@@ -272,6 +273,21 @@ function createStorageEntry(comment: string, content: string): WorldbookEntry {
   };
 }
 
+function isWorldbookWriteQueueMap(value: unknown): value is Map<string, Promise<void>> {
+  const map = value as Partial<Map<string, Promise<void>>> | null;
+  return !!map && typeof map.get === 'function' && typeof map.set === 'function' && typeof map.delete === 'function';
+}
+
+function getWorldbookWriteQueues(): Map<string, Promise<void>> {
+  const hostWindow = getHostWindow() as Record<string, unknown>;
+  const queues = hostWindow[WORLDBOOK_WRITE_QUEUE_KEY];
+  if (isWorldbookWriteQueueMap(queues)) return queues;
+
+  const nextQueues = new Map<string, Promise<void>>();
+  hostWindow[WORLDBOOK_WRITE_QUEUE_KEY] = nextQueues;
+  return nextQueues;
+}
+
 export class WorldbookClient {
   private cache = new Map<string, { data: WorldbookData; at: number }>();
   private boundChatWorldbooks = new Set<string>();
@@ -279,6 +295,23 @@ export class WorldbookClient {
   private scriptModulePromise: Promise<any> | null = null;
   private worldInfoModulePromise: Promise<any> | null = null;
   private lastChatKey = '';
+
+  private async enqueueWorldbookWrite<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const queues = getWorldbookWriteQueues();
+    const previous = queues.get(name) || Promise.resolve();
+    const task = previous.catch(() => undefined).then(operation);
+    const completed = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    queues.set(name, completed);
+
+    try {
+      return await task;
+    } finally {
+      if (queues.get(name) === completed) queues.delete(name);
+    }
+  }
 
   getPhoneWorldbookName(): string {
     const chatKey = safeStorageSegment(this.getChatKey());
@@ -607,7 +640,7 @@ export class WorldbookClient {
     const pending = this.ensurePromises.get(worldName);
     if (pending) return cloneWorldbookData(await pending);
 
-    const ensurePromise = this.ensureWorldbookInternal(worldName);
+    const ensurePromise = this.enqueueWorldbookWrite(worldName, () => this.ensureWorldbookInternal(worldName));
     this.ensurePromises.set(worldName, ensurePromise);
     try {
       return cloneWorldbookData(await ensurePromise);
@@ -629,24 +662,23 @@ export class WorldbookClient {
         ? await this.readWorldbook(legacyName, { allowMissing: true, force: true })
         : null;
     if (legacy) {
-      await this.saveWorldbook(name, legacy);
+      await this.saveWorldbookRaw(name, legacy);
       await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
       console.info(`[后街] 已将旧聊天世界书「${legacyName}」迁移为「${name}」。`);
-      return legacy;
+      const migrated = await this.readWorldbook(name, { force: true });
+      if (!migrated) throw new Error(`迁移后无法读取世界书：${name}`);
+      return migrated;
     }
 
     const created: WorldbookData = { entries: {} };
-    await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, { name, data: created });
-    this.cache.set(name, { data: created, at: Date.now() });
-    await this.registerWorldbookName(name);
-    await this.bindWorldbookToCurrentChat(name).catch(error => console.warn('[后街] 自动绑定聊天世界书失败:', error));
-    return created;
+    await this.saveWorldbookRaw(name, created);
+    const verified = await this.readWorldbook(name, { force: true });
+    if (!verified) throw new Error(`创建后无法读取世界书：${name}`);
+    return verified;
   }
 
-  async saveWorldbook(name: string, data: WorldbookData): Promise<void> {
+  private async saveWorldbookRaw(name: string, data: WorldbookData): Promise<void> {
     const worldName = safeString(name);
-    if (!worldName) throw new Error('世界书名称不能为空');
-
     await postJson<unknown>(WORLD_INFO_EDIT_ENDPOINT, { name: worldName, data });
     this.cache.set(worldName, { data, at: Date.now() });
     await this.registerWorldbookName(worldName);
@@ -655,31 +687,68 @@ export class WorldbookClient {
     );
   }
 
+  private async mutateWorldbook<T>(
+    name: string,
+    mutation: (data: WorldbookData) => T,
+    verify: (data: WorldbookData, result: T) => boolean,
+    description: string,
+  ): Promise<T> {
+    const worldName = safeString(name);
+    if (!worldName) throw new Error('世界书名称不能为空');
+
+    return this.enqueueWorldbookWrite(worldName, async () => {
+      const data = await this.ensureWorldbookInternal(worldName);
+      const result = mutation(data);
+      await this.saveWorldbookRaw(worldName, data);
+
+      const verified = await this.readWorldbook(worldName, { force: true });
+      if (!verified || !verify(verified, result)) {
+        this.cache.delete(worldName);
+        throw new Error(`世界书写入校验失败：${worldName}（${description}）`);
+      }
+      return result;
+    });
+  }
+
   async upsertStorageEntry(name: string, comment: string, content: string): Promise<void> {
-    const data = await this.ensureWorldbook(name);
-    const entries = getEntriesArray(data);
-    const existing = entries.find(entry => safeString(entry.comment) === comment);
+    await this.mutateWorldbook(
+      name,
+      data => {
+        const entries = getEntriesArray(data);
+        const existing = entries.find(entry => safeString(entry.comment) === comment);
 
-    if (existing) {
-      applyStorageEntry(existing, content);
-    } else {
-      const entry = createStorageEntry(comment, content);
-      entry.uid = getNextUid(entries);
-      entry.displayIndex = entries.length;
-      entries.push(entry);
-    }
+        if (existing) {
+          applyStorageEntry(existing, content);
+        } else {
+          const entry = createStorageEntry(comment, content);
+          entry.uid = getNextUid(entries);
+          entry.displayIndex = entries.length;
+          entries.push(entry);
+        }
 
-    await this.saveWorldbook(name, replaceEntries(data, entries));
+        replaceEntries(data, entries);
+      },
+      data => {
+        const entry = getEntriesArray(data).find(item => safeString(item.comment) === comment);
+        return entry?.content === content && entry.disable === true;
+      },
+      `写入存储条目 ${comment}`,
+    );
   }
 
   async deleteEntry(name: string, comment: string): Promise<boolean> {
-    const data = await this.ensureWorldbook(name);
-    const entries = getEntriesArray(data);
-    const nextEntries = entries.filter(entry => safeString(entry.comment) !== comment);
-    if (nextEntries.length === entries.length) return false;
-
-    await this.saveWorldbook(name, replaceEntries(data, nextEntries));
-    return true;
+    return this.mutateWorldbook(
+      name,
+      data => {
+        const entries = getEntriesArray(data);
+        const nextEntries = entries.filter(entry => safeString(entry.comment) !== comment);
+        const deleted = nextEntries.length !== entries.length;
+        replaceEntries(data, nextEntries);
+        return deleted;
+      },
+      data => !getEntriesArray(data).some(entry => safeString(entry.comment) === comment),
+      `删除条目 ${comment}`,
+    );
   }
 
   async upsertEntry(
@@ -688,22 +757,48 @@ export class WorldbookClient {
     content: string,
     enabledOrOptions: boolean | UpsertEntryOptions = false,
   ): Promise<void> {
-    const data = await this.ensureWorldbook(name);
-    const entries = getEntriesArray(data);
-    const existing = entries.find(entry => safeString(entry.comment) === comment);
     const options = normalizeEntryOptions(comment, enabledOrOptions);
 
-    if (existing) {
-      existing.content = content;
-      applyEntryOptions(existing, options);
-    } else {
-      const entry = createEntry(comment, content, enabledOrOptions);
-      entry.uid = getNextUid(entries);
-      entry.displayIndex = entries.length;
-      entries.push(entry);
-    }
+    await this.mutateWorldbook(
+      name,
+      data => {
+        const entries = getEntriesArray(data);
+        const existing = entries.find(entry => safeString(entry.comment) === comment);
 
-    await this.saveWorldbook(name, replaceEntries(data, entries));
+        if (existing) {
+          existing.content = content;
+          applyEntryOptions(existing, options);
+        } else {
+          const entry = createEntry(comment, content, enabledOrOptions);
+          entry.uid = getNextUid(entries);
+          entry.displayIndex = entries.length;
+          entries.push(entry);
+        }
+
+        replaceEntries(data, entries);
+      },
+      data => {
+        const entry = getEntriesArray(data).find(item => safeString(item.comment) === comment);
+        return (
+          entry?.content === content &&
+          entry.disable === !options.enabled &&
+          entry.constant === options.constant &&
+          entry.selective === options.selective &&
+          JSON.stringify(entry.key || []) === JSON.stringify(options.key) &&
+          JSON.stringify(entry.keysecondary || []) === JSON.stringify(options.keysecondary) &&
+          entry.position === options.position &&
+          entry.role === options.role &&
+          entry.depth === options.depth &&
+          entry.order === options.order &&
+          entry.useProbability === options.useProbability &&
+          entry.probability === options.probability &&
+          entry.excludeRecursion === options.excludeRecursion &&
+          entry.preventRecursion === options.preventRecursion &&
+          entry.addMemo === options.addMemo
+        );
+      },
+      `写入条目 ${comment}`,
+    );
   }
 
   async getEntry(name: string, comment: string, options: { force?: boolean } = {}): Promise<WorldbookEntry | null> {
