@@ -3908,9 +3908,13 @@ function ensureShopStatData(statData: any) {
   }
 }
 
+function isLotteryTicket(itemName: string): boolean {
+  return itemName.includes('抽奖卷') || itemName.includes('抽奖券');
+}
+
 function getTicketCountFromBackpack(backpack: Record<string, any>): number {
   return Object.entries(backpack).reduce((total, [itemName, itemData]) => {
-    if (!itemName.includes('抽奖卷')) return total;
+    if (!isLotteryTicket(itemName)) return total;
     return total + Math.max(0, Number(itemData?.数量 || 0));
   }, 0);
 }
@@ -3921,7 +3925,7 @@ function consumeLotteryTickets(backpack: Record<string, any>, needed: number): b
 
   let remain = needed;
   const ticketKeys = Object.keys(backpack)
-    .filter(itemName => itemName.includes('抽奖卷'))
+    .filter(isLotteryTicket)
     .sort((a, b) => a.localeCompare(b));
   for (const key of ticketKeys) {
     if (remain <= 0) break;
