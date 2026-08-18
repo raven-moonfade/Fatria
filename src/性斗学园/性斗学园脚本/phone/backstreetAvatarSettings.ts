@@ -3,6 +3,13 @@ export type BackstreetAvatarMode = 'chibi' | 'normal';
 export const DEFAULT_BACKSTREET_AVATAR_MODE: BackstreetAvatarMode = 'chibi';
 export const BACKSTREET_CONTACT_AVATAR_STORAGE_KEY = 'fatria-backstreet-contact-avatar-modes-v1';
 
+const NORMAL_AVATAR_FILE_NAME_OVERRIDES: Record<string, string> = {
+  黑无常: '无常-小黑',
+  无常_小黑: '无常-小黑',
+  白无常: '无常-小白',
+  无常_小白: '无常-小白',
+};
+
 const Q_AVATAR_NAMES = new Set([
   '上杉亚衣',
   '中岛诗织',
@@ -118,7 +125,9 @@ export function normalizeBackstreetAvatarMode(value: unknown): BackstreetAvatarM
 }
 
 export function getNormalAvatarUrl(fullName: string): string {
-  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fullName)}.png`;
+  const avatarFileName = NORMAL_AVATAR_FILE_NAME_OVERRIDES[normalizeName(fullName)] || fullName;
+
+  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(avatarFileName)}.png`;
 }
 
 export function getChibiAvatarName(fullName: string): string | null {
