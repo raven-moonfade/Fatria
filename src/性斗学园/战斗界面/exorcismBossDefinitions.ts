@@ -507,7 +507,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '阿曼达',
     aliases: ['阿曼达', 'Amanda'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '修女仪式', dataKey: '阿曼达_一阶段', skillPoolKey: 'amanda_nun' },
       {
@@ -552,7 +552,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '阿娜温',
     aliases: ['阿娜温', 'Anawen'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '植物寄生体', dataKey: '阿娜温', skillPoolKey: 'anawen_plant' }],
     mechanics: [
       aura({
@@ -587,7 +587,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '暗精灵娘',
     aliases: ['暗精灵娘', '暗精灵'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '暗精灵魅惑者', dataKey: '暗精灵娘', skillPoolKey: 'dark_elf_charm' }],
     mechanics: [
       skillProgress({
@@ -627,7 +627,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '八尺夫人',
     aliases: ['八尺夫人', '八尺'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '慈母阶段', dataKey: '八尺夫人_慈母', skillPoolKey: 'hachishaku_mother' },
       { phase: 2, displayName: '真母阶段', dataKey: '八尺夫人_真母', skillPoolKey: 'hachishaku_true_mother' },
@@ -702,7 +702,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '鬼巫女椿',
     aliases: ['鬼巫女椿', '椿'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '鬼族巫女', dataKey: '鬼巫女椿_一阶段', skillPoolKey: 'tsubaki_oni_miko' },
       { phase: 2, displayName: '狐妻觉醒', dataKey: '鬼巫女椿_二阶段', skillPoolKey: 'tsubaki_fox_wife' },
@@ -747,7 +747,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '鬼樱',
     aliases: ['鬼樱'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '堕落风音', dataKey: '鬼樱', skillPoolKey: 'oni_sakura_single' },
       { phase: 2, displayName: '双子堕落', dataKey: '鬼樱_铃音连锁', skillPoolKey: 'oni_sakura_twins' },
@@ -807,7 +807,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '黑暗史莱姆',
     aliases: ['黑暗史莱姆', '史莱姆'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '黑暗核心', dataKey: '黑暗史莱姆', skillPoolKey: 'dark_slime' }],
     mechanics: [
       aura({
@@ -854,7 +854,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '僵尸天羽',
     aliases: ['僵尸天羽', '僵尸凰天羽'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '僵尸化天羽', dataKey: '僵尸天羽', skillPoolKey: 'zombie_tianyu' }],
     mechanics: [
       manualRule({
@@ -895,7 +895,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '克洛伊',
     aliases: ['克洛伊', 'Chloe'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '魔化面', dataKey: '克洛伊_魔化面', skillPoolKey: 'chloe_demonic' },
       { phase: 2, displayName: '神化面', dataKey: '克洛伊_神化面', skillPoolKey: 'chloe_sacred' },
@@ -971,7 +971,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '灵樱',
     aliases: ['灵樱'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '堕落铃音', dataKey: '灵樱', skillPoolKey: 'spirit_sakura' }],
     mechanics: [
       {
@@ -1026,7 +1026,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '络新妇',
     aliases: ['络新妇', 'Jorogumo', 'Jorōgumo', '蛛娘'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '络新妇', dataKey: '络新妇', skillPoolKey: 'jorogumo' }],
     mechanics: [
       skillProgress({
@@ -1090,7 +1090,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '猫又',
     aliases: ['猫又'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '猫又妖化', dataKey: '猫又', skillPoolKey: 'nekomata' }],
     mechanics: [
       skillProgress({
@@ -1121,7 +1121,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '石像鬼娘',
     aliases: ['石像鬼娘', '石像鬼'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '石像鬼伏击者', dataKey: '石像鬼娘', skillPoolKey: 'gargoyle' }],
     mechanics: [
       {
@@ -1160,7 +1160,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '霜凝',
     aliases: ['霜凝'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '僵尸娘小 Boss', dataKey: '霜凝', skillPoolKey: 'shuangning' }],
     mechanics: [
       aura({
@@ -1196,7 +1196,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '天狗',
     aliases: ['天狗', '天狗娘'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '天狗娘', dataKey: '天狗', skillPoolKey: 'tengu' }],
     mechanics: [
       skillProgress({
@@ -1227,7 +1227,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '万魔之母',
     aliases: ['万魔之母', '万魔母'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '萝莉形态', dataKey: '万魔之母_一阶段', skillPoolKey: 'mother_demon_child' },
       { phase: 2, displayName: '少女形态', dataKey: '万魔之母_二阶段', skillPoolKey: 'mother_demon_girl' },
@@ -1287,7 +1287,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '薇尔',
     aliases: ['薇尔'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '初拥吸血姬', dataKey: '薇尔', skillPoolKey: 'veil' }],
     mechanics: [
       companionMissingRule({
@@ -1331,7 +1331,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '无常',
     aliases: ['无常', '无常姐妹', '黑白无常', '黑无常', '白无常'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '小黑单独出战', dataKey: '无常_小黑', skillPoolKey: 'wuchang_black', climaxLimit: 1 },
       { phase: 2, displayName: '小白接替出战', dataKey: '无常_小白', skillPoolKey: 'wuchang_white', climaxLimit: 1 },
@@ -1411,7 +1411,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '希思',
     aliases: ['希思', 'Heath'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '支配烙印', dataKey: '希思_一阶段', skillPoolKey: 'heath_mark' },
       { phase: 2, displayName: '诅咒扩张', dataKey: '希思_二阶段', skillPoolKey: 'heath_curse' },
@@ -1462,7 +1462,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '雪女',
     aliases: ['雪女'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [{ phase: 1, displayName: '雪女', dataKey: '雪女', skillPoolKey: 'yuki_onna' }],
     mechanics: [
       aura({
@@ -1499,7 +1499,7 @@ export const EXORCISM_BOSS_DEFINITIONS: DeclarativeBossDefinition[] = [
     displayName: '玉藻前',
     aliases: ['玉藻前', '玉藻'],
     category: 'exorcism',
-    status: 'draft',
+    status: 'ready',
     phases: [
       { phase: 1, displayName: '九尾试探', dataKey: '玉藻前_一阶段', skillPoolKey: 'tamamo_phase1' },
       { phase: 2, displayName: '九尾觉醒', dataKey: '玉藻前_二阶段', skillPoolKey: 'tamamo_phase2' },

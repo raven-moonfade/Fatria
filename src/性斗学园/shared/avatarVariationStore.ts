@@ -20,6 +20,76 @@ export interface AvatarVariationOption {
   url: string;
 }
 
+interface AvatarAvailabilityCacheEntry {
+  promise: Promise<boolean>;
+  expiresAt: number;
+}
+
+const avatarAvailabilityCache = new Map<string, AvatarAvailabilityCacheEntry>();
+const AVATAR_AVAILABILITY_TIMEOUT_MS = 2_500;
+const AVATAR_AVAILABILITY_FAILURE_TTL_MS = 30_000;
+
+/**
+ * Check a remote avatar without allowing one stalled CDN request to block a page.
+ * Successful checks stay cached for the lifetime of the script; failed checks are
+ * retried after a short period so newly uploaded images are picked up automatically.
+ */
+export function isAvatarUrlAvailable(url: string): Promise<boolean> {
+  const normalizedUrl = String(url || '').trim();
+  if (!normalizedUrl) return Promise.resolve(false);
+
+  const cached = avatarAvailabilityCache.get(normalizedUrl);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise;
+  }
+
+  let entry!: AvatarAvailabilityCacheEntry;
+  const promise = new Promise<boolean>(resolve => {
+    const image = new Image();
+    let settled = false;
+    const finish = (available: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      resolve(available);
+      entry.expiresAt = available ? Number.MAX_SAFE_INTEGER : Date.now() + AVATAR_AVAILABILITY_FAILURE_TTL_MS;
+    };
+    const timeoutId = window.setTimeout(() => {
+      image.src = '';
+      finish(false);
+    }, AVATAR_AVAILABILITY_TIMEOUT_MS);
+
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false);
+    image.src = normalizedUrl;
+  });
+
+  entry = { promise, expiresAt: Number.MAX_SAFE_INTEGER };
+  avatarAvailabilityCache.set(normalizedUrl, entry);
+  return promise;
+}
+
+/** Probe a small number of avatar URLs at a time to avoid starving normal images. */
+export async function filterAvailableAvatarVariationOptions(
+  options: AvatarVariationOption[],
+  maxConcurrent = 3,
+): Promise<AvatarVariationOption[]> {
+  if (options.length === 0) return [];
+
+  const available = new Array<boolean>(options.length).fill(false);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < options.length) {
+      const index = nextIndex++;
+      available[index] = await isAvatarUrlAvailable(options[index].url);
+    }
+  };
+
+  const workerCount = Math.min(Math.max(1, maxConcurrent), options.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return options.filter((_, index) => available[index]);
+}
+
 export interface AvatarVariationMutationResult {
   changed: boolean;
   unlockedCount: number;

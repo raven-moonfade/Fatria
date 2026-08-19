@@ -713,7 +713,7 @@ import { PLAYER_AVATAR_UPDATED_EVENT, resolveStoredPlayerAvatar } from '../../..
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import {
   AVATAR_VARIATIONS_UPDATED_EVENT,
-  getAllAvatarVariationOptions,
+  filterAvailableAvatarVariationOptions,
   getAvatarVariationConfigForCharacter,
   getSelectedAvatarVariationKey,
   getSelectedAvatarVariationUrl,
@@ -814,7 +814,7 @@ const allAvatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>
 const defaultAvatarMode = ref<BackstreetAvatarMode>(readDefaultAvatarMode());
 const playerAvatarUrl = ref('');
 const messageImageUrls = ref<Record<string, string>>({});
-const avatarAvailabilityCache = new Map<string, Promise<boolean>>();
+let avatarRefreshToken = 0;
 const pendingImageAttachments = ref<PendingImageAttachment[]>([]);
 const visibleMessageCount = ref(readVisibleMessageCount());
 const activeActionMessageId = ref('');
@@ -2142,31 +2142,6 @@ function getAvatarImageClass(name: string): Record<string, boolean> {
   };
 }
 
-function isAvatarUrlAvailable(url: string): Promise<boolean> {
-  const cached = avatarAvailabilityCache.get(url);
-  if (cached) return cached;
-
-  const availability = new Promise<boolean>(resolve => {
-    const image = new Image();
-    const timeoutId = window.setTimeout(() => {
-      image.src = '';
-      resolve(false);
-    }, 8_000);
-
-    image.onload = () => {
-      window.clearTimeout(timeoutId);
-      resolve(true);
-    };
-    image.onerror = () => {
-      window.clearTimeout(timeoutId);
-      resolve(false);
-    };
-    image.src = url;
-  });
-  avatarAvailabilityCache.set(url, availability);
-  return availability;
-}
-
 function markAvatarFailed(name: string) {
   const avatar = resolveAvatarDisplay(name);
   if (!avatar) return;
@@ -2268,6 +2243,7 @@ function syncModalAvatarIndexToSelection() {
 }
 
 async function refreshAvatarVariationState(preserveModalIndex = false) {
+  const refreshToken = ++avatarRefreshToken;
   const previousSlide = preserveModalIndex ? currentModalAvatarSlide.value : null;
   const names = [
     ...contacts.value.filter(contact => contact.type !== 'group').map(contact => contact.name),
@@ -2281,44 +2257,58 @@ async function refreshAvatarVariationState(preserveModalIndex = false) {
   const nextOptions: Record<string, AvatarVariationOption[]> = {};
   const nextAllOptions: Record<string, AvatarVariationOption[]> = {};
 
-  for (const recordKey of recordKeys) {
-    const config = getAvatarVariationConfigForCharacter(recordKey);
-    if (!config) continue;
-
-    const [selectedUrl, selectedKey, options] = await Promise.all([
-      getSelectedAvatarVariationUrl(config.characterName),
-      getSelectedAvatarVariationKey(config.characterName),
-      getUnlockedAvatarVariationOptions(config.characterName),
-    ]);
-
-    const allOptions = getAllAvatarVariationOptions(config.characterName);
-    const availableOptions = (
-      await Promise.all(
-        allOptions.map(async option => ({
-          option,
-          available: await isAvatarUrlAvailable(option.url),
-        })),
-      )
-    )
-      .filter(({ available }) => available)
-      .map(({ option }) => option);
-    const availableKeys = new Set(availableOptions.map(option => option.key));
-
-    if (selectedUrl && selectedKey && availableKeys.has(selectedKey)) {
-      nextUrls[config.characterName] = selectedUrl;
-    }
-    nextKeys[config.characterName] = selectedKey && availableKeys.has(selectedKey) ? selectedKey : null;
-    nextOptions[config.characterName] = options.filter(option => availableKeys.has(option.key));
-    nextAllOptions[config.characterName] = availableOptions;
-  }
-
   contactAvatarModes.value = loadContactAvatarModes();
+  const metadata = await Promise.all(
+    recordKeys.map(async recordKey => {
+      const config = getAvatarVariationConfigForCharacter(recordKey);
+      if (!config) return null;
+      const [selectedUrl, selectedKey, options] = await Promise.all([
+        getSelectedAvatarVariationUrl(config.characterName),
+        getSelectedAvatarVariationKey(config.characterName),
+        getUnlockedAvatarVariationOptions(config.characterName),
+      ]);
+      return { config, selectedUrl, selectedKey, options };
+    }),
+  );
+  if (refreshToken !== avatarRefreshToken) return;
+
+  // Do not probe every contact when the list opens. Persisted selections are
+  // applied immediately; unavailable differences are verified only in the picker.
+  for (const item of metadata) {
+    if (!item) continue;
+    const isSelectedUnlocked = Boolean(item.selectedKey && item.options.some(option => option.key === item.selectedKey));
+    if (item.selectedUrl && item.selectedKey && isSelectedUnlocked) {
+      nextUrls[item.config.characterName] = item.selectedUrl;
+      nextKeys[item.config.characterName] = item.selectedKey;
+    } else {
+      nextKeys[item.config.characterName] = null;
+    }
+    nextOptions[item.config.characterName] = [];
+    nextAllOptions[item.config.characterName] = [];
+  }
   selectedAvatarUrls.value = nextUrls;
   selectedAvatarKeys.value = nextKeys;
   avatarOptionsByCharacter.value = nextOptions;
   allAvatarOptionsByCharacter.value = nextAllOptions;
 
   if (showAvatarPicker.value && modalCharacterName.value) {
+    const recordKey = getAvatarRecordKey(modalCharacterName.value);
+    const modalData = metadata.find(item => item?.config.characterName === recordKey);
+    if (modalData) {
+      const availableOptions = await filterAvailableAvatarVariationOptions(modalData.options);
+      if (refreshToken !== avatarRefreshToken) return;
+      const availableKeys = new Set(availableOptions.map(option => option.key));
+      nextOptions[recordKey] = modalData.options.filter(option => availableKeys.has(option.key));
+      nextAllOptions[recordKey] = availableOptions;
+      if (nextKeys[recordKey] && !availableKeys.has(nextKeys[recordKey])) {
+        delete nextKeys[recordKey];
+        delete nextUrls[recordKey];
+      }
+      selectedAvatarUrls.value = { ...nextUrls };
+      selectedAvatarKeys.value = { ...nextKeys };
+      avatarOptionsByCharacter.value = { ...nextOptions };
+      allAvatarOptionsByCharacter.value = { ...nextAllOptions };
+    }
     if (previousSlide) {
       const preservedIndex = findModalAvatarSlideIndex(modalAvatarSlides.value, previousSlide);
       if (preservedIndex >= 0) {

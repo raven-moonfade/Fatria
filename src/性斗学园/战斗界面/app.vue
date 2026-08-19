@@ -1902,7 +1902,7 @@ async function loadEnemyRuntimeData(data: any, maxClimaxCount: number) {
 
   const exorcismSetup = createExorcismRuntimeSetup({
     enemyName: normalizedName,
-    questActive: hasActiveExorcismMazeSideQuest(data),
+    statData: data,
     defaultClimaxLimit: maxClimaxCount,
     getEnemyPortraitUrl,
   });

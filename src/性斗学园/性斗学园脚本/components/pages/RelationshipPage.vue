@@ -14,7 +14,7 @@
               :src="getAvatarUrl(name)"
               :alt="name"
               @load="handleImageLoad($event)"
-              @error="handleImageError($event)"
+              @error="handleImageError($event, name)"
               class="avatar-img"
             />
           </div>
@@ -44,7 +44,7 @@
                 :src="getAvatarUrl(String(name))"
                 :alt="String(name)"
                 @load="handleImageLoad($event)"
-                @error="handleImageError($event)"
+                @error="handleImageError($event, String(name))"
                 class="avatar-img"
               />
             </div>
@@ -249,8 +249,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { getLatestMvuData, replaceLatestMvuData } from '../../../shared/mvuStore';
 import {
   AVATAR_VARIATIONS_UPDATED_EVENT,
-  getAllAvatarVariationOptions,
   getAvatarVariationConfigForCharacter,
+  filterAvailableAvatarVariationOptions,
   getSelectedAvatarVariationKey,
   getSelectedAvatarVariationUrl,
   getUnlockedAvatarVariationOptions,
@@ -304,7 +304,7 @@ const avatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({}
 const allAvatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({});
 const contactAvatarModes = ref<Record<string, BackstreetAvatarMode>>(loadContactAvatarModes());
 const modalAvatarIndex = ref(0);
-const avatarAvailabilityCache = new Map<string, Promise<boolean>>();
+let avatarRefreshToken = 0;
 
 interface ModalAvatarSlide {
   kind: 'normal' | 'chibi' | 'variation';
@@ -359,31 +359,6 @@ function getDefaultAvatarUrl(name: string): string {
 // 生成头像 URL
 function getAvatarUrl(name: string): string {
   return selectedAvatarUrls.value[getAvatarRecordKey(name)] || getDefaultAvatarUrl(name);
-}
-
-function isAvatarUrlAvailable(url: string): Promise<boolean> {
-  const cached = avatarAvailabilityCache.get(url);
-  if (cached) return cached;
-
-  const availability = new Promise<boolean>(resolve => {
-    const image = new Image();
-    const timeoutId = window.setTimeout(() => {
-      image.src = '';
-      resolve(false);
-    }, 8_000);
-
-    image.onload = () => {
-      window.clearTimeout(timeoutId);
-      resolve(true);
-    };
-    image.onerror = () => {
-      window.clearTimeout(timeoutId);
-      resolve(false);
-    };
-    image.src = url;
-  });
-  avatarAvailabilityCache.set(url, availability);
-  return availability;
 }
 
 const modalUnlockedAvatarOptions = computed(() => {
@@ -468,6 +443,7 @@ function getCurrentPersistedAvatarSlide(): Pick<ModalAvatarSlide, 'kind' | 'vari
 }
 
 async function refreshAvatarVariationState(preserveModalIndex = false) {
+  const refreshToken = ++avatarRefreshToken;
   const previousSlide = preserveModalIndex ? currentModalAvatarSlide.value : null;
   const names = [...presentCharacters.value, ...Object.keys(relationships.value)];
   const recordKeys = [...new Set(names.map(name => getAvatarRecordKey(String(name))))];
@@ -476,44 +452,62 @@ async function refreshAvatarVariationState(preserveModalIndex = false) {
   const nextOptions: Record<string, AvatarVariationOption[]> = {};
   const nextAllOptions: Record<string, AvatarVariationOption[]> = {};
 
-  for (const recordKey of recordKeys) {
-    const config = getAvatarVariationConfigForCharacter(recordKey);
-    if (!config) continue;
-
-    const [selectedUrl, selectedKey, options] = await Promise.all([
-      getSelectedAvatarVariationUrl(config.characterName),
-      getSelectedAvatarVariationKey(config.characterName),
-      getUnlockedAvatarVariationOptions(config.characterName),
-    ]);
-
-    const allOptions = getAllAvatarVariationOptions(config.characterName);
-    const availableOptions = (
-      await Promise.all(
-        allOptions.map(async option => ({
-          option,
-          available: await isAvatarUrlAvailable(option.url),
-        })),
-      )
-    )
-      .filter(({ available }) => available)
-      .map(({ option }) => option);
-    const availableKeys = new Set(availableOptions.map(option => option.key));
-
-    if (selectedUrl && selectedKey && availableKeys.has(selectedKey)) {
-      nextUrls[config.characterName] = selectedUrl;
-    }
-    nextKeys[config.characterName] = selectedKey && availableKeys.has(selectedKey) ? selectedKey : null;
-    nextOptions[config.characterName] = options.filter(option => availableKeys.has(option.key));
-    nextAllOptions[config.characterName] = availableOptions;
-  }
-
   contactAvatarModes.value = loadContactAvatarModes();
+
+  const metadata = await Promise.all(
+    recordKeys.map(async recordKey => {
+      const config = getAvatarVariationConfigForCharacter(recordKey);
+      if (!config) return null;
+      const [selectedUrl, selectedKey, options] = await Promise.all([
+        getSelectedAvatarVariationUrl(config.characterName),
+        getSelectedAvatarVariationKey(config.characterName),
+        getUnlockedAvatarVariationOptions(config.characterName),
+      ]);
+      return { config, selectedUrl, selectedKey, options };
+    }),
+  );
+  if (refreshToken !== avatarRefreshToken) return;
+
+  // Apply persisted choices before any remote probing. This keeps the relationship
+  // cards responsive and lets normal image loading handle the selected avatar.
+  for (const item of metadata) {
+    if (!item) continue;
+    const isSelectedUnlocked = Boolean(item.selectedKey && item.options.some(option => option.key === item.selectedKey));
+    if (item.selectedUrl && item.selectedKey && isSelectedUnlocked) {
+      nextUrls[item.config.characterName] = item.selectedUrl;
+      nextKeys[item.config.characterName] = item.selectedKey;
+    } else {
+      nextKeys[item.config.characterName] = null;
+    }
+    nextOptions[item.config.characterName] = [];
+    nextAllOptions[item.config.characterName] = [];
+  }
   selectedAvatarUrls.value = nextUrls;
   selectedAvatarKeys.value = nextKeys;
   avatarOptionsByCharacter.value = nextOptions;
   allAvatarOptionsByCharacter.value = nextAllOptions;
 
   if (showModal.value && modalCharacterName.value) {
+    const recordKey = getAvatarRecordKey(modalCharacterName.value);
+    const modalData = metadata.find(item => item?.config.characterName === recordKey);
+    if (modalData) {
+      // Probing every potential difference is only necessary for the picker, never
+      // for the relationship page itself. This prevents unrelated contacts from
+      // delaying the first render.
+      const availableOptions = await filterAvailableAvatarVariationOptions(modalData.options);
+      if (refreshToken !== avatarRefreshToken) return;
+      const availableKeys = new Set(availableOptions.map(option => option.key));
+      nextOptions[recordKey] = modalData.options.filter(option => availableKeys.has(option.key));
+      nextAllOptions[recordKey] = availableOptions;
+      if (nextKeys[recordKey] && !availableKeys.has(nextKeys[recordKey])) {
+        delete nextKeys[recordKey];
+        delete nextUrls[recordKey];
+      }
+      selectedAvatarUrls.value = { ...nextUrls };
+      selectedAvatarKeys.value = { ...nextKeys };
+      avatarOptionsByCharacter.value = { ...nextOptions };
+      allAvatarOptionsByCharacter.value = { ...nextAllOptions };
+    }
     modalAvatarUrl.value = getAvatarUrl(modalCharacterName.value);
     if (previousSlide) {
       const preservedIndex = findSlideIndex(modalAvatarSlides.value, previousSlide);
@@ -581,8 +575,14 @@ function handleImageLoad(event: Event) {
 }
 
 // 处理图片加载失败
-function handleImageError(event: Event) {
+function handleImageError(event: Event, name: string) {
   const img = event.target as HTMLImageElement;
+  const fallbackUrl = getNormalAvatarUrl(resolveAvatarFullName(name));
+  if (img.src !== fallbackUrl && !img.dataset.fallbackAttempted) {
+    img.dataset.fallbackAttempted = 'true';
+    img.src = fallbackUrl;
+    return;
+  }
   // 降级为默认头像（使用 icon）
   img.style.display = 'none';
   const parent = img.parentElement;
@@ -599,6 +599,7 @@ function showAvatarModal(name: string) {
   modalAvatarUrl.value = getAvatarUrl(name);
   syncModalAvatarIndexToSelection();
   showModal.value = true;
+  void refreshAvatarVariationState(true);
 }
 
 // 关闭模态框
@@ -1420,8 +1421,7 @@ watch(
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
+  background: transparent;
 }
 
 .modal-content {
