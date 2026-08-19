@@ -373,11 +373,37 @@ function entryToMemoryHit(entry: WorldbookEntry, score: number): PhoneMemoryHit 
 
 export class BackstreetWorldbookStore {
   private cleanedGeneratedMemoryWorldbooks = new Set<string>();
+  private storageReadyWorldbooks = new Set<string>();
+  private storageReadyPromises = new Map<string, Promise<void>>();
   private readyWorldbooks = new Set<string>();
   private readyPromises = new Map<string, Promise<void>>();
 
   private get worldName(): string {
     return worldbookClient.getPhoneWorldbookName();
+  }
+
+  async ensureStorageReady(): Promise<void> {
+    const worldName = this.worldName;
+    if (!worldName) return;
+    if (this.storageReadyWorldbooks.has(worldName)) {
+      // 聊天元数据在酒馆启动早期可能尚未就绪；后续轻量调用补一次绑定。
+      await worldbookClient.ensureCurrentChatWorldbookBinding(worldName);
+      return;
+    }
+
+    const pending = this.storageReadyPromises.get(worldName);
+    if (pending) return pending;
+
+    const readyPromise = (async () => {
+      await worldbookClient.ensureWorldbook(worldName);
+      this.storageReadyWorldbooks.add(worldName);
+    })();
+    this.storageReadyPromises.set(worldName, readyPromise);
+    try {
+      await readyPromise;
+    } finally {
+      if (this.storageReadyPromises.get(worldName) === readyPromise) this.storageReadyPromises.delete(worldName);
+    }
   }
 
   async ensureReady(): Promise<void> {
@@ -394,8 +420,7 @@ export class BackstreetWorldbookStore {
     if (pending) return pending;
 
     const readyPromise = (async () => {
-      await worldbookClient.ensureWorldbook(worldName);
-      await worldbookClient.ensureCurrentChatWorldbookBinding(worldName);
+      await this.ensureStorageReady();
       await this.ensureGuideEntry();
       await this.ensureEjsInjectionEntries();
       await this.cleanupGeneratedMemoryEntries();
@@ -643,6 +668,7 @@ export class BackstreetWorldbookStore {
   }
 
   async getThread(contact: string, options: { force?: boolean } = {}): Promise<BackstreetThreadData> {
+    await this.ensureStorageReady();
     const entry = await worldbookClient.getEntry(this.worldName, getThreadEntryName(contact), options);
     const thread = normalizeThread(
       contact,
@@ -734,6 +760,7 @@ export class BackstreetWorldbookStore {
   }
 
   async listContacts(characterData: any): Promise<BackstreetContact[]> {
+    await this.ensureStorageReady();
     const meta = await this.getMeta().catch(() => createEmptyMeta());
     const relationSystem = characterData?.关系系统 || {};
     const presentNames = Array.isArray(relationSystem?.在场人物) ? relationSystem.在场人物 : [];

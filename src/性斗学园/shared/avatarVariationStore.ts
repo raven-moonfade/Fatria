@@ -1,4 +1,5 @@
 import { NAME_ALIASES } from '../战斗界面/enemyDatabase';
+import { getAvatarResourceName } from '../性斗学园脚本/phone/backstreetAvatarSettings';
 
 export const CHARACTER_AVATAR_VARIATIONS_VARIABLE_KEY = '性斗学园头像差分记录';
 export const AVATAR_VARIATIONS_UPDATED_EVENT = 'fatria-avatar-variations-updated';
@@ -413,5 +414,6 @@ export async function selectAvatarVariation(characterName: string, key: AvatarVa
 }
 
 export function getAvatarVariationUrl(config: AvatarVariationConfig, key: AvatarVariationKey): string {
-  return `https://img.vinsimage.org/性斗学园/头像差分/${encodeURIComponent(config.imageFolder)}/${encodeURIComponent(key)}.png`;
+  const imageFolder = getAvatarResourceName(config.imageFolder);
+  return `https://img.vinsimage.org/性斗学园/头像差分/${encodeURIComponent(imageFolder)}/${encodeURIComponent(key)}.png`;
 }

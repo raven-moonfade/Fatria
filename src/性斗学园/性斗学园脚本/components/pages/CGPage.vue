@@ -192,6 +192,7 @@ import {
   unlockCharacterCGKey,
 } from '../../../shared/cgUnlockStore';
 import { CG_CONFIGS, type CGEvent } from '../../../战斗界面/data/cgConfig';
+import { getNormalAvatarUrl } from '../../phone/backstreetAvatarSettings';
 
 const unlockedCGsByCharacter = ref<Record<string, Set<string>>>({});
 
@@ -409,8 +410,7 @@ function getCharacterUnlockCount(characterName: string): number {
 }
 
 function getAvatarUrl(name: string): string {
-  const fileName = name === '沐芯兰' ? '沐芯兰_1' : name;
-  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fileName)}.png`;
+  return getNormalAvatarUrl(name);
 }
 
 function getCGImageUrl(cg: FlattenedCGImage): string {

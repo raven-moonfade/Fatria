@@ -1,3 +1,5 @@
+import { getNormalAvatarUrl } from '../../性斗学园脚本/phone/backstreetAvatarSettings';
+
 /**
  * NPC角色数据 - 用于生活模拟模式
  * 定义可供玩家选择的NPC角色列表
@@ -40,8 +42,7 @@ export type NpcCategory =
  * @param portraitKey 可选的头像文件名（用于特殊命名的角色）
  */
 export function getNpcPortraitUrl(name: string, portraitKey?: string): string {
-  const fileName = portraitKey || name;
-  return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(fileName)}.png`;
+  return getNormalAvatarUrl(portraitKey || name);
 }
 
 /**

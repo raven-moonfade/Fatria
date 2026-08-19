@@ -304,6 +304,7 @@ const avatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({}
 const allAvatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>({});
 const contactAvatarModes = ref<Record<string, BackstreetAvatarMode>>(loadContactAvatarModes());
 const modalAvatarIndex = ref(0);
+const avatarAvailabilityCache = new Map<string, Promise<boolean>>();
 
 interface ModalAvatarSlide {
   kind: 'normal' | 'chibi' | 'variation';
@@ -358,6 +359,31 @@ function getDefaultAvatarUrl(name: string): string {
 // 生成头像 URL
 function getAvatarUrl(name: string): string {
   return selectedAvatarUrls.value[getAvatarRecordKey(name)] || getDefaultAvatarUrl(name);
+}
+
+function isAvatarUrlAvailable(url: string): Promise<boolean> {
+  const cached = avatarAvailabilityCache.get(url);
+  if (cached) return cached;
+
+  const availability = new Promise<boolean>(resolve => {
+    const image = new Image();
+    const timeoutId = window.setTimeout(() => {
+      image.src = '';
+      resolve(false);
+    }, 8_000);
+
+    image.onload = () => {
+      window.clearTimeout(timeoutId);
+      resolve(true);
+    };
+    image.onerror = () => {
+      window.clearTimeout(timeoutId);
+      resolve(false);
+    };
+    image.src = url;
+  });
+  avatarAvailabilityCache.set(url, availability);
+  return availability;
 }
 
 const modalUnlockedAvatarOptions = computed(() => {
@@ -460,12 +486,25 @@ async function refreshAvatarVariationState(preserveModalIndex = false) {
       getUnlockedAvatarVariationOptions(config.characterName),
     ]);
 
-    if (selectedUrl) {
+    const allOptions = getAllAvatarVariationOptions(config.characterName);
+    const availableOptions = (
+      await Promise.all(
+        allOptions.map(async option => ({
+          option,
+          available: await isAvatarUrlAvailable(option.url),
+        })),
+      )
+    )
+      .filter(({ available }) => available)
+      .map(({ option }) => option);
+    const availableKeys = new Set(availableOptions.map(option => option.key));
+
+    if (selectedUrl && selectedKey && availableKeys.has(selectedKey)) {
       nextUrls[config.characterName] = selectedUrl;
     }
-    nextKeys[config.characterName] = selectedKey;
-    nextOptions[config.characterName] = options;
-    nextAllOptions[config.characterName] = getAllAvatarVariationOptions(config.characterName);
+    nextKeys[config.characterName] = selectedKey && availableKeys.has(selectedKey) ? selectedKey : null;
+    nextOptions[config.characterName] = options.filter(option => availableKeys.has(option.key));
+    nextAllOptions[config.characterName] = availableOptions;
   }
 
   contactAvatarModes.value = loadContactAvatarModes();

@@ -752,7 +752,6 @@ export class BackstreetService {
   }
 
   async listContacts(characterData: any): Promise<BackstreetContact[]> {
-    await backstreetWorldbookStore.ensureReady();
     return backstreetWorldbookStore.listContacts(characterData);
   }
 

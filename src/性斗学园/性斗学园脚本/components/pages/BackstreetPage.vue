@@ -186,7 +186,11 @@
           <span class="contact-time">{{ contact.lastTime }}</span>
         </button>
 
-        <div v-if="filteredContacts.length === 0" class="empty-state">
+        <div v-if="isLoadingContacts" class="contact-loading" aria-label="正在加载联系人">
+          <i class="fas fa-spinner fa-spin"></i>
+        </div>
+
+        <div v-else-if="filteredContacts.length === 0" class="empty-state">
           <i :class="activeThreadKind === 'group' ? 'fas fa-user-group' : 'fas fa-user-slash'"></i>
           <span>{{ emptyContactText }}</span>
         </div>
@@ -788,6 +792,7 @@ interface StickerOption {
 }
 
 const contacts = ref<BackstreetContact[]>([]);
+const isLoadingContacts = ref(false);
 const messages = ref<BackstreetMessage[]>([]);
 const activeContact = ref('');
 const activeThreadKind = ref<BackstreetThreadKind>('private');
@@ -809,6 +814,7 @@ const allAvatarOptionsByCharacter = ref<Record<string, AvatarVariationOption[]>>
 const defaultAvatarMode = ref<BackstreetAvatarMode>(readDefaultAvatarMode());
 const playerAvatarUrl = ref('');
 const messageImageUrls = ref<Record<string, string>>({});
+const avatarAvailabilityCache = new Map<string, Promise<boolean>>();
 const pendingImageAttachments = ref<PendingImageAttachment[]>([]);
 const visibleMessageCount = ref(readVisibleMessageCount());
 const activeActionMessageId = ref('');
@@ -931,9 +937,8 @@ function handleAvatarVariationsUpdated() {
 }
 
 onMounted(() => {
-  loadContacts();
+  void loadContacts();
   void loadPlayerAvatar();
-  void refreshAvatarVariationState();
   setupChatChangeListener();
   window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, handlePlayerAvatarUpdated);
   window.addEventListener(AVATAR_VARIATIONS_UPDATED_EVENT, handleAvatarVariationsUpdated);
@@ -1429,12 +1434,15 @@ async function saveStickerImageAttachment(contact: string, sticker: StickerOptio
 }
 
 async function loadContacts(characterDataOverride: any = props.characterData || {}) {
+  isLoadingContacts.value = true;
   try {
     contacts.value = await backstreetService.listContacts(characterDataOverride);
-    await refreshAvatarVariationState(true);
+    void refreshAvatarVariationState(true);
   } catch (error) {
     console.warn('[后街页面] 联系人加载失败:', error);
     errorText.value = '联系人加载失败';
+  } finally {
+    isLoadingContacts.value = false;
   }
 }
 
@@ -2134,6 +2142,31 @@ function getAvatarImageClass(name: string): Record<string, boolean> {
   };
 }
 
+function isAvatarUrlAvailable(url: string): Promise<boolean> {
+  const cached = avatarAvailabilityCache.get(url);
+  if (cached) return cached;
+
+  const availability = new Promise<boolean>(resolve => {
+    const image = new Image();
+    const timeoutId = window.setTimeout(() => {
+      image.src = '';
+      resolve(false);
+    }, 8_000);
+
+    image.onload = () => {
+      window.clearTimeout(timeoutId);
+      resolve(true);
+    };
+    image.onerror = () => {
+      window.clearTimeout(timeoutId);
+      resolve(false);
+    };
+    image.src = url;
+  });
+  avatarAvailabilityCache.set(url, availability);
+  return availability;
+}
+
 function markAvatarFailed(name: string) {
   const avatar = resolveAvatarDisplay(name);
   if (!avatar) return;
@@ -2258,12 +2291,25 @@ async function refreshAvatarVariationState(preserveModalIndex = false) {
       getUnlockedAvatarVariationOptions(config.characterName),
     ]);
 
-    if (selectedUrl) {
+    const allOptions = getAllAvatarVariationOptions(config.characterName);
+    const availableOptions = (
+      await Promise.all(
+        allOptions.map(async option => ({
+          option,
+          available: await isAvatarUrlAvailable(option.url),
+        })),
+      )
+    )
+      .filter(({ available }) => available)
+      .map(({ option }) => option);
+    const availableKeys = new Set(availableOptions.map(option => option.key));
+
+    if (selectedUrl && selectedKey && availableKeys.has(selectedKey)) {
       nextUrls[config.characterName] = selectedUrl;
     }
-    nextKeys[config.characterName] = selectedKey;
-    nextOptions[config.characterName] = options;
-    nextAllOptions[config.characterName] = getAllAvatarVariationOptions(config.characterName);
+    nextKeys[config.characterName] = selectedKey && availableKeys.has(selectedKey) ? selectedKey : null;
+    nextOptions[config.characterName] = options.filter(option => availableKeys.has(option.key));
+    nextAllOptions[config.characterName] = availableOptions;
   }
 
   contactAvatarModes.value = loadContactAvatarModes();
@@ -2341,10 +2387,12 @@ function closeAvatarModal() {
   showAvatarPicker.value = false;
 }
 
-function handleModalImageError() {
+function handleModalImageError(event: Event) {
   const recordKey = getAvatarRecordKey(modalCharacterName.value);
   const slide = currentModalAvatarSlide.value;
   const avatarName = slide.kind === 'variation' && slide.variationKey ? `${recordKey}:${slide.variationKey}` : modalCharacterName.value;
+  const image = event.currentTarget as HTMLImageElement;
+  console.warn(`[后街页面] 头像加载失败：${image.currentSrc || image.src}`);
   failedAvatars.value = new Set([
     ...failedAvatars.value,
     getAvatarFailureKey(slide.kind, avatarName),
@@ -2870,6 +2918,14 @@ async function scrollToBottom() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.contact-loading {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  color: rgba(167, 243, 208, 0.82);
+  font-size: 22px;
 }
 
 .contact-item {

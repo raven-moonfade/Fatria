@@ -4,10 +4,14 @@ export const DEFAULT_BACKSTREET_AVATAR_MODE: BackstreetAvatarMode = 'chibi';
 export const BACKSTREET_CONTACT_AVATAR_STORAGE_KEY = 'fatria-backstreet-contact-avatar-modes-v1';
 
 const NORMAL_AVATAR_FILE_NAME_OVERRIDES: Record<string, string> = {
-  黑无常: '无常-小黑',
-  无常_小黑: '无常-小黑',
-  白无常: '无常-小白',
-  无常_小白: '无常-小白',
+  黑无常: '无常',
+  无常_小黑: '无常',
+  白无常: '无常',
+  无常_小白: '无常',
+  沐芯兰: '沐芯兰_1',
+  克莉丝汀: '克莉丝汀_1',
+  贝阿特丽切: '贝阿切丝特',
+  青鸾: '青鸢',
 };
 
 const Q_AVATAR_NAMES = new Set([
@@ -120,18 +124,24 @@ function normalizeName(name: string): string {
   return String(name || '').trim();
 }
 
+export function getAvatarResourceName(name: string): string {
+  // 敌人库用下划线区分战斗阶段/形态，头像目录只按角色本名存放。
+  return normalizeName(name).replace(/_[^_]+$/u, '');
+}
+
 export function normalizeBackstreetAvatarMode(value: unknown): BackstreetAvatarMode {
   return value === 'normal' ? 'normal' : 'chibi';
 }
 
 export function getNormalAvatarUrl(fullName: string): string {
-  const avatarFileName = NORMAL_AVATAR_FILE_NAME_OVERRIDES[normalizeName(fullName)] || fullName;
+  const resourceName = getAvatarResourceName(fullName);
+  const avatarFileName = NORMAL_AVATAR_FILE_NAME_OVERRIDES[resourceName] || resourceName;
 
   return `https://img.vinsimage.org/性斗学园/头像/${encodeURIComponent(avatarFileName)}.png`;
 }
 
 export function getChibiAvatarName(fullName: string): string | null {
-  const name = normalizeName(fullName);
+  const name = getAvatarResourceName(fullName);
   if (!name) return null;
 
   const candidates = [name, `${name}_1`, `${name}1`, name.replace(/\s+/g, '')];
